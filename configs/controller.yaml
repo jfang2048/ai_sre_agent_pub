@@ -1,0 +1,170 @@
+# SRE Controller Configuration
+# =============================
+#
+# The controller aggregates metrics from multiple probes and provides
+# a unified API and web dashboard.
+#
+# Terminology:
+#   - Probe: The controlled-side data collector on monitored hosts
+#   - Controller: This component - the central aggregation server
+#   - Agent: The overall AI SRE system (NOT the probe component)
+
+# Address to listen on for HTTP requests
+listen: ":8080"
+
+# gRPC ingest listener (push-first telemetry)
+grpc_listen: ":9090"
+# Log level: debug, info, warn, error
+log_level: "info"
+
+# Scrape configuration (optional pull mode)
+scrape:
+  # How often to pull metrics from configured nodes (when nodes are set)
+  interval: "15s"
+  # Timeout for scrape requests
+  timeout: "10s"
+
+# List of probe nodes to monitor (optional pull mode).
+# For push-first mode, leave this empty.
+nodes: []
+
+# Web UI configuration
+web:
+  # Path to static web files
+  path: "./web"
+
+# API configuration (future expansion)
+# auth:
+#   enabled: false
+#   # API key is read from the environment variable below
+#   api_key_env: "SRE_AGENT_CONTROLLER_API_KEY"
+
+# Alerting configuration (future expansion)
+# alerting:
+#   enabled: false
+#   # Webhook URL for alerts
+#   webhook_url: ""
+
+# ============================================================================
+# Analysis Engine Configuration
+# ============================================================================
+# The analysis engine provides automated root cause analysis
+analysis:
+  # Enable the analysis engine
+  enabled: true
+  
+  # How often to run analysis cycles
+  interval: "30s"
+  
+  # Level 1: Threshold-based alerts
+  # Fast, deterministic alerts based on static thresholds
+  threshold_alerts: true
+  
+  # Level 2: Statistical anomaly detection
+  # Detects unusual patterns using z-score and trend analysis
+  anomaly_detection: true
+  
+  # Level 3: Correlation analysis
+  # Finds relationships between different metrics
+  correlation_analysis: true
+  
+  # Level 4: LLM-enhanced analysis (Optional)
+  # Requires SRE_AGENT_LLM_API_KEY environment variable
+  llm_enabled: false
+  llm_provider: "openai"    # openai, anthropic, google/gemini, local
+  llm_model: "gpt-4o-mini"  # Model-specific
+
+# ============================================================================
+# Agent Orchestration (Control Plane)
+# ============================================================================
+agent:
+  enabled: true
+  interval: "30s"
+  max_reports: 50
+  predict_horizon: "30m"
+  max_actions: 200
+  persist_dir: "./data/agent"
+  rag_enabled: false
+  rag_paths: ["README.md", "docs", "configs"]
+  rag_max_snippets: 4
+  rag_max_chars: 1200
+  llm_enabled: false
+  llm_timeout: "20s"
+  policy_file: "./configs/agent_playbooks.yaml"
+  signals:
+    cpu_high_percent: 85
+    memory_pressure_ratio: 0.85
+    swap_activity_min: 1
+    disk_io_high: 50
+  net_saturation_bytes_sec: 200000000
+  gpu_sm_high_percent: 85
+
+# ============================================================================
+# Incident Orchestration (Context Aggregation)
+# ============================================================================
+incidents:
+  enabled: true
+  poll_interval: "10s"
+  window_before: "10m"
+  window_after: "20m"
+  resource_platform:
+    endpoint: ""           # Optional HTTP API for CMDB/asset graph
+    api_token_env: ""      # Env var name holding the token
+    timeout: "3s"
+    static: []             # Optional static service→resource mappings
+  monitoring_platform:
+    endpoint: ""           # Optional Prometheus/VictoriaMetrics gateway
+    api_token_env: ""
+    timeout: "5s"
+    step: "30s"
+  logging_platform:
+    endpoint: ""           # Optional log search API
+    api_token_env: ""
+    timeout: "4s"
+    default_size: 50
+  kubernetes:
+    enabled: false
+    in_cluster: false
+    kubeconfig: ""
+    namespace: "default"
+    timeout: "4s"
+
+# ============================================================================
+# GPU Observability (Fleet Aggregation + Persistence)
+# ============================================================================
+gpu:
+  enabled: true
+  persist_dir: "./data/gpu"
+  flush_interval: "10s"
+  retention: "168h"
+  max_processes_per_gpu: 20
+
+# ============================================================================
+# External Checks (API/Dependency Health)
+# ============================================================================
+checks:
+  enabled: false
+  interval: "60s"
+  timeout: "10s"
+  max_history: 50
+  checks:
+    - id: "status-api"
+      type: "http"
+      target: "https://status.example.com/health"
+      method: "GET"
+      enabled: true
+      expect_status: [200]
+      # Optional headers from env vars:
+      header_env:
+        Authorization: "SRE_AGENT_CHECK_HTTP_BEARER_TOKEN"
+
+    - id: "public-dns"
+      type: "dns"
+      target: "example.com"
+      enabled: true
+
+    - id: "tls-cert"
+      type: "tls"
+      target: "https://api.example.com"
+      enabled: true
+      tls_min_days: 30

@@ -1,0 +1,39 @@
+- id: cpu-hot
+  summary: CPU saturation on node
+  severity: P1
+  conditions:
+    - metric: node_cpu_usage_percent
+      op: ">="
+      threshold: 85
+  actions:
+    - type: scale-out
+      priority: P1
+      safe: true
+      description: Add capacity or move workloads away from node.
+      runbook_url: "https://runbooks.example.com/scale-out"
+
+- id: swap-activity
+  summary: Swap activity detected
+  severity: P2
+  conditions:
+    - metric: node_vmstat_pswpout
+      op: ">="
+      threshold: 1
+  actions:
+    - type: drain-node
+      priority: P2
+      safe: false
+      description: Cordon and drain workloads to reduce swapping pressure.
+
+- id: gpu-hot
+  summary: GPU saturation detected
+  severity: P2
+  conditions:
+    - metric: node_gpu_utilization_sm_avg_percent
+      op: ">="
+      threshold: 85
+  actions:
+    - type: reschedule-job
+      priority: P2
+      safe: true
+      description: Reschedule GPU-heavy jobs to cooler nodes.

@@ -1,0 +1,38 @@
+# SRE Collector configuration (push-first agent)
+
+collector_id: ""
+hostname: ""
+labels: {}
+
+controller_endpoints:
+  - "localhost:9090"
+
+collection_interval: "10s"
+topk: 10
+
+spool_dir: "./data/collector/spool"
+spool_max_bytes: 134217728
+
+log_paths: []
+
+shm_enabled: false
+shm_name: "/sre_collector_metrics"
+
+grpc_compress: true
+mirror_send: false
+
+# Collection level:
+# 1 basic, 2 extended, 3 per-process, 4 logs, 5 RCA (CPU/memory/io/network attribution)
+# Use 5 to populate full per-process rankings in /api/v1/top/programs and /ui tabs.
+level: 5
+
+# Optional: eBPF deep observability (requires CAP_BPF/CAP_SYS_ADMIN/root)
+ebpf:
+  enabled: false
+  socket_path: "/var/run/sre_collector_ebpf.sock"
+  categories: ["sched", "io", "net", "mem", "gpu", "security", "syscall"]
+  max_msg_bytes: 65536
+
+# Optional: external metrics command (fast C++ helper provided in cpp/proc_metrics/main.cpp)
+external_metrics_cmd: ""
+external_metrics_timeout: "500ms"

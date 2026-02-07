@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sre-agent.fullname" . }}-config
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      host: {{ .Values.config.server.host | quote }}
+      port: {{ .Values.config.server.port }}
+      metrics_port: {{ .Values.config.server.metricsPort }}
+      enable_pprof: {{ .Values.config.server.enablePprof }}
+    logging:
+      level: {{ .Values.config.logLevel | quote }}
+      format: {{ .Values.config.logFormat | default "json" | quote }}
+    monitoring:
+      proc:
+        enabled: {{ .Values.config.monitoring.proc.enabled }}
+        scan_interval: {{ .Values.config.monitoring.proc.scanInterval }}
+      kubernetes:
+        enabled: {{ .Values.config.monitoring.kubernetes.enabled }}
+        in_cluster: {{ .Values.config.monitoring.kubernetes.inCluster }}
+        resources:
+          {{- toYaml .Values.config.monitoring.kubernetes.resources | nindent 10 }}
+        scrape_interval: {{ .Values.config.monitoring.kubernetes.scrapeInterval }}
+      correlation:
+        enabled: {{ .Values.config.monitoring.correlation.enabled }}
+        time_window: {{ .Values.config.monitoring.correlation.timeWindow }}
+        max_events: {{ .Values.config.monitoring.correlation.maxEvents }}
+    slo:
+      evaluation_interval: {{ .Values.config.slo.evaluationInterval }}
+      history_days: {{ .Values.config.slo.historyDays }}
+    alerting:
+      enabled: {{ .Values.config.alerting.enabled }}
+      evaluation_interval: {{ .Values.config.alerting.evaluationInterval }}
+      suppression_duration: {{ .Values.config.alerting.suppressionDuration }}
+      default_severity: {{ .Values.config.alerting.defaultSeverity | quote }}
+      max_alerts_per_hour: {{ .Values.config.alerting.maxAlertsPerHour }}
+      notifiers:
+        webhook:
+          enabled: {{ .Values.config.alerting.notifiers.webhook.enabled }}
+          url: {{ .Values.config.alerting.notifiers.webhook.url | quote }}
+        slack:
+          enabled: {{ .Values.config.alerting.notifiers.slack.enabled }}
+          webhook_url: {{ .Values.config.alerting.notifiers.slack.webhookUrl | quote }}
+        pagerduty:
+          enabled: {{ .Values.config.alerting.notifiers.pagerduty.enabled }}
+          routing_key: {{ .Values.config.alerting.notifiers.pagerduty.routingKey | quote }}
+    remediation:
+      enabled: {{ .Values.config.remediation.enabled }}
+    brain:
+      llm:
+        provider: {{ .Values.config.brain.llm.provider | default "glm" | quote }}
+        model: {{ .Values.config.brain.llm.model | default "glm-4" | quote }}
+        max_tokens: {{ .Values.config.brain.llm.maxTokens | default 1024 }}
+        temperature: {{ .Values.config.brain.llm.temperature | default 0.7 }}
+        api_key: "" # Should be set via environment variable
+    ebpf:
+      enabled: {{ .Values.config.ebpf.enabled }}
+      socket_path: {{ .Values.config.ebpf.socketPath | quote }}
+      categories:
+        {{- toYaml .Values.config.ebpf.categories | nindent 8 }}
+      max_msg_bytes: {{ .Values.config.ebpf.maxMsgBytes }}

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: global-controller
+  namespace: sre-agent
+  labels:
+    app: global-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: global-controller
+  template:
+    metadata:
+      labels:
+        app: global-controller
+    spec:
+      containers:
+      - name: aggregator
+        image: sre-agent/aggregator:latest
+        ports:
+        - containerPort: 8080
+        args:
+        - "--listen=:8080"
+        - "--region=global"
+        # No federation-url means this IS the global controller
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: global-controller
+  namespace: sre-agent
+spec:
+  selector:
+    app: global-controller
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: LoadBalancer

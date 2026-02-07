@@ -1,0 +1,47 @@
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+  goimports:
+    local-prefixes: github.com/jfang2048/ai_sre_agent_pub
+  gocyclo:
+    min-complexity: 15
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  misspell:
+    locale: US
+  lll:
+    line-length: 140
+  goimports:
+    local-prefixes: github.com/jfang2048/ai_sre_agent_pub
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - deadcode
+    - depguard
+    - errcheck
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+    - varcheck
+
+run:
+  timeout: 5m
+  go: '1.23'
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

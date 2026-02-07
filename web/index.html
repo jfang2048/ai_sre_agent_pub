@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI SRE Agent - Kernel Resource Observatory</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-soft: #111a2b;
+      --panel: #15233a;
+      --panel-soft: #101b2d;
+      --border: #243b5f;
+      --text: #eaf2ff;
+      --muted: #9fb4d4;
+      --accent: #3da5ff;
+      --accent-strong: #0ea5e9;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --gpu: #4ade80;
+      --cpu: #60a5fa;
+      --memory: #38bdf8;
+      --network: #34d399;
+      --disk: #fbbf24;
+      --diskio: #fb7185;
+      --logs: #f97316;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+      background:
+        radial-gradient(circle at 80% -20%, rgba(61, 165, 255, 0.25), transparent 45%),
+        radial-gradient(circle at 10% 0%, rgba(14, 165, 233, 0.22), transparent 42%),
+        linear-gradient(180deg, #09101b 0%, #0b1220 50%, #0d1424 100%);
+    }
+
+    .app-shell {
+      max-width: 1700px;
+      margin: 0 auto;
+      padding: 20px 20px 28px;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0.02em;
+      font-weight: 700;
+    }
+
+    .title .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .status-card {
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      min-height: 72px;
+    }
+
+    .status-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .status-value {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+    }
+
+    .summary-panel,
+    .resource-panel,
+    .logs-panel {
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 12px 24px rgba(2, 8, 23, 0.35);
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #cfe3ff;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .summary-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(9, 16, 29, 0.75);
+      min-height: 82px;
+    }
+
+    .summary-item .k {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .summary-item .n {
+      margin-top: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .summary-item .v {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #d0e6ff;
+    }
+
+    .resource-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .resource-tab {
+      border: 1px solid var(--border);
+      background: rgba(9, 18, 32, 0.7);
+      color: #c5d8f5;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .resource-tab.active {
+      border-color: var(--accent);
+      color: #fff;
+      background: linear-gradient(180deg, #1f5f9a, #174a79);
+      box-shadow: 0 0 0 1px rgba(61, 165, 255, 0.25) inset;
+    }
+
+    .resource-heading {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .resource-heading h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .resource-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .signal-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(220px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .signal-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(7, 13, 24, 0.75);
+      padding: 9px;
+      min-height: 88px;
+    }
+
+    .signal-name {
+      font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: #d7ecff;
+      margin-bottom: 5px;
+      word-break: break-all;
+    }
+
+    .signal-source {
+      font-size: 11px;
+      color: #9dc1e5;
+      margin-bottom: 4px;
+    }
+
+    .signal-desc {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: auto;
+      background: rgba(7, 12, 22, 0.82);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1080px;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(63, 97, 140, 0.35);
+      font-size: 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #a7c4e8;
+      background: rgba(17, 34, 58, 0.75);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    td.right,
+    th.right {
+      text-align: right;
+    }
+
+    .proc {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .proc .name {
+      font-weight: 700;
+      font-size: 13px;
+      color: #f1f7ff;
+    }
+
+    .proc .meta {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .metric-strong {
+      font-weight: 700;
+      color: #dbedff;
+    }
+
+    .signals-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 450px;
+    }
+
+    .signal-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(86, 126, 176, 0.5);
+      background: rgba(13, 26, 44, 0.85);
+      font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+      font-size: 10px;
+      color: #cde3ff;
+      line-height: 1.2;
+    }
+
+    .signal-pill b {
+      color: #f8fbff;
+      font-weight: 700;
+    }
+
+    .level-error {
+      color: #fecaca;
+    }
+
+    .level-warning {
+      color: #fde68a;
+    }
+
+    .empty {
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .log-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(320px, 1fr));
+      gap: 10px;
+    }
+
+    .log-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(8, 14, 25, 0.84);
+      padding: 10px;
+      min-height: 150px;
+    }
+
+    .log-card h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #afc9ea;
+    }
+
+    .log-row {
+      font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+      font-size: 11px;
+      line-height: 1.35;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(53, 78, 112, 0.45);
+      color: #cde0fb;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .log-row:last-child {
+      border-bottom: none;
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    @media (max-width: 1280px) {
+      .status-strip {
+        grid-template-columns: repeat(2, minmax(160px, 1fr));
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+      }
+
+      .signal-grid {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+      }
+
+      .log-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app-shell {
+        padding: 14px;
+      }
+
+      .status-strip,
+      .summary-grid,
+      .signal-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .resource-tab {
+        flex: 1 1 calc(50% - 8px);
+        text-align: center;
+      }
+
+      table {
+        min-width: 940px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="title">
+        <h1>Kernel Resource Observatory</h1>
+        <div class="subtitle">Per-process kernel-level CPU, GPU, memory, storage, disk I/O, NIC, and logs ranking.</div>
+      </div>
+      <button class="btn" onclick="loadData()">Refresh</button>
+    </div>
+
+    <div class="status-strip">
+      <div class="status-card">
+        <div class="status-label">Controller Link</div>
+        <div class="status-value"><span class="status-dot" id="statusDot"></span><span id="statusText">Connecting</span></div>
+      </div>
+      <div class="status-card">
+        <div class="status-label">Version</div>
+        <div class="status-value" id="version">-</div>
+      </div>
+      <div class="status-card">
+        <div class="status-label">Program Rows</div>
+        <div class="status-value" id="programCount">0</div>
+      </div>
+      <div class="status-card">
+        <div class="status-label">Last Update</div>
+        <div class="status-value" id="lastUpdate">-</div>
+      </div>
+    </div>
+
+    <section class="summary-panel">
+      <h2 class="section-title">Unified Program Hotspot Report</h2>
+      <div id="summaryBody" class="summary-grid">
+        <div class="empty">Loading summary...</div>
+      </div>
+    </section>
+
+    <section class="resource-panel">
+      <h2 class="section-title">Top Programs by Resource and Logs</h2>
+      <div class="resource-nav" id="resourceTabs"></div>
+      <div id="resourcePageBody">
+        <div class="empty">Loading resource pages...</div>
+      </div>
+    </section>
+
+    <section class="logs-panel">
+      <h2 class="section-title">Most Resource-Intensive / Problematic Programs</h2>
+      <div class="log-grid" id="logsBody">
+        <div class="empty">Loading logs...</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const tabs = [
+      { id: 'cpu', label: 'CPU' },
+      { id: 'gpu', label: 'GPU' },
+      { id: 'memory', label: 'Memory' },
+      { id: 'network', label: 'Network / NIC' },
+      { id: 'disk', label: 'Disk Footprint' },
+      { id: 'disk_io', label: 'Disk I/O' },
+      { id: 'logs', label: 'Logs' },
+    ];
+
+    function isValidTab(tabId) {
+      return tabs.some((tab) => tab.id === tabId);
+    }
+
+    function initialTabFromLocation() {
+      const hashTab = (window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+      return isValidTab(hashTab) ? hashTab : 'cpu';
+    }
+
+    const state = {
+      activeTab: initialTabFromLocation(),
+      status: null,
+      topPrograms: null,
+      fleet: null,
+    };
+
+    function escapeHTML(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatBytes(bytes) {
+      if (typeof bytes !== 'number' || Number.isNaN(bytes) || bytes < 0) return '-';
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+      let value = bytes;
+      let i = 0;
+      while (value >= 1024 && i < units.length - 1) {
+        value /= 1024;
+        i += 1;
+      }
+      return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    function formatRate(v) {
+      if (typeof v !== 'number' || Number.isNaN(v) || v < 0) return '-';
+      return `${formatBytes(v)}/s`;
+    }
+
+    function formatPercent(v) {
+      if (typeof v !== 'number' || Number.isNaN(v)) return '-';
+      return `${v.toFixed(1)}%`;
+    }
+
+    function formatNumber(v) {
+      if (typeof v !== 'number' || Number.isNaN(v)) return '-';
+      return v.toLocaleString();
+    }
+
+    function formatSignalValue(signal, value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+      if (signal.includes('bytes') && !signal.includes('per_second')) return formatBytes(value);
+      if (signal.includes('per_second') || signal.includes('_bps')) return formatRate(value);
+      if (signal.includes('percent')) return formatPercent(value);
+      if (signal.includes('mib')) return `${value.toFixed(1)} MiB`;
+      if (signal.includes('seconds')) return `${value.toFixed(2)} s`;
+      if (signal.includes('queue') || signal.includes('connections') || signal.includes('syscalls') || signal.includes('_total') || signal.startsWith('log_')) return formatNumber(value);
+      return String(value.toFixed(2));
+    }
+
+    function categoryCurrentValue(category, p) {
+      if (!p) return 0;
+      switch (category) {
+        case 'cpu': return p.cpu_percent || 0;
+        case 'memory': return p.memory_bytes || 0;
+        case 'disk': return (p.disk_read_bytes_total || 0) + (p.disk_write_bytes_total || 0) || (p.disk_read_bps || 0) + (p.disk_write_bps || 0);
+        case 'disk_io': return (p.disk_read_bps || 0) + (p.disk_write_bps || 0) + (p.disk_read_syscalls_total || 0) + (p.disk_write_syscalls_total || 0);
+        case 'network': return (p.net_bytes_per_second || 0) + (p.net_queued_bytes || 0) + ((p.net_connections || 0) * 1024);
+        case 'gpu': return (p.gpu_util_sm_percent || 0) + ((p.gpu_mem_mib || 0) / 100);
+        case 'logs': return ((p.log_errors || 0) * 2) + (p.log_warnings || 0);
+        default: return 0;
+      }
+    }
+
+    function categoryCurrentText(category, p) {
+      switch (category) {
+        case 'cpu': return formatPercent(p.cpu_percent || 0);
+        case 'memory': return formatBytes(p.memory_bytes || 0);
+        case 'disk':
+          if ((p.disk_read_bytes_total || 0) + (p.disk_write_bytes_total || 0) > 0) {
+            return `${formatBytes((p.disk_read_bytes_total || 0) + (p.disk_write_bytes_total || 0))}`;
+          }
+          return `${formatRate((p.disk_read_bps || 0) + (p.disk_write_bps || 0))}`;
+        case 'disk_io':
+          return `${formatRate((p.disk_read_bps || 0) + (p.disk_write_bps || 0))} • syscalls ${(p.disk_read_syscalls_total || 0) + (p.disk_write_syscalls_total || 0)}`;
+        case 'network':
+          return `${formatRate(p.net_bytes_per_second || 0)} • queued ${formatBytes(p.net_queued_bytes || 0)} • conns ${p.net_connections || 0}`;
+        case 'gpu':
+          return `${formatPercent(p.gpu_util_sm_percent || 0)} • ${(p.gpu_mem_mib || 0).toFixed(1)} MiB`;
+        case 'logs':
+          return `${p.log_errors || 0} errors / ${p.log_warnings || 0} warnings`;
+        default:
+          return '-';
+      }
+    }
+
+    function categoryOverallValue(category, p) {
+      const totals = p?.category_totals || {};
+      const direct = totals[category];
+      if (typeof direct === 'number' && direct > 0) return direct;
+      return categoryCurrentValue(category, p);
+    }
+
+    function categoryOverallText(category, p) {
+      const total = categoryOverallValue(category, p);
+      switch (category) {
+        case 'memory':
+        case 'disk':
+          return formatBytes(total);
+        case 'cpu':
+        case 'gpu':
+          return formatNumber(total);
+        case 'network':
+        case 'disk_io':
+          return formatNumber(total);
+        case 'logs':
+          return formatNumber(total);
+        default:
+          return formatNumber(total);
+      }
+    }
+
+    function categoryFrequency(category, p) {
+      const freq = p?.category_frequency?.[category];
+      if (typeof freq === 'number') return freq;
+      return categoryCurrentValue(category, p) > 0 ? 1 : 0;
+    }
+
+    function inferSeverity(logLine) {
+      const line = String(logLine || '').toLowerCase();
+      if (line.includes('error') || line.includes('fatal') || line.includes('panic') || line.includes('critical') || line.includes('err ')) return 'ERROR';
+      if (line.includes('warn') || line.includes('deprecated')) return 'WARN';
+      return 'INFO';
+    }
+
+    async function fetchJSON(path) {
+      try {
+        const res = await fetch(path);
+        if (!res.ok) return null;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) return null;
+        return await res.json();
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    function initTabs() {
+      const container = document.getElementById('resourceTabs');
+      container.innerHTML = tabs.map((tab) => `
+        <button class="resource-tab ${state.activeTab === tab.id ? 'active' : ''}" data-tab="${tab.id}">${escapeHTML(tab.label)}</button>
+      `).join('');
+
+      Array.from(container.querySelectorAll('.resource-tab')).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = btn.getAttribute('data-tab');
+          if (!target || target === state.activeTab) return;
+          state.activeTab = target;
+          window.history.replaceState(null, '', `#${target}`);
+          initTabs();
+          renderResourcePage();
+        });
+      });
+    }
+
+    function renderStatus() {
+      const statusText = document.getElementById('statusText');
+      const statusDot = document.getElementById('statusDot');
+      const versionEl = document.getElementById('version');
+
+      if (state.status) {
+        statusText.textContent = 'Connected';
+        statusDot.style.background = 'var(--ok)';
+        statusDot.style.boxShadow = '0 0 8px rgba(34, 197, 94, 0.8)';
+        versionEl.textContent = state.status.version || '-';
+      } else {
+        statusText.textContent = 'Disconnected';
+        statusDot.style.background = 'var(--danger)';
+        statusDot.style.boxShadow = '0 0 8px rgba(239, 68, 68, 0.8)';
+        versionEl.textContent = '-';
+      }
+
+      const count = Array.isArray(state.topPrograms?.programs) ? state.topPrograms.programs.length : 0;
+      document.getElementById('programCount').textContent = formatNumber(count);
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    }
+
+    function buildSummaryCard(title, program, detail) {
+      const name = program?.name || '-';
+      const host = program?.hostname || program?.collector_id || '-';
+      const pid = program?.pid || '-';
+      return `
+        <div class="summary-item">
+          <div class="k">${escapeHTML(title)}</div>
+          <div class="n">${escapeHTML(name)}</div>
+          <div class="v">pid ${escapeHTML(pid)} @ ${escapeHTML(host)}</div>
+          <div class="v">${escapeHTML(detail || '-')}</div>
+        </div>
+      `;
+    }
+
+    function renderSummary() {
+      const container = document.getElementById('summaryBody');
+      const top = state.topPrograms;
+      const programs = Array.isArray(top?.programs) ? top.programs : [];
+      if (programs.length === 0) {
+        container.innerHTML = '<div class="empty">No program-level telemetry yet.</div>';
+        return;
+      }
+
+      const report = top.report || {};
+      const summary = top.summary || {};
+
+      const cards = [
+        buildSummaryCard('Top Overall', report.top_overall || programs[0], `Score ${(report.top_overall?.score || programs[0]?.score || 0).toFixed(2)}`),
+        buildSummaryCard('Most Problematic', report.most_problematic || summary.logs, `${(report.most_problematic?.log_errors || summary.logs?.log_errors || 0)} errors / ${(report.most_problematic?.log_warnings || summary.logs?.log_warnings || 0)} warnings`),
+        buildSummaryCard('Top CPU', summary.cpu, categoryCurrentText('cpu', summary.cpu || {})),
+        buildSummaryCard('Top GPU', summary.gpu, categoryCurrentText('gpu', summary.gpu || {})),
+        buildSummaryCard('Top Memory', summary.memory, categoryCurrentText('memory', summary.memory || {})),
+        buildSummaryCard('Top Network', summary.network, categoryCurrentText('network', summary.network || {})),
+        buildSummaryCard('Top Disk', summary.disk, categoryCurrentText('disk', summary.disk || {})),
+        buildSummaryCard('Top Disk I/O', summary.disk_io || summary.disk, categoryCurrentText('disk_io', summary.disk_io || summary.disk || {})),
+      ];
+
+      container.innerHTML = cards.join('');
+    }
+
+    function renderResourcePage() {
+      const container = document.getElementById('resourcePageBody');
+      const top = state.topPrograms;
+      const pages = top?.resource_pages || {};
+      const page = pages[state.activeTab];
+
+      if (!page || !Array.isArray(page.ranked) || page.ranked.length === 0) {
+        const signalList = Array.isArray(page?.kernel_signals)
+          ? page.kernel_signals.map((s) => `<span class="signal-pill">${escapeHTML(s.name || '-')}</span>`).join('')
+          : '';
+        const hints = {
+          network: 'Need per-process network RCA signals (e.g. `rca_net_process_connections`) or eBPF process events. Ensure collector level is 5.',
+          gpu: 'Need per-process GPU signals (`node_gpu_process_memory_mib`) from `nvidia-smi` with active GPU processes.',
+          logs: 'Need log ingestion (collector level >= 4) plus parseable process/service tokens (e.g. `service=...`, `process=...`, `name[pid]: ...`).',
+          disk: 'Disk Footprint ranks cumulative storage bytes consumed by process.',
+          disk_io: 'Disk I/O ranks live read/write throughput and syscall pressure.',
+        };
+        container.innerHTML = `
+          <div class="empty">
+            <div style="margin-bottom:8px;">No ${escapeHTML(state.activeTab)} process rankings available yet.</div>
+            <div style="margin-bottom:8px;">${escapeHTML(hints[state.activeTab] || 'Waiting for per-process kernel telemetry samples.')}</div>
+            ${signalList ? `<div class="signals-list" style="justify-content:center;">${signalList}</div>` : ''}
+          </div>
+        `;
+        return;
+      }
+
+      const ranked = [...page.ranked].sort((a, b) => {
+        const overallDiff = categoryOverallValue(state.activeTab, b) - categoryOverallValue(state.activeTab, a);
+        if (overallDiff !== 0) return overallDiff;
+        const freqDiff = categoryFrequency(state.activeTab, b) - categoryFrequency(state.activeTab, a);
+        if (freqDiff !== 0) return freqDiff;
+        return categoryCurrentValue(state.activeTab, b) - categoryCurrentValue(state.activeTab, a);
+      });
+
+      const signals = Array.isArray(page.kernel_signals) ? page.kernel_signals : [];
+      const signalCards = signals.map((s) => `
+        <div class="signal-card">
+          <div class="signal-name">${escapeHTML(s.name || '-')}</div>
+          <div class="signal-source">${escapeHTML(s.source || '-')} ${s.unit ? `• unit: ${escapeHTML(s.unit)}` : ''}</div>
+          <div class="signal-desc">${escapeHTML(s.description || '')}</div>
+        </div>
+      `).join('');
+
+      const rows = ranked.map((p, idx) => {
+        const allSignals = p.signal_values || {};
+        const signalChips = signals
+          .map((s) => {
+            const k = s.name;
+            if (!(k in allSignals)) return null;
+            const v = allSignals[k];
+            if (typeof v !== 'number') return null;
+            return `<span class="signal-pill">${escapeHTML(k)} <b>${escapeHTML(formatSignalValue(k, v))}</b></span>`;
+          })
+          .filter(Boolean)
+          .slice(0, 6)
+          .join('');
+
+        const host = p.hostname || p.collector_id || '-';
+        const errors = p.log_errors || 0;
+        const warnings = p.log_warnings || 0;
+
+        return `
+          <tr>
+            <td class="right metric-strong">${idx + 1}</td>
+            <td>
+              <div class="proc">
+                <div class="name">${escapeHTML(p.name || 'unknown')}</div>
+                <div class="meta">pid ${escapeHTML(p.pid || '-')} • ${escapeHTML(host)}</div>
+              </div>
+            </td>
+            <td class="right metric-strong">${escapeHTML(categoryCurrentText(state.activeTab, p))}</td>
+            <td class="right">${escapeHTML(categoryOverallText(state.activeTab, p))}</td>
+            <td class="right">${escapeHTML(formatNumber(categoryFrequency(state.activeTab, p)))}</td>
+            <td class="right"><span class="level-error">${escapeHTML(formatNumber(errors))}</span> / <span class="level-warning">${escapeHTML(formatNumber(warnings))}</span></td>
+            <td>
+              <div class="signals-list">${signalChips || '<span class="mono" style="color:var(--muted);">No matching signal values in this sample.</span>'}</div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="resource-heading">
+          <h2>${escapeHTML(page.title || state.activeTab)}</h2>
+          <div class="resource-meta">Primary metric: ${escapeHTML(page.primary_metric || '-')} • sorted by overall then frequency (descending)</div>
+        </div>
+        <div class="signal-grid">${signalCards || '<div class="empty">No signal metadata reported.</div>'}</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="right">Rank</th>
+                <th>Process / Service</th>
+                <th class="right">Current</th>
+                <th class="right">Overall</th>
+                <th class="right">Frequency</th>
+                <th class="right">Errors / Warnings</th>
+                <th>Kernel Signal Values (latest sample)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function flattenFleetLogs() {
+      const nodes = Array.isArray(state.fleet?.nodes) ? state.fleet.nodes : [];
+      const output = [];
+      for (const node of nodes) {
+        const host = node?.hostname || node?.collector_id || 'unknown';
+        const logs = Array.isArray(node?.logs) ? node.logs : [];
+        for (const entry of logs) {
+          if (!entry) continue;
+          output.push({
+            host,
+            example: entry.example || entry.fingerprint || '',
+            count: typeof entry.count === 'number' ? entry.count : 0,
+            ts: typeof entry.timestamp_unix_nano === 'number' ? entry.timestamp_unix_nano : 0,
+          });
+        }
+      }
+      output.sort((a, b) => b.ts - a.ts);
+      return output;
+    }
+
+    function renderLogs() {
+      const container = document.getElementById('logsBody');
+      const pages = state.topPrograms?.resource_pages || {};
+      const logPage = pages.logs;
+      const ranked = Array.isArray(logPage?.ranked) ? logPage.ranked.slice(0, 12) : [];
+      const fleetLogs = flattenFleetLogs().slice(0, 12);
+
+      const rankedHtml = ranked.length > 0
+        ? ranked.map((p) => `
+            <div class="log-row">
+              <span>${escapeHTML(`${p.name || 'unknown'} (pid ${p.pid || '-'})`)}</span>
+              <span><span class="level-error">${escapeHTML(formatNumber(p.log_errors || 0))}</span> / <span class="level-warning">${escapeHTML(formatNumber(p.log_warnings || 0))}</span></span>
+            </div>
+          `).join('')
+        : '<div class="empty">No per-process warning/error signals yet.</div>';
+
+      const fleetHtml = fleetLogs.length > 0
+        ? fleetLogs.map((l) => {
+            const level = inferSeverity(l.example);
+            const levelClass = level === 'ERROR' ? 'level-error' : (level === 'WARN' ? 'level-warning' : '');
+            const ts = l.ts > 0 ? new Date(l.ts / 1e6).toLocaleTimeString() : '-';
+            return `
+              <div class="log-row">
+                <span><span class="mono" style="color:var(--muted);">${escapeHTML(ts)}</span> ${escapeHTML(l.host)} ${escapeHTML((l.example || '').slice(0, 80))}</span>
+                <span class="${levelClass}">${escapeHTML(level)} x${escapeHTML(formatNumber(l.count || 0))}</span>
+              </div>
+            `;
+          }).join('')
+        : '<div class="empty">No raw log fingerprints in current fleet snapshot.</div>';
+
+      container.innerHTML = `
+        <div class="log-card">
+          <h3>Per-Process Error / Warning Ranking</h3>
+          ${rankedHtml}
+        </div>
+        <div class="log-card">
+          <h3>Recent Log Fingerprints</h3>
+          ${fleetHtml}
+        </div>
+      `;
+    }
+
+    async function loadData() {
+      const [status, topPrograms, fleet] = await Promise.all([
+        fetchJSON('/api/v1/status'),
+        fetchJSON('/api/v1/top/programs?limit=80'),
+        fetchJSON('/api/v1/fleet'),
+      ]);
+
+      state.status = status;
+      state.topPrograms = topPrograms;
+      state.fleet = fleet;
+
+      renderStatus();
+      initTabs();
+      renderSummary();
+      renderResourcePage();
+      renderLogs();
+    }
+
+    initTabs();
+    window.addEventListener('hashchange', () => {
+      const nextTab = initialTabFromLocation();
+      if (nextTab === state.activeTab) return;
+      state.activeTab = nextTab;
+      initTabs();
+      renderResourcePage();
+    });
+    loadData();
+    setInterval(loadData, 15000);
+  </script>
+</body>
+</html>

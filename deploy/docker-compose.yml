@@ -1,0 +1,25 @@
+services:
+  sre-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sre-collector:latest
+    container_name: sre-collector
+    restart: unless-stopped
+    network_mode: host
+    pid_mode: host
+    privileged: false
+    volumes:
+      # Mount proc and sys for host metrics
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # Optional: Mount custom config
+      - ./configs/collector.yaml:/etc/sre-collector/config.yaml:ro
+      # Optional: Persist data
+      - sre-data:/var/lib/sre-collector
+    command: ["--log-level", "info", "--log-format", "json"]
+    # Capabilities for eBPF (optional, requires privileged mode or specific caps)
+    # cap_add:
+    #   - CAP_BPF
+    #   - CAP_PERFMON
+    #   - CAP_NET_ADMIN
