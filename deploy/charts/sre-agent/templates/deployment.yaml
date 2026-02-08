@@ -1,0 +1,158 @@
+{{- if eq (include "sre-agent.kind" .) "DaemonSet" }}
+apiVersion: apps/v1
+kind: DaemonSet
+{{- else }}
+apiVersion: apps/v1
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ include "sre-agent.fullname" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+spec:
+  {{- if eq (include "sre-agent.kind" .) "Deployment" }}
+  replicas: {{ .Values.replicas }}
+  {{- if .Values.autoscaling.enabled }}
+  # autoscaling/{{ include "sre-agent.fullname" . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "sre-agent.selectorLabels" . | nindent 6 }}
+  {{- end }}
+  {{- if eq (include "sre-agent.kind" .) "DaemonSet" }}
+  selector:
+    matchLabels:
+      {{- include "sre-agent.selectorLabels" . | nindent 6 }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sre-agent.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "sre-agent.serviceAccountName" . }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      hostNetwork: false
+      hostPID: true
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: agent
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+          - "--config=/etc/sre-agent/config.yaml"
+          - "--env={{ .Values.config.env }}"
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: LOG_LEVEL
+            value: {{ .Values.config.logLevel | quote }}
+          - name: SRE_AGENT_BRAIN_LLM_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sre-agent.fullname" . }}-secrets
+                key: api-key
+                optional: true
+          - name: SRE_AGENT_ALERTING_NOTIFIERS_WEBHOOK_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sre-agent.fullname" . }}-secrets
+                key: webhook-url
+                optional: true
+          - name: SRE_AGENT_ALERTING_NOTIFIERS_SLACK_WEBHOOK_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sre-agent.fullname" . }}-secrets
+                key: slack-webhook-url
+                optional: true
+          - name: SRE_AGENT_ALERTING_NOTIFIERS_PAGERDUTY_ROUTING_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sre-agent.fullname" . }}-secrets
+                key: pagerduty-routing-key
+                optional: true
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+          - name: config
+            mountPath: /etc/sre-agent
+            readOnly: true
+          {{- with .Values.volumeMounts }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        ports:
+          - name: http
+            containerPort: {{ .Values.service.httpPort | default 8080 }}
+            protocol: TCP
+          - name: metrics
+            containerPort: {{ .Values.service.metricsPort | default 9090 }}
+            protocol: TCP
+        {{- with .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "sre-agent.fullname" . }}-config
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 30

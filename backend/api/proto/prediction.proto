@@ -1,0 +1,270 @@
+syntax = "proto3";
+
+package api.proto;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+import "common.proto";
+
+// Prediction represents an AI-generated prediction
+message Prediction {
+  string id = 1;
+  PredictionType type = 2;
+  string target = 3;  // What is being predicted (service, metric, etc.)
+
+  // Prediction content
+  PredictedOutcome outcome = 4;
+  PredictionTimeframe timeframe = 5;
+
+  // Confidence and reasoning
+  ConfidenceLevel confidence = 6;
+  string reasoning = 7;      // LLM-generated explanation
+  repeated string factors = 8;  // Factors that influenced this prediction
+
+  // Evidence and context
+  repeated Evidence evidence = 9;
+  map<string, string> context = 10;
+
+  // Related incidents and patterns
+  repeated string similar_incident_ids = 11;
+  string pattern_id = 12;
+
+  // Metadata
+  int64 created_at = 13;
+  int64 valid_until = 14;
+  string model_version = 15;
+  string created_by = 16;  // Agent ID
+
+  // Status and lifecycle
+  PredictionStatus status = 17;
+  PredictionFeedback feedback = 18;
+}
+
+// PredictionType categorizes predictions
+enum PredictionType {
+  PREDICTION_TYPE_UNKNOWN = 0;
+  PREDICTION_TYPE_SLO_VIOLATION = 1;      // SLO will be breached
+  PREDICTION_TYPE_RESOURCE_EXHAUSTION = 2; // Out of CPU/memory/disk
+  PREDICTION_TYPE_TRAFFIC_SPIKE = 3;       // Unusual traffic increase
+  PREDICTION_TYPE_FAILURE_CASCADE = 4;     // Cascading failures
+  PREDICTION_TYPE_ANOMALY = 5;             // Unusual behavior detected
+  PREDICTION_TYPE_CAPACITY_NEED = 6;       // Need more capacity
+  PREDICTION_TYPE_COST_OVERRUN = 7;        // Budget will be exceeded
+  PREDICTION_TYPE_DEGRADATION = 8;         // Performance degradation
+}
+
+// PredictedOutcome describes what is predicted to happen
+message PredictedOutcome {
+  string description = 1;
+
+  // Quantitative predictions
+  double predicted_value = 2;
+  double threshold_value = 3;
+  string metric_name = 4;
+
+  // When this will occur
+  int64 predicted_time = 5;  // Unix timestamp
+  double probability = 6;    // 0-1
+
+  // Severity and impact
+  Severity severity = 7;
+  ImpactAnalysis impact = 8;
+
+  // Suggested actions to prevent
+  repeated string suggested_actions = 9;
+}
+
+// PredictionTimeframe specifies the prediction window
+message PredictionTimeframe {
+  int64 start_time = 1;  // Unix timestamp
+  int64 end_time = 2;
+  string duration = 3;   // Human-readable duration
+}
+
+// ConfidenceLevel indicates prediction confidence
+enum ConfidenceLevel {
+  CONFIDENCE_UNKNOWN = 0;
+  CONFIDENCE_VERY_LOW = 1;    // < 50%
+  CONFIDENCE_LOW = 2;         // 50-65%
+  CONFIDENCE_MEDIUM = 3;      // 65-80%
+  CONFIDENCE_HIGH = 4;        // 80-90%
+  CONFIDENCE_VERY_HIGH = 5;   // > 90%
+}
+
+
+
+// ImpactAnalysis describes the predicted impact
+message ImpactAnalysis {
+  int32 affected_users = 1;
+  double revenue_impact = 2;  // Currency amount
+  repeated string affected_services = 3;
+  repeated string affected_regions = 4;
+  double downtime_minutes = 5;
+  string sla_breach = 6;  // Which SLA would be breached
+}
+
+// Evidence supports a prediction
+message Evidence {
+  string type = 1;  // "metric", "log", "incident", "pattern"
+  string source = 2;
+  string description = 3;
+  double weight = 4;  // How much this evidence contributes
+
+  // Raw data reference
+  map<string, string> data = 5;
+
+  // Timestamp of this evidence
+  int64 timestamp = 6;
+}
+
+// PredictionStatus indicates the prediction's lifecycle
+enum PredictionStatus {
+  PREDICTION_STATUS_PENDING = 0;      // Being generated
+  PREDICTION_STATUS_ACTIVE = 1;       // Active, monitoring for occurrence
+  PREDICTION_STATUS_OCCURRED = 2;     // Prediction came true
+  PREDICTION_STATUS_FALSE_POSITIVE = 3; // Didn't occur
+  PREDICTION_STATUS_MITIGATED = 4;    // Prevented by action
+  PREDICTION_STATUS_EXPIRED = 5;      // Timeframe passed without occurrence
+  PREDICTION_STATUS_CANCELLED = 6;    // Cancelled by operator
+}
+
+// PredictionFeedback records whether the prediction was accurate
+message PredictionFeedback {
+  bool accurate = 1;
+  int64 reported_at = 2;
+  string reported_by = 3;
+  string comments = 4;
+  double actual_value = 5;
+  double actual_time_delta = 6;  // Difference from predicted time
+}
+
+// PredictionRequest requests a prediction
+message PredictionRequest {
+  PredictionType type = 1;
+  string target = 2;
+  PredictionTimeframe timeframe = 3;
+
+  // Additional context
+  map<string, string> context = 4;
+  repeated string include_patterns = 5;
+  repeated string exclude_patterns = 6;
+
+  // Response options
+  bool include_evidence = 7;
+  bool include_similar_incidents = 8;
+}
+
+// PredictionResponse returns a prediction
+message PredictionResponse {
+  Prediction prediction = 1;
+  repeated Prediction alternatives = 2;  // Alternative predictions
+  string warning = 3;
+}
+
+// PredictionBatch generates multiple predictions
+message PredictionBatch {
+  repeated PredictionRequest requests = 1;
+  bool parallel = 2;
+}
+
+// PredictionEngine provides prediction services
+service PredictionEngine {
+  // Generate a single prediction
+  rpc Predict(PredictionRequest) returns (PredictionResponse);
+
+  // Generate predictions for multiple targets
+  rpc PredictBatch(PredictionBatch) returns (stream PredictionResponse);
+
+  // Get an existing prediction
+  rpc GetPrediction(GetPredictionRequest) returns (Prediction);
+
+  // List predictions with filters
+  rpc ListPredictions(ListPredictionsRequest) returns (ListPredictionsResponse);
+
+  // Provide feedback on a prediction
+  rpc SubmitFeedback(SubmitFeedbackRequest) returns (Prediction);
+
+  // Get prediction statistics
+  rpc GetStats(GetStatsRequest) returns (PredictionStats);
+}
+
+// GetPredictionRequest
+message GetPredictionRequest {
+  string prediction_id = 1;
+}
+
+// ListPredictionsRequest
+message ListPredictionsRequest {
+  int64 limit = 1;
+  int64 offset = 2;
+  PredictionType type = 3;
+  PredictionStatus status = 4;
+  string target = 5;
+  int64 created_after = 6;
+  int64 created_before = 7;
+}
+
+// ListPredictionsResponse
+message ListPredictionsResponse {
+  repeated Prediction predictions = 1;
+  int64 total_count = 2;
+}
+
+// SubmitFeedbackRequest
+message SubmitFeedbackRequest {
+  string prediction_id = 1;
+  PredictionFeedback feedback = 2;
+}
+
+// GetStatsRequest
+message GetStatsRequest {
+  int64 since = 1;  // Unix timestamp
+  PredictionType type = 2;
+  string target = 3;
+}
+
+// PredictionStats contains prediction accuracy metrics
+message PredictionStats {
+  int64 total_predictions = 1;
+  int64 accurate_predictions = 2;
+  int64 false_positives = 3;
+  int64 mitigated = 4;
+  double accuracy_rate = 5;
+  double false_positive_rate = 6;
+
+  map<string, int64> predictions_by_type = 7;
+  map<string, int64> predictions_by_status = 8;
+
+  // Average confidence vs accuracy correlation
+  double avg_confidence = 9;
+  double confidence_accuracy_correlation = 10;
+}
+
+// AnomalyDetectionResult represents detected anomalies
+message AnomalyDetectionResult {
+  string id = 1;
+  string metric_name = 2;
+  double anomaly_value = 3;
+  double expected_value = 4;
+  double z_score = 5;
+
+  AnomalyType type = 6;
+  Severity severity = 7;
+
+  int64 detected_at = 8;
+  int64 start_time = 9;
+  int64 end_time = 10;
+
+  string description = 11;
+  repeated string possible_causes = 12;
+}
+
+// AnomalyType categorizes anomalies
+enum AnomalyType {
+  ANOMALY_TYPE_UNKNOWN = 0;
+  ANOMALY_TYPE_SPIKE = 1;         // Sudden increase
+  ANOMALY_TYPE_DROP = 2;          // Sudden decrease
+  ANOMALY_TYPE_TREND_CHANGE = 3;  // Changing trend
+  ANOMALY_TYPE_PATTERN_BREAK = 4; // Broken periodicity
+  ANOMALY_TYPE_OUTLIER = 5;       // Statistical outlier
+}

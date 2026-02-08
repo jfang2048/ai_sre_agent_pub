@@ -1,0 +1,62 @@
+# SRE Controller systemd service
+# ===============================
+#
+# The controller aggregates metrics from multiple collectors and provides
+# a unified API and web dashboard.
+#
+# Terminology:
+#   - Probe: The controlled-side data collector on monitored hosts
+#   - Controller: This service - the central aggregation server
+#   - Agent: The overall AI SRE system (NOT the collector component)
+#
+# Installation:
+#   sudo cp sre-controller.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sre-controller
+
+[Unit]
+Description=SRE Controller - Metrics Aggregator and Dashboard
+Documentation=https://github.com/jfang2048/ai_sre_agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sre-controller
+Group=sre-controller
+
+# Make relative paths in config (like ./data/agent) resolve under the state dir.
+WorkingDirectory=/var/lib/sre-controller
+
+# Controller binary and configuration
+ExecStart=/usr/local/bin/sre-controller --config /etc/sre-controller/config.yaml
+
+# Restart policy
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Allow read access to config and web files
+ReadOnlyPaths=/etc/sre-controller
+ReadOnlyPaths=/var/lib/sre-controller/web
+
+# State directory for any future persistence
+StateDirectory=sre-controller
+
+# Limit resource usage
+MemoryMax=256M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sre-controller
+
+[Install]
+WantedBy=multi-user.target

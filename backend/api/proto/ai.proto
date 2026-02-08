@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package sre.ai;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto/ai";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ============================================================================
+// AI Analysis Service
+// ============================================================================
+
+// AIService provides ML-powered analysis for SRE operations
+service AIService {
+  // ClassifyIssue classifies a system issue based on metrics and logs
+  rpc ClassifyIssue(ClassifyRequest) returns (ClassifyResponse);
+  
+  // SuggestFix provides remediation suggestions for a classified issue
+  rpc SuggestFix(SuggestRequest) returns (SuggestResponse);
+  
+  // ExplainIssue provides human-readable explanation of an issue
+  rpc ExplainIssue(ExplainRequest) returns (ExplainResponse);
+  
+  // TrainModel triggers model training with historical data
+  rpc TrainModel(TrainRequest) returns (TrainResponse);
+  
+  // BatchAnalyze analyzes multiple data points in batch
+  rpc BatchAnalyze(BatchAnalyzeRequest) returns (BatchAnalyzeResponse);
+  
+  // StreamAnalyze provides streaming analysis for real-time data
+  rpc StreamAnalyze(stream DataPoint) returns (stream AnalysisResult);
+}
+
+// ============================================================================
+// Data Types
+// ============================================================================
+
+// MetricData represents a single metric measurement
+message MetricData {
+  string name = 1;
+  double value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> labels = 4;
+  
+  // Kubernetes metadata (optional)
+  KubernetesMetadata k8s = 10;
+}
+
+// LogEntry represents a log line
+message LogEntry {
+  string message = 1;
+  string level = 2;  // debug, info, warn, error, fatal
+  google.protobuf.Timestamp timestamp = 3;
+  string source = 4;
+  map<string, string> labels = 5;
+  
+  // Kubernetes metadata (optional)
+  KubernetesMetadata k8s = 10;
+}
+
+// KubernetesMetadata provides K8s context for data
+message KubernetesMetadata {
+  string namespace = 1;
+  string pod_name = 2;
+  string container_name = 3;
+  string node_name = 4;
+  string deployment_name = 5;
+  string service_name = 6;
+  map<string, string> labels = 7;
+  map<string, string> annotations = 8;
+}
+
+// DataPoint is a unified data point for ingestion
+message DataPoint {
+  string node_name = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  
+  repeated MetricData metrics = 3;
+  repeated LogEntry logs = 4;
+  
+  // Context for analysis
+  map<string, string> context = 5;
+}
+
+// ============================================================================
+// Classification
+// ============================================================================
+
+// IssueCategory represents categories of issues
+enum IssueCategory {
+  ISSUE_CATEGORY_UNKNOWN = 0;
+  ISSUE_CATEGORY_CPU_SATURATION = 1;
+  ISSUE_CATEGORY_MEMORY_PRESSURE = 2;
+  ISSUE_CATEGORY_DISK_IO_BOTTLENECK = 3;
+  ISSUE_CATEGORY_NETWORK_SATURATION = 4;
+  ISSUE_CATEGORY_APPLICATION_ERROR = 5;
+  ISSUE_CATEGORY_RESOURCE_LEAK = 6;
+  ISSUE_CATEGORY_CASCADING_FAILURE = 7;
+  ISSUE_CATEGORY_CAPACITY_ISSUE = 8;
+  ISSUE_CATEGORY_CONFIGURATION_ERROR = 9;
+  ISSUE_CATEGORY_EXTERNAL_DEPENDENCY = 10;
+}
+
+// Severity levels
+enum Severity {
+  SEVERITY_UNKNOWN = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+  SEVERITY_CRITICAL = 4;
+}
+
+// ClassifyRequest is the request to classify an issue
+message ClassifyRequest {
+  string node_name = 1;
+  repeated MetricData metrics = 2;
+  repeated LogEntry logs = 3;
+  map<string, string> context = 4;
+  
+  // Historical context
+  repeated MetricData historical_metrics = 5;
+  google.protobuf.Duration time_window = 6;
+}
+
+// IssueClassification represents a classified issue
+message IssueClassification {
+  IssueCategory category = 1;
+  Severity severity = 2;
+  double confidence = 3;
+  string description = 4;
+  
+  // Contributing factors
+  repeated string factors = 5;
+  
+  // Related metrics
+  repeated string related_metrics = 6;
+}
+
+// ClassifyResponse is the response with classification results
+message ClassifyResponse {
+  repeated IssueClassification classifications = 1;
+  string analysis_id = 2;
+  google.protobuf.Timestamp analyzed_at = 3;
+  
+  // Model info
+  string model_version = 4;
+}
+
+// ============================================================================
+// Suggestions
+// ============================================================================
+
+// RemediationType represents types of remediation actions
+enum RemediationType {
+  REMEDIATION_TYPE_UNKNOWN = 0;
+  REMEDIATION_TYPE_RESTART = 1;
+  REMEDIATION_TYPE_SCALE = 2;
+  REMEDIATION_TYPE_ROLLBACK = 3;
+  REMEDIATION_TYPE_CONFIGURATION = 4;
+  REMEDIATION_TYPE_RESOURCE_LIMIT = 5;
+  REMEDIATION_TYPE_MANUAL = 6;
+}
+
+// SuggestRequest is the request for remediation suggestions
+message SuggestRequest {
+  IssueClassification classification = 1;
+  
+  // Current state
+  repeated MetricData current_metrics = 2;
+  repeated LogEntry recent_logs = 3;
+  
+  // Constraints
+  repeated string constraints = 4;  // e.g., "no-downtime", "cost-limit"
+  repeated string capabilities = 5;  // e.g., "can-scale", "can-restart"
+  
+  // Kubernetes context
+  KubernetesMetadata k8s = 10;
+}
+
+// Suggestion represents a remediation suggestion
+message Suggestion {
+  RemediationType type = 1;
+  string title = 2;
+  string description = 3;
+  double confidence = 4;
+  
+  // Risk assessment
+  string risk_level = 5;  // low, medium, high
+  string impact = 6;
+  
+  // Action details
+  repeated ActionStep steps = 7;
+  
+  // Estimated outcomes
+  string expected_outcome = 8;
+  google.protobuf.Duration estimated_time = 9;
+  
+  // For ML explanations
+  string reasoning = 10;
+}
+
+// ActionStep represents a step in remediation
+message ActionStep {
+  int32 order = 1;
+  string action = 2;
+  string target = 3;
+  map<string, string> parameters = 4;
+  bool requires_approval = 5;
+  bool reversible = 6;
+}
+
+// SuggestResponse is the response with suggestions
+message SuggestResponse {
+  repeated Suggestion suggestions = 1;
+  string analysis_id = 2;
+  google.protobuf.Timestamp generated_at = 3;
+}
+
+// ============================================================================
+// Explanation
+// ============================================================================
+
+// ExplainRequest is the request for issue explanation
+message ExplainRequest {
+  IssueClassification classification = 1;
+  repeated MetricData metrics = 2;
+  repeated LogEntry logs = 3;
+  
+  // Explanation preferences
+  string audience = 4;  // "operator", "developer", "executive"
+  string detail_level = 5;  // "brief", "detailed", "comprehensive"
+}
+
+// ExplainResponse is the response with explanation
+message ExplainResponse {
+  string summary = 1;  // One-line summary
+  string explanation = 2;  // Detailed explanation
+  
+  // Structured components
+  string what_happened = 3;
+  string why_it_happened = 4;
+  string impact = 5;
+  string next_steps = 6;
+  
+  // Related information
+  repeated string related_docs = 7;
+  repeated string similar_incidents = 8;
+}
+
+// ============================================================================
+// Training
+// ============================================================================
+
+// TrainRequest is the request to train/update the model
+message TrainRequest {
+  string model_type = 1;  // "classifier", "predictor", "anomaly"
+  repeated TrainingDataPoint training_data = 2;
+  map<string, string> hyperparameters = 3;
+}
+
+// TrainingDataPoint represents labeled training data
+message TrainingDataPoint {
+  repeated MetricData metrics = 1;
+  repeated LogEntry logs = 2;
+  
+  // Labels
+  IssueCategory label = 3;
+  Severity severity = 4;
+  string root_cause = 5;
+  string resolution = 6;
+}
+
+// TrainResponse is the response from training
+message TrainResponse {
+  bool success = 1;
+  string model_version = 2;
+  double accuracy = 3;
+  string message = 4;
+  map<string, double> metrics = 5;  // precision, recall, f1, etc.
+}
+
+// ============================================================================
+// Batch Analysis
+// ============================================================================
+
+// BatchAnalyzeRequest is the request for batch analysis
+message BatchAnalyzeRequest {
+  repeated DataPoint data_points = 1;
+  bool include_suggestions = 2;
+  bool include_explanations = 3;
+}
+
+// AnalysisResult represents a single analysis result
+message AnalysisResult {
+  string node_name = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  
+  IssueClassification classification = 3;
+  repeated Suggestion suggestions = 4;
+  string explanation = 5;
+  
+  // For streaming status
+  bool is_anomaly = 6;
+  double anomaly_score = 7;
+}
+
+// BatchAnalyzeResponse is the response from batch analysis
+message BatchAnalyzeResponse {
+  repeated AnalysisResult results = 1;
+  int32 total_processed = 2;
+  int32 issues_detected = 3;
+  google.protobuf.Timestamp processed_at = 4;
+}

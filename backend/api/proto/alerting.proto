@@ -1,0 +1,339 @@
+syntax = "proto3";
+
+package api.proto;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Alert state
+enum AlertState {
+  ALERT_STATE_UNKNOWN = 0;
+  ALERT_STATE_PENDING = 1;
+  ALERT_STATE_FIRING = 2;
+  ALERT_STATE_RESOLVED = 3;
+  ALERT_STATE_SUPPRESSED = 4;
+  ALERT_STATE_ACKNOWLEDGED = 5;
+}
+
+// Alert represents a single alert
+message Alert {
+  string id = 1;
+  string name = 2;
+  string message = 3;
+  Severity severity = 4;
+  AlertState state = 5;
+
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  google.protobuf.Timestamp resolved_at = 8;
+
+  // Labels for grouping and filtering
+  map<string, string> labels = 9;
+
+  // Annotations for additional context
+  map<string, string> annotations = 10;
+
+  // Related metrics
+  repeated MetricReference metrics = 11;
+
+  // Related events
+  repeated EventReference events = 12;
+
+  // Correlation information
+  CorrelationInfo correlation = 13;
+
+  // SLO context
+  SLOContext slo_context = 14;
+}
+
+// MetricReference references a metric related to the alert
+message MetricReference {
+  string name = 1;
+  double value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> labels = 4;
+}
+
+// EventReference references an event related to the alert
+message EventReference {
+  string id = 1;
+  string type = 2;
+  string message = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// CorrelationInfo contains information about correlated alerts/events
+message CorrelationInfo {
+  string correlation_id = 1;
+  repeated string related_alert_ids = 2;
+  double confidence_score = 3;
+  string correlation_type = 4;
+}
+
+// SLOContext provides SLO-related context for the alert
+message SLOContext {
+  string slo_name = 1;
+  double sli_value = 2;
+  double target = 3;
+  double error_budget_remaining = 4;
+  double burn_rate = 5;
+}
+
+// AlertRule defines when to trigger an alert
+message AlertRule {
+  string id = 1;
+  string name = 2;
+  bool enabled = 3;
+
+  // Condition evaluation
+  Condition condition = 4;
+
+  // Alert settings
+  Severity severity = 5;
+  string summary_template = 6;
+  string description_template = 7;
+
+  // Labels to add to alerts from this rule
+  map<string, string> labels = 8;
+
+  // Annotations to add to alerts from this rule
+  map<string, string> annotations = 9;
+
+  // Suppression settings
+  SuppressionConfig suppression = 10;
+
+  // SLO reference
+  string slo_name = 11;
+}
+
+// Condition defines when to trigger an alert
+message Condition {
+  ConditionType type = 1;
+
+  oneof condition {
+    ThresholdCondition threshold = 2;
+    PredictionCondition prediction = 3;
+    AnomalyCondition anomaly = 4;
+    RateCondition rate = 5;
+    CompositeCondition composite = 6;
+  }
+}
+
+enum ConditionType {
+  CONDITION_TYPE_UNKNOWN = 0;
+  CONDITION_TYPE_THRESHOLD = 1;
+  CONDITION_TYPE_PREDICTION = 2;
+  CONDITION_TYPE_ANOMALY = 3;
+  CONDITION_TYPE_RATE = 4;
+  CONDITION_TYPE_COMPOSITE = 5;
+}
+
+// ThresholdCondition triggers when a metric crosses a threshold
+message ThresholdCondition {
+  string metric = 1;
+  double threshold = 2;
+  ThresholdOperator operator = 3;
+  int32 duration_seconds = 4;
+}
+
+enum ThresholdOperator {
+  THRESHOLD_OPERATOR_UNKNOWN = 0;
+  THRESHOLD_OPERATOR_GREATER_THAN = 1;
+  THRESHOLD_OPERATOR_LESS_THAN = 2;
+  THRESHOLD_OPERATOR_EQUAL = 3;
+  THRESHOLD_OPERATOR_NOT_EQUAL = 4;
+  THRESHOLD_OPERATOR_GREATER_OR_EQUAL = 5;
+  THRESHOLD_OPERATOR_LESS_OR_EQUAL = 6;
+}
+
+// PredictionCondition triggers when a prediction indicates a breach
+message PredictionCondition {
+  string metric = 1;
+  double prediction_threshold = 2;
+  int32 time_horizon_seconds = 3;
+  double confidence_threshold = 4;
+}
+
+// AnomalyCondition triggers when anomaly detection finds unusual patterns
+message AnomalyCondition {
+  string metric = 1;
+  double anomaly_score_threshold = 2;
+  int32 lookback_seconds = 3;
+  AnomalyMethod method = 4;
+}
+
+enum AnomalyMethod {
+  ANOMALY_METHOD_UNKNOWN = 0;
+  ANOMALY_METHOD_Z_SCORE = 1;
+  ANOMALY_METHOD_MAD = 2;  // Median Absolute Deviation
+  ANOMALY_METHOD_IQR = 3;  // Interquartile Range
+  ANOMALY_METHOD_ISOLATION_FOREST = 4;
+}
+
+// RateCondition triggers based on rate of change
+message RateCondition {
+  string metric = 1;
+  double rate_threshold = 2;
+  RateWindow window = 3;
+}
+
+enum RateWindow {
+  RATE_WINDOW_UNKNOWN = 0;
+  RATE_WINDOW_1M = 1;
+  RATE_WINDOW_5M = 2;
+  RATE_WINDOW_15M = 3;
+  RATE_WINDOW_1H = 4;
+}
+
+// CompositeCondition combines multiple conditions
+message CompositeCondition {
+  repeated Condition conditions = 1;
+  LogicalOperator operator = 2;
+}
+
+enum LogicalOperator {
+  LOGICAL_OPERATOR_UNKNOWN = 0;
+  LOGICAL_OPERATOR_AND = 1;
+  LOGICAL_OPERATOR_OR = 2;
+  LOGICAL_OPERATOR_NOT = 3;
+}
+
+// SuppressionConfig controls alert suppression
+message SuppressionConfig {
+  int32 suppress_for_seconds = 1;
+  int32 max_alerts_per_hour = 2;
+  bool group_similar = 3;
+  repeated string group_by_labels = 4;
+}
+
+// AlertNotification represents a notification sent to external systems
+message AlertNotification {
+  string id = 1;
+  string alert_id = 2;
+  string channel = 3;
+  google.protobuf.Timestamp sent_at = 4;
+  bool success = 5;
+  string error_message = 6;
+  int32 retry_count = 7;
+}
+
+// NotificationChannel represents a destination for alerts
+message NotificationChannel {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  bool enabled = 4;
+  map<string, string> config = 5;
+
+  // Filter for which alerts to send
+  repeated Severity accepted_severities = 6;
+  repeated string label_filters = 7;
+}
+
+// AlertService manages alerts
+service AlertService {
+  // Evaluate rules and generate alerts
+  rpc EvaluateRules(EvaluateRulesRequest) returns (EvaluateRulesResponse);
+
+  // Get an alert by ID
+  rpc GetAlert(GetAlertRequest) returns (Alert);
+
+  // List alerts with filtering
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+
+  // Acknowledge an alert
+  rpc AcknowledgeAlert(AcknowledgeAlertRequest) returns (AcknowledgeAlertResponse);
+
+  // Resolve an alert
+  rpc ResolveAlert(ResolveAlertRequest) returns (ResolveAlertResponse);
+
+  // Stream new alerts
+  rpc StreamAlerts(StreamAlertsRequest) returns (stream Alert);
+
+  // Manage alert rules
+  rpc CreateAlertRule(CreateAlertRuleRequest) returns (AlertRule);
+  rpc UpdateAlertRule(UpdateAlertRuleRequest) returns (AlertRule);
+  rpc DeleteAlertRule(DeleteAlertRuleRequest) returns (DeleteAlertRuleResponse);
+  rpc ListAlertRules(ListAlertRulesRequest) returns (ListAlertRulesResponse);
+}
+
+message EvaluateRulesRequest {
+  repeated string rule_ids = 1;
+}
+
+message EvaluateRulesResponse {
+  repeated Alert alerts = 1;
+  int32 rules_evaluated = 2;
+}
+
+message GetAlertRequest {
+  string id = 1;
+}
+
+message ListAlertsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  repeated AlertState states = 3;
+  repeated Severity severities = 4;
+  map<string, string> label_matcher = 5;
+  int32 page_size = 6;
+  string page_token = 7;
+}
+
+message ListAlertsResponse {
+  repeated Alert alerts = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message AcknowledgeAlertRequest {
+  string id = 1;
+  string acknowledged_by = 2;
+  string comment = 3;
+}
+
+message AcknowledgeAlertResponse {
+  bool success = 1;
+}
+
+message ResolveAlertRequest {
+  string id = 1;
+  string resolved_by = 2;
+  string comment = 3;
+}
+
+message ResolveAlertResponse {
+  bool success = 1;
+}
+
+message StreamAlertsRequest {
+  repeated Severity min_severity = 1;
+  map<string, string> label_matcher = 2;
+}
+
+message CreateAlertRuleRequest {
+  AlertRule rule = 1;
+}
+
+message UpdateAlertRuleRequest {
+  string id = 1;
+  AlertRule rule = 2;
+}
+
+message DeleteAlertRuleRequest {
+  string id = 1;
+}
+
+message DeleteAlertRuleResponse {
+  bool success = 1;
+}
+
+message ListAlertRulesRequest {
+  bool enabled_only = 1;
+}
+
+message ListAlertRulesResponse {
+  repeated AlertRule rules = 1;
+}

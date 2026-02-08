@@ -1,0 +1,114 @@
+# Sample agent configuration for testing
+agent:
+  name: test-sre-agent
+  environment: development
+  log_level: debug
+
+monitoring:
+  # Metric collection intervals
+  collection_interval: 10s
+  batch_size: 1000
+
+  # Data sources
+  sources:
+    proc:
+      enabled: true
+      root: /proc
+      metrics:
+        - cpu
+        - memory
+        - load
+        - disk
+        - network
+
+    ebpf:
+      enabled: true
+      syscalls: true
+      network: true
+      io: true
+      perf_buffer_size: 8192
+
+    prometheus:
+      enabled: false
+      url: http://localhost:9090
+      scrape_interval: 15s
+
+    kubernetes:
+      enabled: false
+      kubeconfig: ~/.kube/config
+
+  # SLI/SLO configuration
+  slos:
+    config_path: /etc/sre-agent/slo/
+
+alerting:
+  enabled: true
+  channels:
+    - type: log
+    - type: webhook
+      url: http://localhost:8080/alerts
+
+  # Alert deduplication
+  dedup_window: 5m
+
+remediation:
+  enabled: true  # Auto-remediation
+  dry_run: false
+  max_concurrent_actions: 3
+
+  # Playbook directory
+  playbook_path: /etc/sre-agent/playbooks/
+
+  # Safety limits
+  safety:
+    require_approval: true
+    cooldown_period: 5m
+    max_actions_per_hour: 10
+
+llm:
+  provider: openai  # or anthropic
+  model: gpt-4
+  api_key: ${LLM_API_KEY}
+  max_tokens: 2000
+  temperature: 0.1
+
+  # Prompt configuration
+  prompts:
+    analysis: |
+      Analyze the following metrics and logs:
+      Metrics: {metrics}
+      Logs: {logs}
+
+      Identify potential issues and suggest remediation.
+
+    prediction: |
+      Based on the following historical data:
+      {history}
+
+      Predict if an SLO violation will occur in the next hour.
+
+storage:
+  # Metric storage
+  metrics:
+    type: memory  # or disk, redis
+    retention: 24h
+
+  # Incident store
+  incidents:
+    type: sqlite
+    path: /var/lib/sre-agent/incidents.db
+
+observability:
+  # Self-metrics
+  enabled: true
+  port: 9091
+
+  # Tracing
+  tracing:
+    enabled: false
+    endpoint: http://jaeger:14268/api/traces
+
+  # Profiling
+  profiling:
+    enabled: true
+    port: 6060
