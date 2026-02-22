@@ -1,0 +1,73 @@
+# SRE Collector configuration (push-first agent)
+
+collector_id: ""
+hostname: ""
+labels: {}
+
+controller_endpoints:
+  - "localhost:9090"
+
+collection_interval: "10s"
+adaptive_polling: true
+min_collection_interval: "2s"
+max_collection_interval: "30s"
+topk: 10
+
+spool_dir: "./data/collector/spool"
+spool_max_bytes: 134217728
+
+log_paths: []
+
+shm_enabled: false
+shm_name: "/sre_collector_metrics"
+
+grpc_compress: true
+mirror_send: false
+metrics_listen_address: ":9464"
+tracing_jaeger_endpoint: ""
+
+# Collection level:
+# 1 basic, 2 extended, 3 per-process, 4 logs, 5 RCA (CPU/memory/io/network attribution)
+# Use 5 to populate full per-process rankings in /api/v1/top/programs and /ui tabs.
+level: 5
+
+transport:
+  dial_timeout: "10s"
+  rpc_timeout: "10s"
+  tls:
+    enabled: false
+    ca_file: ""
+    cert_file: ""
+    key_file: ""
+    server_name: ""
+    insecure_skip_verify: false
+    reload_interval: "30s"
+
+# Optional: eBPF deep observability (requires CAP_BPF/CAP_SYS_ADMIN/root)
+ebpf:
+  enabled: false
+  socket_path: "/var/run/sre_collector_ebpf.sock"
+  categories: ["sched", "io", "net", "mem", "gpu", "security", "syscall"]
+  max_msg_bytes: 65536
+
+# Optional: C++ probe-core IPC source for low-level metrics (preferred in production).
+# When enabled, collector reads probe-core protobuf frames from subprocess stdout.
+probe_core:
+  enabled: false
+  binary_path: "./build/sre-probe-core"
+  # Optional Unix-style module selection (empty or ["all"] means all modules):
+  collectors: []
+  # Extra raw probe-core args (do not include --collectors when collectors is set above).
+  args: []
+  compression: "none" # none|gzip
+  queue_depth: 16
+  window_samples: 6
+  gpu_interval_samples: 5
+  startup_timeout: "3s"
+  stale_after: "15s"
+  frame_max_bytes: 8388608
+  fallback_to_go: true
+
+# Optional: external metrics command (fast C++ helper provided in cpp/proc_metrics/main.cpp)
+external_metrics_cmd: ""
+external_metrics_timeout: "500ms"

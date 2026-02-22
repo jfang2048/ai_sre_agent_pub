@@ -1,0 +1,74 @@
+version: v1
+playbooks:
+  - id: high-gpu-sm
+    summary: GPU SM utilization spike sustained on node
+    severity: P1
+    conditions:
+      - metric: node_gpu_utilization_sm_avg_percent
+        op: ">="
+        threshold: 90
+    actions:
+      - id: restart-hot-pod
+        type: restart_pod
+        namespace: ml-platform
+        name: trainer-hot-0
+        priority: P1
+        safe: true
+        description: Restart the hottest GPU training pod to clear runaway kernels.
+      - id: scale-down-trainer
+        type: scale_deployment
+        namespace: ml-platform
+        name: trainer-workers
+        priority: P1
+        safe: false
+        requires_approval: true
+        description: Emergency stop high-cost job fanout during sustained GPU saturation.
+        metadata:
+          replicas: "0"
+
+  - id: high-gpu-memory
+    summary: GPU memory pressure is near OOM
+    severity: P1
+    conditions:
+      - metric: node_gpu_memory_used_total_mib
+        op: ">="
+        threshold: 30000
+    actions:
+      - id: evict-stuck-pod
+        type: restart_pod
+        namespace: ml-platform
+        name: infer-worker-0
+        priority: P1
+        safe: true
+        description: Evict suspected leaking GPU inference pod and let scheduler replace it.
+
+  - id: high-cpu
+    summary: Node CPU saturation
+    severity: P2
+    conditions:
+      - metric: node_cpu_usage_percent
+        op: ">="
+        threshold: 85
+    actions:
+      - id: rollout-restart-api
+        type: shell
+        command: "kubectl -n default rollout restart deployment/api-gateway"
+        priority: P2
+        safe: true
+        description: Restart API deployment to clear transient CPU hot loops.
+
+  - id: swap-activity
+    summary: Swap activity detected
+    severity: P2
+    conditions:
+      - metric: node_vmstat_pswpout
+        op: ">="
+        threshold: 1
+    actions:
+      - id: cordon-drain-node
+        type: shell
+        command: "kubectl cordon node-node-a"
+        priority: P2
+        safe: false
+        requires_approval: true
+        description: Cordon node before manual drain to prevent further memory pressure.

@@ -1,0 +1,20 @@
+version: '3'
+services:
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.93.0
+    container_name: victoria-metrics
+    ports:
+      - "8428:8428"
+    volumes:
+      - vmdata:/storage
+    command:
+      - "-storageDataPath=/storage"
+      - "-retentionPeriod=12mo" # Keep data for 1 year
+      - "-downsampling.period=30d:5m,12mo:1h" # Downsample old data: >30d -> 5m, >1y -> 1h (Adjusted slightly for simplicity)
+      # Requirement: Raw 24h, 1m->7d, 5m->30d, 1h->1y
+      # VM Enterprise supports advanced downsampling. Community supports basic.
+      # We'll use simple retention for now to be safe.
+    restart: always
+
+volumes:
+  vmdata:
