@@ -1,0 +1,40 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+bin/
+*.o
+*.a
+*.test
+*.out
+coverage.out
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Dependencies
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test
+tests/
+*_test.go
+
+# Scripts
+scripts/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Environment
+.env
+config/env/

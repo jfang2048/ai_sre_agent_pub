@@ -1,0 +1,277 @@
+.slo-page {
+  padding: 0;
+}
+
+.loading-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: #1e1e1e;
+  border-radius: 12px;
+  color: #888;
+}
+
+.empty-state h3 {
+  margin: 16px 0 8px 0;
+  color: #ccc;
+}
+
+.empty-state p {
+  color: #666;
+}
+
+.slo-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  background: #1e1e1e;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #333;
+}
+
+.summary-card .card-icon {
+  color: #6366f1;
+}
+
+.summary-card .card-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.summary-card .card-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.slo-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.slo-card {
+  background: #1e1e1e;
+  border-radius: 12px;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+.slo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #333;
+}
+
+.slo-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 16px;
+  color: #ccc;
+}
+
+.slo-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.slo-badge.compliant {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.slo-badge.non-compliant {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.slo-card-body {
+  padding: 20px;
+}
+
+.slo-gauge-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.gauge-container {
+  position: relative;
+  width: 200px;
+  height: 160px;
+}
+
+.gauge-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.gauge-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.gauge-target {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.slo-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.metric-row {
+  background: #252525;
+  padding: 12px 16px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.metric-value {
+  font-weight: 600;
+  color: #fff;
+}
+
+.burn-history {
+  margin-top: 16px;
+}
+
+.burn-history h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #888;
+}
+
+.burn-rate-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  font-size: 14px;
+}
+
+.burn-rate-banner.normal {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-top: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.burn-rate-banner.warning {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.sre-info {
+  background: #1e1e1e;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #333;
+}
+
+.sre-info h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #ccc;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.info-card {
+  background: #252525;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.info-card h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.info-card p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #888;
+  line-height: 1.5;
+}
+
+.info-card code {
+  display: block;
+  padding: 8px 12px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #6366f1;
+  overflow-x: auto;
+  margin-bottom: 8px;
+}
+
+.info-card ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #888;
+}
+
+.info-card li {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 768px) {
+  .slo-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .slo-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}

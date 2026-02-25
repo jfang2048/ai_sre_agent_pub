@@ -1,0 +1,62 @@
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: controller
+    image: sre-controller:latest
+    container_name: sre-controller
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64M
+      - /var/lib/sre-controller/data:size=256M
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    environment:
+      - SRE_CONTROLLER_CONFIG=/etc/sre-controller/config.yaml
+      - SRE_CONTROLLER_HTTP_LISTEN=:8080
+      - SRE_CONTROLLER_GRPC_LISTEN=:9090
+      - SRE_CONTROLLER_WEB_PATH=/var/lib/sre-controller/web
+    volumes:
+      - sre-controller-data:/var/lib/sre-controller/data
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  collector:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: collector
+    image: sre-collector:latest
+    container_name: sre-collector
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64M
+    depends_on:
+      controller:
+        condition: service_healthy
+    environment:
+      - SRE_COLLECTOR_CONTROLLER_ENDPOINTS=controller:9090
+      - SRE_COLLECTOR_SPOOL_DIR=/var/lib/sre-collector/spool
+      - SRE_COLLECTOR_CONFIG=/etc/sre-collector/config.yaml
+      - SRE_COLLECTOR_LEVEL=5
+    volumes:
+      - sre-collector-data:/var/lib/sre-collector
+
+volumes:
+  sre-collector-data:
+  sre-controller-data:

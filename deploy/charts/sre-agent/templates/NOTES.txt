@@ -1,0 +1,50 @@
+{{- /*
+Copyright SRE Agent Authors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+*/ -}}
+
+{{- if .Values.namespace.create }}
+The SRE Agent has been installed in namespace {{ .Values.namespace.name }}!
+{{- else }}
+The SRE Agent has been installed in namespace {{ .Release.Namespace }}!
+{{- end }}
+
+{{- if eq (include "sre-agent.kind" .) "DaemonSet" }}
+The agent is running as a DaemonSet, with one pod per node.
+{{- else }}
+The agent is running as a Deployment with {{ .Values.replicas }} replicas.
+{{- end }}
+
+To get the agent logs, run:
+  kubectl logs -n {{ include "sre-agent.namespace" . }} -l app.kubernetes.io/name={{ include "sre-agent.name" . }} --tail=-1
+
+To check the agent status, run:
+  kubectl get pods -n {{ include "sre-agent.namespace" . }} -l app.kubernetes.io/name={{ include "sre-agent.name" . }}
+
+To access the agent API, forward the port:
+  kubectl port-forward -n {{ include "sre-agent.namespace" . }} svc/{{ include "sre-agent.fullname" . }} 8080:8080
+
+Then access the API at:
+  http://localhost:8080/
+
+Health check endpoint:
+  http://localhost:8080/healthz
+
+Metrics endpoint:
+  http://localhost:9090/metrics
+
+{{- if .Values.serviceMonitor.enabled }}
+A ServiceMonitor has been created for Prometheus Operator integration.
+{{- end }}
+
+For more information, visit:
+  https://docs.sre-agent.io

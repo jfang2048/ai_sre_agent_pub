@@ -1,0 +1,30 @@
+apiVersion: v2
+name: sre-agent
+description: AI-powered SRE Agent for system monitoring and failure prevention
+type: application
+version: 0.4.0
+appVersion: "0.4.0"
+keywords:
+  - sre
+  - monitoring
+  - ebpf
+  - observability
+  - reliability
+home: https://github.com/jfang2048/ai_sre_agent_pub
+sources:
+  - https://github.com/jfang2048/ai_sre_agent_pub
+maintainers:
+  - name: SRE Agent Team
+    email: team@sre-agent.io
+icon: https://sre-agent.io/icon.png
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/changes: |
+    - Release line updated to v0.4
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://docs.sre-agent.io
+    - name: Support
+      url: https://github.com/jfang2048/ai_sre_agent_pub/issues
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "false"

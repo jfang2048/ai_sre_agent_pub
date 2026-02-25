@@ -1,0 +1,485 @@
+.system-status-page {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #333;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-title h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  color: #888;
+}
+
+.machine-type-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: var(--type-color, #10b981);
+  color: white;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* Overview Cards */
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.overview-card {
+  background: linear-gradient(135deg, rgba(30, 30, 30, 0.9), rgba(20, 20, 20, 0.95));
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.overview-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--card-color, #10b981);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.health-icon {
+  opacity: 0.9;
+}
+
+.card-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.card-subtitle {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--card-color, #10b981);
+  transition: width 0.3s ease;
+}
+
+/* Sections */
+.status-section {
+  background: rgba(30, 30, 30, 0.6);
+  border: 1px solid #333;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.section-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.section-content {
+  padding: 0 20px 20px 20px;
+  border-top: 1px solid #333;
+}
+
+/* Hardware Grid */
+.hardware-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.hardware-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.hardware-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.hardware-value {
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.hardware-value.mono {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+}
+
+/* Disk Table */
+.disk-table {
+  padding-top: 16px;
+  overflow-x: auto;
+}
+
+.disk-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.disk-table th,
+.disk-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+
+.disk-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+}
+
+.disk-table td {
+  font-size: 14px;
+}
+
+.disk-table .mono {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.disk-type {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.disk-type.hdd,
+.disk-type.unknown {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.disk-type.ssd {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.disk-type.nvme {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+/* Network Grid */
+.network-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.network-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.network-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.network-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.network-status {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.network-status.up {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.network-status.down {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.network-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #888;
+  margin-top: 8px;
+}
+
+/* GPU Grid */
+.gpu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.gpu-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.gpu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.gpu-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.gpu-id {
+  margin-left: auto;
+  font-size: 12px;
+  color: #888;
+}
+
+.gpu-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gpu-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #888;
+}
+
+.metric-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-number {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 80px;
+  text-align: right;
+}
+
+.gpu-metric-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.gpu-metric-small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #888;
+}
+
+.progress-fill.gpu {
+  background: linear-gradient(90deg, #10b981, #6366f1);
+}
+
+.progress-fill.memory {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+/* Kubernetes Info */
+.k8s-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.k8s-metric {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.k8s-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.k8s-value {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.k8s-value.mono {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 12px;
+}
+
+.k8s-pods {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+}
+
+.k8s-pods h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #6ee7b7;
+}
+
+.k8s-containers {
+  font-size: 13px;
+  color: #888;
+}
+
+/* Raw Data */
+.raw-data-section {
+  margin-top: 24px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.raw-data-section summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 14px;
+}
+
+.raw-data {
+  margin: 0;
+  padding: 16px;
+  max-height: 400px;
+  overflow: auto;
+  background: #0d0d0d;
+  font-size: 12px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .status-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .overview-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .hardware-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .network-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gpu-grid {
+    grid-template-columns: 1fr;
+  }
+}
