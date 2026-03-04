@@ -1,0 +1,19 @@
+[Unit]
+Description=AI SRE Collector (push-first telemetry)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/bin
+ExecStart=/usr/local/bin/sre-collector --level 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables can be set here or via an EnvironmentFile
+# EnvironmentFile=-/etc/default/sre-collector
+
+[Install]
+WantedBy=multi-user.target

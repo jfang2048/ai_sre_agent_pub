@@ -1,0 +1,83 @@
+# SRE Collector configuration (push-first agent)
+
+collector_id: ""
+hostname: ""
+version: "v0.5"
+labels: {}
+
+controller_endpoints:
+  - "localhost:9090"
+
+collection_interval: "10s"
+adaptive_polling: true
+min_collection_interval: "2s"
+max_collection_interval: "30s"
+topk: 10
+
+spool_dir: "./data/collector/spool"
+spool_max_bytes: 134217728
+
+log_paths: []
+
+shm_enabled: false
+shm_name: "/sre_collector_metrics"
+
+grpc_compress: true
+mirror_send: false
+metrics_listen_address: ":9464"
+tracing_jaeger_endpoint: ""
+
+# Collection level:
+# 1 basic, 2 extended, 3 per-process, 4 logs, 5 RCA (CPU/memory/io/network attribution)
+# Use 5 to populate full per-process rankings in /api/v1/top/programs and /ui tabs.
+level: 5
+
+transport:
+  dial_timeout: "10s"
+  rpc_timeout: "10s"
+  tls:
+    enabled: false
+    ca_file: ""
+    cert_file: ""
+    key_file: ""
+    server_name: ""
+    insecure_skip_verify: false
+    reload_interval: "30s"
+
+# Mandatory: eBPF-first runtime observability core (v0.5).
+# libbpf ring-buffer events are primary; synthetic /proc fallback keeps pipeline alive.
+ebpf:
+  enabled: true
+  socket_path: "/var/run/sre_collector_ebpf.sock"
+  categories: ["syscall", "process", "network", "file", "security", "resource"]
+  max_msg_bytes: 65536
+  ring_size: 2048
+  event_flush_limit: 256
+  allowed_listen_ports: [22, 53, 80, 443, 2379, 2380, 3000, 5432, 6443, 8080, 8443, 9090]
+  synthetic_poll_interval: "10s"
+  long_lived_tcp_threshold: "5m"
+
+# Optional: C++ probe-core IPC source for low-level metrics (preferred in production).
+# v0.5 probe-core is kernel-first (perf/netlink/sysfs/cgroup PSI) with /proc fallback.
+# When enabled, collector reads probe-core protobuf frames from subprocess stdout.
+probe_core:
+  enabled: false
+  binary_path: "./build/sre-probe-core"
+  # Optional Unix-style module selection (empty or ["all"] means all modules):
+  collectors: []
+  # Extra raw probe-core args (do not include --collectors when collectors is set above).
+  # Example for v0.5 runtime tuning:
+  # args: ["--host-mode", "auto", "--max-interval-ms", "5000", "--process-interval-samples", "2", "--netlink-interval-samples", "2"]
+  args: []
+  compression: "none" # none|gzip
+  queue_depth: 16
+  window_samples: 6
+  gpu_interval_samples: 5
+  startup_timeout: "3s"
+  stale_after: "15s"
+  frame_max_bytes: 8388608
+  fallback_to_go: true
+
+# Optional: external metrics command (fast C++ helper provided in cpp/proc_metrics/main.cpp)
+external_metrics_cmd: ""
+external_metrics_timeout: "500ms"

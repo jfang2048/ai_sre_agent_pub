@@ -1,0 +1,16 @@
+{
+  "name": "ai-sre-ui-tests",
+  "version": "0.5.0",
+  "description": "Chrome headless UI tests for AI SRE Agent",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.2.5",
+    "typescript": "^5.0.2"
+  }
+}

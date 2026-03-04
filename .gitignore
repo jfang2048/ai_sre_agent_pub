@@ -1,0 +1,247 @@
+update_*.sh
+
+# ============================================================================
+# Binaries and Build Artifacts
+# ============================================================================
+bin/
+build/
+dist/
+out/
+.gocache/
+data/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.a
+*.o
+*.bpf.o
+
+# Legacy binary names at repo root (do not ignore similarly-named packages).
+/sre-collector
+/sre-controller
+/sre-agent
+/obs-agent
+/agent
+
+# Legacy checked-in build artifacts (repo-local paths).
+/backend/controller
+/backend/probe
+!backend/internal/collector/
+!backend/internal/collector/**
+
+# ============================================================================
+# Generated Protocol Buffer Files
+# ============================================================================
+*.pb.go
+*_grpc.pb.go
+# Keep proto source files
+!api/proto/*.proto
+!backend/pkg/telemetry/v1/*.pb.go
+!backend/pkg/telemetry/v1/*_grpc.pb.go
+
+# ============================================================================
+# Dependency Directories
+# ============================================================================
+vendor/
+node_modules/
+
+# ============================================================================
+# Frontend Build Artifacts
+# ============================================================================
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.react-docs/
+
+# Web UI assets
+web/assets/
+webui/assets/
+ui/assets/
+
+# ============================================================================
+# Sensitive Configuration and Credentials
+# ============================================================================
+*.env
+*.env.*
+!.env.example
+!configs/*.env.example
+!config/env/example.yaml
+
+# AGENT runtime env (contains API keys/tokens)
+configs/agent.env
+configs/*.env.local
+configs/*.env.private
+configs/*.env.secret
+
+# Secret dumps and local credential snapshots
+secrets/
+**/secrets/
+*.secret
+*.secrets
+*.token
+*.tokens
+*.apikey
+*.credentials
+*.auth
+
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.der
+*.jks
+*.keystore
+*.kubeconfig
+kubeconfig
+.envrc
+.aws/
+.ssh/
+.gnupg/
+*.log
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+*.wal
+*.spool
+spool/
+tmp/
+
+# Local-only configuration overrides
+config/env/local.yaml
+config/local.yaml
+config/private.yaml
+config/secrets.yaml
+
+# Kubernetes secrets (should use external secrets instead)
+*.secret.yaml
+!deploy/charts/sre-agent/values.example.yaml
+
+# ============================================================================
+# Logs and Temporary Files
+# ============================================================================
+*.log
+*.log.*
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ============================================================================
+# IDE and Editor Files
+# ============================================================================
+.idea/
+.vscode/
+.vscode-server/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.iml
+*.ipr
+.metadata/
+.re history/
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# Coverage and Test Reports
+# ============================================================================
+coverage.out
+coverage.html
+coverage.xml
+*.cover
+*.coverprofile
+test-results/
+benchmarks/
+
+# ============================================================================
+# eBPF and Native Build Artifacts
+# ============================================================================
+sdk/build/
+sdk/.cache/
+*.bpf.o
+*.bpf.bin
+
+# ============================================================================
+# Documentation Build Artifacts
+# ============================================================================
+#docs/_build/
+#docs/site/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# ============================================================================
+# Local Development Data
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+/data/
+!/data/.gitkeep
+
+# ============================================================================
+# Compiled Native Binaries
+# ============================================================================
+internal/monitoring/linux/libmonitor.so
+pkg/native/lib/
+
+# ============================================================================
+# Archive and Package Files
+# ============================================================================
+*.tar.gz
+*.zip
+*.tgz
+*.tbz2
+
+# ============================================================================
+# Airplane/Dev environments
+# ============================================================================
+.air.toml
+plane/
+
+# ============================================================================
+# Claude Code Settings (local only)
+# ============================================================================
+.claude/settings.local.json
+
+# ============================================================================
+# Backup Files
+# ============================================================================
+*.bak
+*.backup
+*~
+
+# ============================================================================
+# Package manager locks (optional - uncomment if not committing)
+# ============================================================================
+# package-lock.json
+# go.sum (commented out - consider committing for reproducible builds)
+# go.sum
+
+# ============================================================================
+# Rust/Cargo artifacts (if any)
+# ============================================================================
+Cargo.lock
+target/
+
+# ============================================================================
+# Python virtual environments
+# ============================================================================
+venv/
+env/
+ENV/
+venv.*/
+#*/

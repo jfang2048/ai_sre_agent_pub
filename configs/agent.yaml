@@ -1,0 +1,41 @@
+# Agent Configuration
+# ===================
+# These parameters control the agent's behavioral analysis, eBPF resource usage,
+# and risk scoring weights.
+
+# Baseline engine
+baseline_window_minutes: 60
+baseline_p95_threshold: 1.5
+baseline_p99_threshold: 2.5
+baseline_max_samples_per_host: 1000
+
+# Process graph
+max_process_graph_entries: 65536
+syscall_sampling_rate_hz: 100
+
+# Risk weighting factors
+risk_weighting:
+  cpu_pressure: 0.20
+  memory_pressure: 0.18
+  io_saturation: 0.15
+  network_retransmit: 0.12
+  process_spawn_anomaly: 0.10
+  security_finding: 0.15
+  baseline_drift: 0.10
+
+# eBPF resource limits
+max_ebpf_map_entries: 65536
+ebpf_event_buffer_size: 4096
+
+# Context bundle
+context_bundle_max_bytes: 32768
+
+# Trace and action retention
+trace_retention_count: 500
+proposed_action_retention_count: 200
+
+# Demo mode
+demo_mode_enabled: false
+
+# LLM integration
+llm_timeout_ms: 20000

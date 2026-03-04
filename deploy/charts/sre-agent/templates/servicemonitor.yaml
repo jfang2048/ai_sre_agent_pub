@@ -1,0 +1,25 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "sre-agent.fullname" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+  {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sre-agent.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      path: /metrics
+  {{- with .Values.serviceMonitor.metricRelabelings }}
+  metricRelabelings:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
