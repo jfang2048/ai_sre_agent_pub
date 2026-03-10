@@ -1,0 +1,6 @@
+/backend/internal/controller/ @control-plane
+/backend/internal/collector/ @host-observability
+/backend/internal/controller/agentcore/ @agent-safety
+/frontend/ @ui-ops
+/deploy/ @platform-sre
+/scripts/ @platform-sre

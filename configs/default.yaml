@@ -1,0 +1,85 @@
+# AI SRE Agent Configuration
+# A low-overhead, kernel-first telemetry + analysis runtime with /proc fallback
+---
+
+# Server settings
+server:
+  host: "0.0.0.0"
+  port: 8080
+  metrics_port: 9090
+  enable_pprof: false
+  web_path: ""  # Path to web UI static files
+
+# Logging configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, text
+  output: "stdout"
+
+# Controller-side durable telemetry history (optional)
+tsdb:
+  enabled: false
+  provider: "influxdb"
+  retention: 168h
+  fallback_to_memory: true
+
+# Telemetry and analysis inputs
+monitoring:
+  # Scrape intervals
+  scrape_interval: 10s
+  aggregate_interval: 30s
+
+  # Logs monitoring
+  logs:
+    enabled: true
+    syslog_path: ""
+    syslog_candidates:
+      - "/var/log/syslog"
+      - "/var/log/messages"
+      - "/var/log/system.log"
+
+  # Linux host signal collection (kernel-first where available; /proc as compatibility fallback)
+  proc:
+    enabled: true
+    scan_interval: 15s
+    cpu_info: true
+    memory_info: true
+    load_avg: true
+    stat: true
+    vmstat: true
+    diskstats: true
+    netdev: true
+
+  # Process monitoring
+  process:
+    enabled: true
+    scan_interval: 15s
+    enable_per_process: true
+    enable_open_files: true
+    enable_io: true
+    top_n: 10  # Number of top processes to report
+
+ebpf:
+  enabled: false  # Disabled by default, requires elevated privileges (sidecar)
+  socket_path: "./data/collector/run/sre_collector_ebpf.sock"
+  categories:
+    - sched
+    - io
+    - net
+    - mem
+    - gpu
+    - security
+    - syscall
+  max_msg_bytes: 65536
+
+  # SLI configuration
+  sli:
+    rolling_window: 1h
+    retention_period: 24h
+
+  # SLO configuration
+  slo:
+    config_path: "/etc/sre-collector/slo"
+    evaluation_interval: 1m
+    error_budget_warning_percent: 20
+    error_budget_critical_percent: 10

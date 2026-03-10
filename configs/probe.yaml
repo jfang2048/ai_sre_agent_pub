@@ -1,0 +1,113 @@
+# SRE Probe Configuration
+# ========================
+#
+# The probe is a lightweight data collector that runs on monitored hosts.
+# In v0.6 the probe-core path is kernel-first (perf/netlink/sysfs/cgroup PSI),
+# with /proc retained as a compatibility fallback path.
+#
+# Terminology:
+#   - Probe: This component - the controlled-side data collector
+#   - Controller: The central aggregation server that scrapes probes
+#   - Agent: The overall AI SRE system (NOT this component)
+---
+
+# Address to listen on for HTTP requests
+# The controller will scrape metrics from this address
+listen: ":9100"
+
+# Log level: debug, info, warn, error
+log_level: "info"
+
+# How often to collect metrics internally
+# Note: The controller pulls metrics on its own schedule
+scrape_interval: "10s"
+
+# =============================================================================
+# COLLECTION CONFIGURATION
+# =============================================================================
+
+collection:
+  # Collection level (1-5):
+  #   1: Basic      - CPU, memory, disk, network (~50 metrics, 0.1% CPU)
+  #   2: Extended   - + PSI, scheduler, TCP stats, thermal (~200 metrics)
+  #   3: Deep       - + per-process, interrupts, softirqs (~300 metrics)
+  #   4: Logs       - + kernel events, log summaries (~350 metrics)
+  #   5: RCA        - + Root Cause Analysis (~800+ metrics, <1% CPU)
+  #
+  # Level 5 (RCA) provides detailed process-level attribution:
+  #   - CPU: which process, which syscall, wait channels
+  #   - Memory: per-process heap, swap, page faults, OOM scores
+  #   - I/O: per-process read/write rates, device latency
+  #   - Network: per-process connections, socket queues
+  level: 2
+
+  # Number of top processes to track (for level 3+)
+  top_processes: 20
+
+  # Aggregation windows for sliding statistics
+  windows:
+    - "1m"
+    - "5m"
+    - "15m"
+
+# =============================================================================
+# TRANSMISSION CONFIGURATION  
+# =============================================================================
+
+transmission:
+  # Metrics transmission (Pull model - controller scrapes probe)
+  metrics:
+    # Wire format: prometheus (text) or json
+    format: "prometheus"
+    
+    # Enable gzip compression for responses > 1KB
+    compression: false
+    
+    # Include sliding window statistics in output
+    include_aggregations: false
+
+  # Log transmission (Push model - probe pushes to controller) [Optional]
+  logs:
+    # Enable log pushing
+    enabled: false
+    
+    # Controller endpoint to push logs to
+    endpoint: "http://controller:8080/api/v1/logs"
+    
+    # Maximum log entries per batch
+    batch_size: 1000
+    
+    # Maximum batch size in bytes (1MB)
+    batch_bytes: 1048576
+    
+    # How often to flush log buffer
+    flush_interval: "5s"
+    
+    # Maximum buffer size (100MB) - oldest entries dropped when full
+    buffer_size: 104857600
+    
+    # Compress log batches with gzip
+    compression: true
+
+# =============================================================================
+# ADVANCED CONFIGURATION
+# =============================================================================
+
+# Resource limits (informational - enforced by systemd)
+# resources:
+#   max_memory: "50MB"
+#   max_cpu: "10%"
+
+# Metrics to exclude (regex patterns)
+# exclude_metrics:
+#   - "node_process_.*"
+#   - "node_interrupts_total{irq=\"NMI\"}"
+
+# Labels to add to all metrics
+# labels:
+#   environment: "production"
+#   datacenter: "us-west-2"
+
+# GPU collection (enabled by default if nvidia-smi exists)
+# To disable GPU telemetry:
+#   export SRE_COLLECTOR_GPU_DISABLED=1

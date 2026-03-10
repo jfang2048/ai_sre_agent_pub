@@ -1,0 +1,270 @@
+syntax = "proto3";
+
+package api.proto;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+// Action represents a remediation action that can be executed
+message Action {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  ActionCategory category = 4;
+
+  ActionParameters parameters = 5;
+  ActionConstraints constraints = 6;
+
+  ActionState state = 7;
+  ActionResult result = 8;
+
+  int64 created_at = 9;  // Unix timestamp
+  int64 started_at = 10;
+  int64 completed_at = 11;
+
+  string created_by = 12;  // Agent ID or human operator
+  string reason = 13;      // Why this action was taken
+  repeated string tags = 14;
+}
+
+// ActionCategory groups actions by type
+enum ActionCategory {
+  ACTION_CATEGORY_UNKNOWN = 0;
+  ACTION_CATEGORY_SCALING = 1;      // Horizontal/vertical scaling
+  ACTION_CATEGORY_RESTART = 2;      // Service/pod restart
+  ACTION_CATEGORY_FAILOVER = 3;     // Traffic failover
+  ACTION_CATEGORY_ROLLBACK = 4;     // Version rollback
+  ACTION_CATEGORY_CONFIG_CHANGE = 5; // Configuration update
+  ACTION_CATEGORY_RESOURCE_LIMIT = 6; // CPU/memory limit changes
+  ACTION_CATEGORY_NETWORK = 7;      // Firewall, routing changes
+  ACTION_CATEGORY_STORAGE = 8;      // Snapshot, volume operations
+  ACTION_CATEGORY_CUSTOM = 99;      // Custom/scripted actions
+}
+
+// ActionState represents the lifecycle state of an action
+enum ActionState {
+  ACTION_STATE_PENDING = 0;     // Awaiting execution
+  ACTION_STATE_VALIDATING = 1;  // Safety checks in progress
+  ACTION_STATE_APPROVED = 2;    // Approved for execution
+  ACTION_STATE_REJECTED = 3;    // Rejected by validator
+  ACTION_STATE_EXECUTING = 4;   // Currently executing
+  ACTION_STATE_COMPLETED = 5;   // Finished successfully
+  ACTION_STATE_FAILED = 6;      // Failed with error
+  ACTION_STATE_ROLLED_BACK = 7; // Executed but rolled back
+  ACTION_STATE_CANCELLED = 8;   // Cancelled before execution
+}
+
+// ActionResult contains the outcome of an executed action
+message ActionResult {
+  bool success = 1;
+  string error_message = 2;
+  string error_code = 3;
+
+  // Changes made
+  repeated ChangeSummary changes = 4;
+
+  // Verification results
+  VerificationResult verification = 5;
+
+  // Rollback information
+  RollbackInfo rollback = 6;
+}
+
+// ChangeSummary describes a single change made by an action
+message ChangeSummary {
+  string resource_type = 1;  // e.g., "Deployment", "ConfigMap"
+  string resource_name = 2;
+  string namespace = 3;
+  string change_type = 4;    // "created", "updated", "deleted", "scaled"
+  string field = 5;          // Field that was changed
+  string old_value = 6;
+  string new_value = 7;
+}
+
+// VerificationResult contains post-action verification data
+message VerificationResult {
+  bool verified = 1;
+  string verification_method = 2;
+  repeated MetricCheck metric_checks = 3;
+}
+
+// MetricCheck verifies a specific metric after action
+message MetricCheck {
+  string metric_name = 1;
+  double threshold = 2;
+  double actual_value = 3;
+  bool passed = 4;
+}
+
+// RollbackInfo contains information for rolling back an action
+message RollbackInfo {
+  bool can_rollback = 1;
+  string rollback_method = 2;
+  map<string, string> rollback_state = 3;  // State needed for rollback
+}
+
+// ActionParameters contains execution parameters
+message ActionParameters {
+  // Target specification
+  string target_type = 1;     // "deployment", "pod", "service", etc.
+  string target_name = 2;
+  string namespace = 3;
+
+  // Action-specific parameters
+  map<string, string> string_params = 4;
+  map<string, int64> int_params = 5;
+  map<string, double> float_params = 6;
+  map<string, bool> bool_params = 7;
+
+  // For scaling actions
+  int32 replicas = 10;
+  ResourceAmount resource = 11;
+
+  // For config changes
+  map<string, string> config_updates = 12;
+}
+
+// ResourceAmount represents CPU/memory amounts
+message ResourceAmount {
+  string cpu = 1;      // e.g., "500m", "2"
+  string memory = 2;   // e.g., "512Mi", "2Gi"
+}
+
+// ActionConstraints limits when/how an action can execute
+message ActionConstraints {
+  // Time windows
+  int64 allowed_after = 1;   // Unix timestamp - don't execute before
+  int64 allowed_before = 2;  // Unix timestamp - don't execute after
+
+  // Approval requirements
+  bool requires_approval = 3;
+  repeated string approvers = 4;
+
+  // Safety limits
+  int32 max_replicas = 5;
+  int32 min_replicas = 6;
+  ResourceAmount max_resources = 7;
+
+  // Conditions
+  repeated string required_conditions = 8;  // All must be true
+  repeated string blocking_conditions = 9;  // None can be true
+
+  // Rate limiting
+  int32 max_executions_per_hour = 10;
+  int32 cooldown_seconds = 11;
+}
+
+// ActionRequest is a request to execute an action
+message ActionRequest {
+  Action action = 1;
+  bool dry_run = 2;          // Validate but don't execute
+  int64 timeout_seconds = 3;
+  string correlation_id = 4;  // For tracking related actions
+}
+
+// ActionResponse is the response to an action request
+message ActionResponse {
+  bool success = 1;
+  string action_id = 2;
+  string message = 3;
+  ActionState state = 4;
+  repeated string warnings = 5;
+}
+
+// ActionBatch groups multiple actions for atomic execution
+message ActionBatch {
+  repeated Action actions = 1;
+  bool execute_all_or_none = 2;  // Stop on first failure
+  int64 timeout_seconds = 3;
+}
+
+// ActionPlan represents a sequence of actions to achieve a goal
+message ActionPlan {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string goal = 4;  // What this plan aims to achieve
+
+  repeated ActionStep steps = 5;
+  PlanStatus status = 6;
+
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+// ActionStep is a single step in an action plan
+message ActionStep {
+  string id = 1;
+  int32 order = 2;
+  Action action = 3;
+  repeated string depends_on = 4;  // IDs of steps that must complete first
+  bool optional = 5;  // If true, plan continues even if this step fails
+}
+
+// PlanStatus indicates the status of an action plan
+enum PlanStatus {
+  PLAN_STATUS_PENDING = 0;
+  PLAN_STATUS_IN_PROGRESS = 1;
+  PLAN_STATUS_COMPLETED = 2;
+  PLAN_STATUS_FAILED = 3;
+  PLAN_STATUS_PARTIALLY_COMPLETED = 4;
+  PLAN_STATUS_CANCELLED = 5;
+}
+
+// ActionExecutionService handles action execution
+service ActionExecutionService {
+  // Execute a single action
+  rpc ExecuteAction(ActionRequest) returns (ActionResponse);
+
+  // Execute a batch of actions
+  rpc ExecuteBatch(ActionBatch) returns (stream ActionResponse);
+
+  // Execute an action plan
+  rpc ExecutePlan(ActionPlan) returns (stream ActionResponse);
+
+  // Get action status
+  rpc GetAction(GetActionRequest) returns (Action);
+
+  // List actions with filters
+  rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
+
+  // Cancel a pending or executing action
+  rpc CancelAction(CancelActionRequest) returns (ActionResponse);
+
+  // Rollback a completed action
+  rpc RollbackAction(RollbackRequest) returns (ActionResponse);
+}
+
+// GetActionRequest
+message GetActionRequest {
+  string action_id = 1;
+}
+
+// ListActionsRequest
+message ListActionsRequest {
+  int64 limit = 1;
+  int64 offset = 2;
+  ActionCategory category = 3;
+  ActionState state = 4;
+  int64 created_after = 5;
+  int64 created_before = 6;
+  string created_by = 7;
+}
+
+// ListActionsResponse
+message ListActionsResponse {
+  repeated Action actions = 1;
+  int64 total_count = 2;
+}
+
+// CancelActionRequest
+message CancelActionRequest {
+  string action_id = 1;
+  string reason = 2;
+}
+
+// RollbackRequest
+message RollbackRequest {
+  string action_id = 1;
+  string reason = 2;
+  bool force = 3;  // Skip confirmation if action is old
+}

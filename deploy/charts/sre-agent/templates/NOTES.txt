@@ -1,0 +1,16 @@
+AI SRE Agent v0.6 has been deployed in split controller/collector mode.
+
+Controller service:
+  kubectl -n {{ include "sre-agent.namespace" . }} get svc {{ include "sre-agent.controllerName" . }}
+
+Controller logs:
+  kubectl -n {{ include "sre-agent.namespace" . }} logs deploy/{{ include "sre-agent.controllerName" . }} --tail=100
+
+Collector logs:
+  kubectl -n {{ include "sre-agent.namespace" . }} logs ds/{{ include "sre-agent.collectorName" . }} --tail=100
+
+Port-forward the controller UI/API locally:
+  kubectl -n {{ include "sre-agent.namespace" . }} port-forward svc/{{ include "sre-agent.controllerName" . }} 8080:{{ .Values.controller.service.httpPort }}
+
+Then open:
+  http://127.0.0.1:8080/

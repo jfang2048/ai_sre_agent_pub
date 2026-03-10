@@ -1,0 +1,29 @@
+# Development Environment Configuration
+
+# Override defaults for development
+---
+logging:
+  level: "debug"
+  format: "text"
+
+monitoring:
+  ebpf:
+    enabled: false  # May require privileges in dev
+  kubernetes:
+    enabled: false
+
+alerting:
+  notifiers:
+    webhook:
+      enabled: false
+    slack:
+      enabled: false
+
+remediation:
+  enabled: false
+
+performance:
+  workers:
+    collectors: 2
+    processors: 4
+    notifiers: 1

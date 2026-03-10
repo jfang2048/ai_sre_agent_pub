@@ -1,0 +1,138 @@
+namespace:
+  create: true
+  name: sre-agent
+  labels: {}
+
+global:
+  commonLabels: {}
+  imagePullSecrets: []
+
+controller:
+  enabled: true
+  image:
+    repository: ai-sre-agent/controller
+    tag: "v0.6"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  ha:
+    enabled: false
+    backend: etcd
+    allowFollowerRead: true
+    electionKey: /ai-sre-agent/controller/leader
+    leaseTTL: 15s
+    observeInterval: 3s
+    campaignTimeout: 5s
+    etcdEndpoints: []
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  service:
+    type: ClusterIP
+    httpPort: 8080
+    grpcPort: 9090
+    annotations: {}
+  env:
+    ingestPersistEnabled: "1"
+    ragEnabled: "1"
+    ragRebuildPolicy: if_missing
+    llmEnabled: "0"
+    dryRun: "1"
+    tsdbEnabled: "0"
+    tsdbProvider: influxdb
+    tsdbURL: http://influxdb.monitoring.svc.cluster.local:8086
+    tsdbOrg: ai-sre-agent
+    tsdbBucket: controller_metrics
+    tsdbRetention: 168h
+    tsdbFallbackToMemory: "1"
+    tsdbManageBucket: "0"
+  extraEnv: []
+  extraEnvFromSecrets: []
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  dataVolume:
+    type: emptyDir
+    size: 20Gi
+    storageClassName: ""
+    accessModes: ["ReadWriteOnce"]
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+collector:
+  enabled: true
+  image:
+    repository: ai-sre-agent/collector
+    tag: "v0.6"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  controllerEndpoint: ""
+  collectionInterval: 10s
+  level: "5"
+  metricsPort: 9464
+  logPaths: /var/log/syslog,/var/log/messages,/var/log/kern.log
+  extraEnv: []
+  extraEnvFromSecrets: []
+  podAnnotations: {}
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+      add: ["BPF", "PERFMON", "NET_ADMIN", "SYS_RESOURCE"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations:
+    - operator: Exists
+  affinity: {}
+  hostObserver:
+    enabled: true
+  nvidia:
+    visibleDevices: all
+    driverCapabilities: utility,compute
+
+rbac:
+  create: true
+  controllerClusterRules:
+    - apiGroups: [""]
+      resources: ["nodes", "pods", "namespaces", "services", "endpoints"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      verbs: ["get", "list", "watch"]
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces: []

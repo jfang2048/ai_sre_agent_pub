@@ -1,0 +1,145 @@
+{{- if .Values.collector.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "sre-agent.collectorName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.collectorSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sre-agent.collectorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sre-agent.collectorSelectorLabels" . | nindent 8 }}
+        {{- include "sre-agent.labels" . | nindent 8 }}
+      {{- with .Values.collector.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "sre-agent.collectorServiceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      hostPID: {{ .Values.collector.hostObserver.enabled }}
+      containers:
+        - name: collector
+          image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag }}"
+          imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_CONFIG
+              value: /etc/ai-sre-agent/collector.yaml
+            - name: SRE_COLLECTOR_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_CONTROLLER_ENDPOINTS
+              value: {{ include "sre-agent.controllerEndpoint" . | quote }}
+            - name: SRE_COLLECTOR_COLLECTION_INTERVAL
+              value: {{ .Values.collector.collectionInterval | quote }}
+            - name: SRE_COLLECTOR_LEVEL
+              value: {{ .Values.collector.level | quote }}
+            - name: SRE_COLLECTOR_METRICS_ADDR
+              value: {{ printf ":%v" .Values.collector.metricsPort | quote }}
+            - name: SRE_COLLECTOR_LOG_PATHS
+              value: {{ .Values.collector.logPaths | quote }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: {{ .Values.collector.nvidia.visibleDevices | quote }}
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: {{ .Values.collector.nvidia.driverCapabilities | quote }}
+            {{- range .Values.collector.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range .Values.collector.extraEnvFromSecrets }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey }}
+                  optional: {{ default true .optional }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.collector.metricsPort }}
+          securityContext:
+            {{- toYaml .Values.collector.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            - name: host-kernel-debug
+              mountPath: /sys/kernel/debug
+            - name: host-bpf
+              mountPath: /sys/fs/bpf
+            - name: host-modules
+              mountPath: /lib/modules
+              readOnly: true
+            - name: host-logs
+              mountPath: /var/log
+              readOnly: true
+            - name: collector-data
+              mountPath: /var/lib/ai-sre-agent/collector/data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.collector.resources | nindent 12 }}
+      {{- with .Values.collector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: host-kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+            type: DirectoryOrCreate
+        - name: host-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: DirectoryOrCreate
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+            type: Directory
+        - name: host-logs
+          hostPath:
+            path: /var/log
+            type: DirectoryOrCreate
+        - name: collector-data
+          emptyDir: {}
+{{- end }}
