@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-collector-config
+  namespace: sre-agent
+  labels:
+    app.kubernetes.io/name: sre-collector
+    app.kubernetes.io/part-of: ai-sre-agent
+data:
+  collector.yaml: |
+    deployment:
+      mode: "cluster-lite"
+      cluster_name: "example-cluster"
+      data_root: "/var/lib/ai-sre-agent"
+    probe_core:
+      binary_path: "/usr/local/bin/sre-probe-core"

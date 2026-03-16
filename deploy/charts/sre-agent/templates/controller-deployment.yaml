@@ -1,0 +1,164 @@
+{{- if and .Values.controller.enabled (not .Values.controller.ha.enabled) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sre-agent.controllerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sre-agent.controllerSelectorLabels" . | nindent 8 }}
+        {{- include "sre-agent.labels" . | nindent 8 }}
+      {{- with .Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "sre-agent.controllerServiceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      containers:
+        - name: controller
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          env:
+            - name: SRE_CONTROLLER_CONFIG
+              value: /etc/ai-sre-agent/controller.yaml
+            - name: SRE_CONTROLLER_HTTP_LISTEN
+              value: 0.0.0.0:{{ .Values.controller.service.httpPort }}
+            - name: SRE_CONTROLLER_GRPC_LISTEN
+              value: 0.0.0.0:{{ .Values.controller.service.grpcPort }}
+            - name: SRE_CONTROLLER_WEB_PATH
+              value: /var/lib/ai-sre-agent/controller/web
+            - name: SRE_INGEST_PERSIST_ENABLED
+              value: {{ .Values.controller.env.ingestPersistEnabled | quote }}
+            - name: SRE_AGENT_RAG_ENABLED
+              value: {{ .Values.controller.env.ragEnabled | quote }}
+            - name: SRE_AGENT_RAG_REBUILD_POLICY
+              value: {{ .Values.controller.env.ragRebuildPolicy | quote }}
+            {{- if or .Values.controller.rag.vectorToken .Values.controller.rag.vectorTokenSecretName }}
+            - name: SRE_AGENT_RAG_VECTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sre-agent.controllerRagVectorSecretName" . }}
+                  key: {{ .Values.controller.rag.vectorTokenSecretKey | quote }}
+            {{- end }}
+            - name: SRE_AGENT_LLM_ENABLED
+              value: {{ .Values.controller.env.llmEnabled | quote }}
+            - name: SRE_AGENT_DRY_RUN
+              value: {{ .Values.controller.env.dryRun | quote }}
+            - name: SRE_TSDB_ENABLED
+              value: {{ .Values.controller.env.tsdbEnabled | quote }}
+            - name: SRE_TSDB_PROVIDER
+              value: {{ .Values.controller.env.tsdbProvider | quote }}
+            - name: SRE_TSDB_URL
+              value: {{ .Values.controller.env.tsdbURL | quote }}
+            - name: SRE_TSDB_ORG
+              value: {{ .Values.controller.env.tsdbOrg | quote }}
+            - name: SRE_TSDB_BUCKET
+              value: {{ .Values.controller.env.tsdbBucket | quote }}
+            - name: SRE_TSDB_RETENTION
+              value: {{ .Values.controller.env.tsdbRetention | quote }}
+            - name: SRE_TSDB_FALLBACK_TO_MEMORY
+              value: {{ .Values.controller.env.tsdbFallbackToMemory | quote }}
+            - name: SRE_TSDB_MANAGE_BUCKET
+              value: {{ .Values.controller.env.tsdbManageBucket | quote }}
+            {{- range .Values.controller.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range .Values.controller.extraEnvFromSecrets }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey }}
+                  optional: {{ default true .optional }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.controller.service.httpPort }}
+            - name: grpc
+              containerPort: {{ .Values.controller.service.grpcPort }}
+          securityContext:
+            {{- toYaml .Values.controller.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: controller-config
+              mountPath: /etc/ai-sre-agent/controller.yaml
+              subPath: controller.yaml
+              readOnly: true
+            - name: controller-targets
+              mountPath: /etc/ai-sre-agent/controller_targets.yaml
+              subPath: controller_targets.yaml
+              readOnly: true
+            - name: controller-data
+              mountPath: /var/lib/ai-sre-agent/controller/data
+          {{- if .Values.controller.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.controller.startupProbe.path | quote }}
+              port: http
+            periodSeconds: {{ .Values.controller.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.controller.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.controller.startupProbe.failureThreshold }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- $controllerAffinity := include "sre-agent.controllerAffinity" . | trim }}
+      {{- if $controllerAffinity }}
+      affinity:
+{{ $controllerAffinity | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: controller-config
+          configMap:
+            name: {{ include "sre-agent.controllerName" . }}-config
+            items:
+              - key: controller.yaml
+                path: controller.yaml
+        - name: controller-targets
+          configMap:
+            name: {{ include "sre-agent.controllerName" . }}-config
+            items:
+              - key: controller_targets.yaml
+                path: controller_targets.yaml
+        - name: controller-data
+          {{- if eq .Values.controller.dataVolume.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ include "sre-agent.controllerName" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

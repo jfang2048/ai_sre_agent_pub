@@ -1,0 +1,34 @@
+{{- if and .Values.controller.enabled (not .Values.controller.ha.enabled) .Values.controller.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "sre-agent.controllerName" . }}
+  minReplicas: {{ .Values.controller.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.controller.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.controller.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.controller.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.controller.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.controller.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

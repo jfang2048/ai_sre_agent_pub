@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package probeipc.v1;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/probeipc/v1;probeipcv1";
+
+message Label {
+  string key = 1;
+  string value = 2;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;
+  repeated Label labels = 3;
+}
+
+message ProcessSample {
+  int32 pid = 1;
+  string name = 2;
+  double cpu_percent = 3;
+  uint64 rss_bytes = 4;
+  double io_read_bps = 5;
+  double io_write_bps = 6;
+  uint64 voluntary_ctx_switches = 7;
+  uint64 nonvoluntary_ctx_switches = 8;
+  uint64 minor_faults = 9;
+  uint64 major_faults = 10;
+  uint64 pss_bytes = 11;
+  uint64 net_tx_queue_bytes = 12;
+  uint64 net_rx_queue_bytes = 13;
+}
+
+message ProbeBatch {
+  int64 collected_at_unix_nano = 1;
+  int64 monotonic_unix_nano = 2;
+  repeated Metric metrics = 3;
+  repeated ProcessSample processes = 4;
+  uint32 window_samples = 5;
+  uint32 sequence = 6;
+  uint32 dropped_due_backpressure = 7;
+}
+
+enum Compression {
+  COMPRESSION_NONE = 0;
+  COMPRESSION_GZIP = 1;
+}
+
+// FrameEnvelope is length-prefixed on the pipe/socket:
+// [uint32 little-endian length][serialized FrameEnvelope]
+// payload is serialized ProbeBatch, optionally compressed.
+message FrameEnvelope {
+  Compression compression = 1;
+  bytes payload = 2;
+  uint32 payload_crc32 = 3;
+}

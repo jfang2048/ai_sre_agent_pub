@@ -1,0 +1,72 @@
+# Sample Prometheus metrics for testing
+# HELP http_requests_total Total number of HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",path="/api/health",status="200"} 10234
+http_requests_total{method="GET",path="/api/data",status="200"} 8765
+http_requests_total{method="GET",path="/api/data",status="500"} 45
+http_requests_total{method="POST",path="/api/events",status="201"} 2345
+http_requests_total{method="POST",path="/api/events",status="400"} 123
+http_requests_total{method="DELETE",path="/api/items",status="204"} 567
+http_requests_total{method="DELETE",path="/api/items",status="404"} 89
+
+# HELP http_request_duration_seconds HTTP request latency
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.005"} 5000
+http_request_duration_seconds_bucket{le="0.01"} 8000
+http_request_duration_seconds_bucket{le="0.025"} 9500
+http_request_duration_seconds_bucket{le="0.05"} 9800
+http_request_duration_seconds_bucket{le="0.1"} 9900
+http_request_duration_seconds_bucket{le="0.25"} 9950
+http_request_duration_seconds_bucket{le="0.5"} 9980
+http_request_duration_seconds_bucket{le="1"} 9995
+http_request_duration_seconds_bucket{le="2.5"} 9999
+http_request_duration_seconds_bucket{le="5"} 10000
+http_request_duration_seconds_bucket{le="+Inf"} 10000
+http_request_duration_seconds_sum 234.567
+http_request_duration_seconds_count 10000
+
+# HELP system_cpu_usage CPU usage percentage
+# TYPE system_cpu_usage gauge
+system_cpu_usage{cpu="0"} 45.2
+system_cpu_usage{cpu="1"} 52.8
+system_cpu_usage{cpu="2"} 38.1
+system_cpu_usage{cpu="3"} 61.4
+
+# HELP system_memory_bytes Memory usage in bytes
+# TYPE system_memory_bytes gauge
+system_memory_bytes{type="total"} 17179869184
+system_memory_bytes{type="used"} 13631488512
+system_memory_bytes{type="free"} 2093765632
+system_memory_bytes{type="cached"} 1048576000
+system_memory_bytes{type="buffers"} 524288000
+
+# HELP process_count Number of running processes
+# TYPE process_count gauge
+process_count{state="running"} 234
+process_count{state="sleeping"} 1245
+process_count{state="stopped"} 5
+process_count{state="zombie"} 2
+
+# HELP network_bytes_total Total network traffic
+# TYPE network_bytes_total counter
+network_bytes_total{device="eth0",direction="rx"} 1234567890
+network_bytes_total{device="eth0",direction="tx"} 456789012
+network_bytes_total{device="lo",direction="rx"} 12345678
+network_bytes_total{device="lo",direction="tx"} 12345678
+
+# HELP disk_io_time_seconds_total Disk I/O time
+# TYPE disk_io_time_seconds_total counter
+disk_io_time_seconds_total{device="sda"} 12345.67
+disk_io_time_seconds_total{device="sdb"} 2345.89
+
+# HELP slo_error_budget_remaining Error budget remaining percentage
+# TYPE slo_error_budget_remaining gauge
+slo_error_budget_remaining{slo="api-availability"} 75.5
+slo_error_budget_remaining{slo="api-latency"} 42.3
+slo_error_budget_remaining{slo="database-availability"} 88.1
+
+# HELP alert_status Alert firing status
+# TYPE alert_status gauge
+alert_status{alert="HighErrorRate",severity="critical"} 1
+alert_status{alert="HighLatency",severity="warning"} 1
+alert_status{alert="LowDiskSpace",severity="warning"} 0

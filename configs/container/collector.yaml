@@ -1,0 +1,121 @@
+# Container-default collector configuration (v0.7)
+---
+collector_id: ""
+hostname: ""
+version: "v0.7"
+labels: {}
+deployment:
+  mode: "cluster-lite"
+  cluster_name: "default-cluster"
+  data_root: "/var/lib/ai-sre-agent"
+
+controller_endpoints:
+  # Compose default. Override on remote collector hosts to point at the central
+  # controller's reachable gRPC address.
+  - "controller:9090"
+
+collection_interval: "5s"
+adaptive_polling: true
+min_collection_interval: "1s"
+max_collection_interval: "20s"
+# When true, cadence-cached fallback process lists and log fingerprints are not
+# resent every batch. The controller carries the previous view forward until the
+# helper actually refreshes again.
+suppress_cached_aux_payloads: true
+# When true, near-identical process payloads from the active source are not
+# resent every cycle. The collector periodically forces a refresh so the
+# controller still gets a real process snapshot on a bounded interval.
+suppress_unchanged_process_payloads: true
+process_payload_refresh_interval: "1m"
+# When true, cache-hit legacy compatibility hardware-tier metrics are also
+# omitted from steady-state batches. The controller keeps the previous slow
+# hardware view until that tier really refreshes again.
+suppress_cached_compat_hardware_metrics: true
+# Suppress unchanged low-churn collector/runtime inventory between periodic full
+# refreshes so every batch does not resend the same topology/source-mode state.
+suppress_unchanged_low_churn_metrics: true
+low_churn_metrics_refresh_interval: "5m"
+# Expensive compatibility helpers are intentionally slower than the main loop:
+# - compatibility /proc process fallback uses max(collection_interval, probe_core.interval * host_proc_fallback_interval_samples)
+# - log tailing uses max(15s, 3 * collection_interval)
+# - external metrics command uses max(30s, 6 * collection_interval)
+# - when probe-core falls back to the legacy Go probe, that path also caches
+#   runtime/deep/kernel-event/RCA/GPU tiers and only refreshes the deeper tiers
+#   on wider cadences or when the fallback path itself sees a basic anomaly trigger
+# - the legacy Go fallback also keeps hardware-ish thermal/NIC/RDMA scans on a
+#   separate slow tier instead of refreshing them with PSI/TCP/sockstat
+# During incident mode they can temporarily tighten back to the active collector cadence.
+topk: 10
+
+spool_dir: "/var/lib/ai-sre-agent/collector/data/spool"
+spool_max_bytes: 134217728
+
+log_paths: []
+
+shm_enabled: false
+shm_name: "/sre_collector_metrics"
+
+grpc_compress: true
+mirror_send: false
+metrics_listen_address: ":9464"
+tracing_jaeger_endpoint: ""
+level: 5
+
+transport:
+  dial_timeout: "10s"
+  rpc_timeout: "10s"
+  tls:
+    enabled: false
+    ca_file: ""
+    cert_file: ""
+    key_file: ""
+    server_name: ""
+    insecure_skip_verify: false
+    reload_interval: "30s"
+
+ebpf:
+  enabled: true
+  socket_path: "/var/lib/ai-sre-agent/collector/data/run/sre_collector_ebpf.sock"
+  categories: ["syscall", "process", "network", "file", "security", "resource"]
+  max_msg_bytes: 65536
+  ring_size: 2048
+  event_flush_limit: 256
+  allowed_listen_ports: [22, 53, 80, 443, 2379, 2380, 3000, 5432, 6443, 8080, 8443, 9090]
+  synthetic_poll_interval: "10s"
+  long_lived_tcp_threshold: "5m"
+
+probe_core:
+  enabled: true
+  binary_path: "/usr/local/bin/sre-probe-core"
+  collectors: []
+  args: ["--host-mode", "auto"]
+  interval: "1s"
+  compression: "none"
+  queue_depth: 16
+  window_samples: 6
+  process_interval_samples: 2
+  host_proc_fallback_interval_samples: 10
+  pressure_interval_samples: 3
+  netlink_interval_samples: 2
+  gpu_interval_samples: 1
+  nice: 10
+  startup_timeout: "3s"
+  stale_after: "15s"
+  frame_max_bytes: 8388608
+  # When false, probe-core host/resource metrics that already have collector-side
+  # node_*/rca_* aliases are not duplicated as raw probe_core_* metrics.
+  emit_raw_aliased_metrics: false
+  # Compatibility fallback only; host-observer deployments should keep probe-core healthy.
+  fallback_to_go: true
+
+security:
+  enabled: true
+  audit_interval: "5m"
+  recent_event_limit: 128
+  baseline_warmup_samples: 3
+  max_walk_entries: 6000
+  large_file_threshold_bytes: 104857600
+  rapid_growth_threshold_bytes: 16777216
+
+external_metrics_cmd: ""
+external_metrics_timeout: "500ms"

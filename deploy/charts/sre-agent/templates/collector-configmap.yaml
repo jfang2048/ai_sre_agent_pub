@@ -1,0 +1,21 @@
+{{- if .Values.collector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sre-agent.collectorName" . }}-config
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.collectorSelectorLabels" . | nindent 4 }}
+data:
+  collector.yaml: |
+    deployment:
+      mode: {{ include "sre-agent.collectorDeploymentMode" . | quote }}
+      cluster_name: {{ include "sre-agent.clusterName" . | quote }}
+      data_root: {{ include "sre-agent.collectorDataRoot" . | quote }}
+    probe_core:
+      binary_path: "/usr/local/bin/sre-probe-core"
+{{- with .Values.collector.configInline }}
+{{ . | nindent 4 }}
+{{- end }}
+{{- end }}
