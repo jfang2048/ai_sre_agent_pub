@@ -1,0 +1,16 @@
+global:
+  deploymentMode: cluster-lite
+  clusterName: prod-eu1
+  dataRoot: /var/lib/ai-sre-agent
+
+controller:
+  replicas: 1
+  externalURL: https://ai-sre-agent.example.com
+  rag:
+    vectorBackend: local
+    datasetPath: /var/lib/ai-sre-agent/controller/dataset
+    indexPath: /var/lib/ai-sre-agent/controller/data/agent/rag/index.json
+
+collector:
+  collectionInterval: 10s
+  deploymentMode: cluster-lite

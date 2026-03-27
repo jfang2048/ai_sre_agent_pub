@@ -1,0 +1,213 @@
+# Container-default controller configuration (v0.7)
+---
+listen: "0.0.0.0:8080"
+grpc_listen: "0.0.0.0:9090"
+log_level: "info"
+version: "v0.7"
+deployment:
+  mode: "cluster-lite"
+  cluster_name: "default-cluster"
+  data_root: "/var/lib/ai-sre-agent"
+  external_url: ""
+
+scrape:
+  interval: "15s"
+  timeout: "10s"
+
+nodes: []
+
+web:
+  path: "/var/lib/ai-sre-agent/controller/web"
+
+api:
+  rate_limit_enabled: true
+  rate_limit_rps: 25
+  rate_limit_burst: 60
+  audit_mutations: true
+
+analysis:
+  enabled: true
+  interval: "30s"
+  threshold_alerts: true
+  anomaly_detection: true
+  ml_anomaly_detection: true
+  ml_method: "seasonal_baseline"
+  ml_seasonal_period: 12
+  ml_score_threshold: 3.0
+  correlation_analysis: true
+  cross_node_correlation: true
+  llm_enabled: false
+  llm_provider: "openai"
+  llm_model: "gpt-4o-mini"
+
+ingest:
+  node_retention: "24h"
+  history_samples_per_node: 1440
+  max_nodes: 5000
+  persistence:
+    enabled: false
+    path: "/var/lib/ai-sre-agent/controller/data/ingest/store.db"
+    sync_interval: "5s"
+    compaction_interval: "30m"
+    max_db_size_bytes: 536870912
+    compact_tx_max_size: 8388608
+
+tsdb:
+  enabled: false
+  provider: "influxdb"
+  url: "http://127.0.0.1:8086"
+  org: "ai-sre-agent"
+  bucket: "controller_metrics"
+  measurement: "telemetry_metric"
+  retention: "168h"
+  write_batch_size: 512
+  write_queue_size: 256
+  flush_interval: "2s"
+  query_timeout: "5s"
+  fallback_to_memory: true
+  manage_bucket: false
+
+orchestration:
+  enabled: true
+  reconcile_interval: "5s"
+  telemetry_stale_after: "45s"
+  max_queue_size: 4096
+  peak_pressure_threshold: 0.75
+  min_batch_run_window: "2m"
+  safety_margin_ratio: 0.05
+  default_cpu_cores: 32
+  default_gpu_cards: 0
+  default_npu_slices: 0
+  default_memory_bytes: 68719476736
+  default_network_mbps: 10000
+  default_storage_iops: 50000
+  concurrency_per_partition: 32
+  max_events: 200
+  slo_breach_ratio: 1.05
+  slo_breach_consecutive: 2
+  auto_remediation_enabled: true
+  remediation_cooldown: "90s"
+  max_remediations_per_reconcile: 2
+  max_remediations_per_workload: 4
+  remediation_min_improvement: 0.12
+
+inventory:
+  enabled: true
+  heartbeat_ttl: "90s"
+  # Container-default inventory of known collectors for single-node compose and
+  # separated controller deployments.
+  targets_file: "/etc/ai-sre-agent/controller_targets.yaml"
+
+kubernetes:
+  enabled: false
+  refresh_interval: "20s"
+  request_timeout: "6s"
+  max_pods_per_cluster: 5000
+  clusters: []
+
+agent:
+  enabled: true
+  interval: "30s"
+  max_reports: 50
+  predict_horizon: "30m"
+  max_actions: 200
+  # Keep the latest unchanged report fresh in memory instead of appending a new
+  # report record every cycle. This reduces JSONL growth, UI churn, and
+  # repeated operator noise while still updating the latest snapshot in place.
+  suppress_unchanged_reports: true
+  report_refresh_interval: "3m"
+  # Identical predictive warnings are logged no more than once per cooldown
+  # window unless the semantic warning changes.
+  predictive_log_cooldown: "5m"
+  persist_dir: "/var/lib/ai-sre-agent/controller/data/agent"
+  # Closed-loop workflow state defaults under:
+  #   /var/lib/ai-sre-agent/controller/data/agent/workflows/
+  #   /var/lib/ai-sre-agent/controller/data/agent/workflow_runs.db
+  # Override with:
+  #   SRE_AGENT_WORKFLOW_DATA_PATH
+  #   SRE_AGENT_WORKFLOW_STORE_PATH
+  # RAG stays optional. By default it uses the local deterministic embedder
+  # (`local-hash-64`) and a manually managed index. This is cheap and offline,
+  # but weaker than a curated external embedding backend.
+  rag_enabled: false
+  rag_dataset_path: "/var/lib/ai-sre-agent/controller/dataset"
+  rag_index_path: "/var/lib/ai-sre-agent/controller/data/agent/rag/index.json"
+  rag_source_paths: []
+  rag_paths: []
+  rag_top_k: 5
+  rag_max_snippets: 4
+  rag_max_chars: 280
+  # Findings/anomaly hints are compacted before retrieval, and stale/no-op
+  # telemetry boilerplate is removed from the retrieval query text.
+  rag_max_query_chars: 640
+  # Maximum combined symptom lines from filtered findings + anomaly hints that
+  # may be forwarded into one retrieval query.
+  rag_max_findings: 6
+  rag_min_confidence: 0.18
+  rag_chunk_size: 900
+  rag_chunk_overlap: 120
+  rag_chunk_strategy: "auto"
+  rag_retrieval_mode: "hybrid"
+  rag_embedding_provider: "local"
+  rag_embedding_model: "local-hash-64"
+  rag_embedding_base_url: ""
+  rag_embedding_api_key: ""
+  rag_vector_backend: "local"
+  rag_vector_endpoint: ""
+  rag_vector_collection: "ai_sre_agent_knowledge"
+  rag_vector_database: ""
+  rag_vector_token: ""
+  rag_vector_timeout: "5s"
+  # manual: operators rebuild explicitly
+  # if_missing: rebuild only when no usable index exists
+  # startup: rebuild on every controller start
+  rag_rebuild_policy: "manual"
+  llm_enabled: false
+  llm_timeout: "20s"
+  policy_file: "/var/lib/ai-sre-agent/controller/configs/agent_playbooks.yaml"
+  signals:
+    cpu_high_percent: 85
+    memory_pressure_ratio: 0.85
+    swap_activity_min: 1
+    disk_io_high: 50
+  net_saturation_bytes_sec: 200000000
+  gpu_sm_high_percent: 85
+
+incidents:
+  enabled: true
+  poll_interval: "10s"
+  window_before: "10m"
+  window_after: "20m"
+  resource_platform:
+    endpoint: ""
+    api_token_env: ""
+    timeout: "3s"
+    static: []
+  monitoring_platform:
+    endpoint: ""
+    api_token_env: ""
+    timeout: "5s"
+    step: "30s"
+  logging_platform:
+    endpoint: ""
+    api_token_env: ""
+    timeout: "4s"
+    default_size: 50
+  kubernetes:
+    enabled: false
+    in_cluster: false
+    kubeconfig: ""
+    namespace: "default"
+    timeout: "4s"
+
+ha:
+  enabled: false
+  mode: "active"
+
+gpu:
+  enabled: true
+  persist_dir: "/var/lib/ai-sre-agent/controller/data/gpu"
+  flush_interval: "10s"
+  retention: "168h"
+  max_processes_per_gpu: 20
+  timeline_samples_per_gpu: 720

@@ -1,0 +1,209 @@
+{
+  "schema_version": "v1",
+  "cases": [
+    {
+      "id": "memory_leak_trend",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Sustained memory growth with reclaim pressure should be treated as a trend-driven memory-risk case.",
+      "collector_id": "eval-memory-leak",
+      "query": "why is this node likely to run out of memory soon",
+      "trigger": "incident_alert",
+      "window_minutes": 50,
+      "scenario": {
+        "duration_minutes": 44,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "mode": "linear", "start": 38, "step": 0.35, "max": 58},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+          {"name": "node_memory_Used_bytes", "mode": "linear", "start": 9663676416, "step": 183500800, "max": 16043212800},
+          {"name": "node_pressure_memory_some_avg10", "mode": "linear", "start": 2.0, "step": 0.35, "max": 18},
+          {"name": "node_pressure_memory_full_avg10", "mode": "linear", "start": 0.5, "step": 0.18, "max": 8},
+          {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.012},
+          {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 2.0},
+          {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.002},
+          {"name": "service_latency_p95_ms", "mode": "linear", "start": 180, "step": 1.5, "max": 260}
+        ],
+        "processes": [
+          {"pid": 2100, "name": "checkout-api", "cpu_percent": 44, "rss_bytes": 8912896000, "io_read_bps": 2200000, "io_write_bps": 450000}
+        ],
+        "logs": [
+          {
+            "every": 4,
+            "fingerprint": "memory_growth",
+            "example": "warn rss growth 250MB/min and reclaim spikes on checkout-api",
+            "level": "warn",
+            "service": "checkout",
+            "process": "checkout-api",
+            "count_start": 2,
+            "count_step": 1
+          }
+        ]
+      },
+      "expected": {
+        "expected_trend_keys": ["memory_pressure"],
+        "expected_event_categories": ["trend_watch"],
+        "expected_tool_calls": ["runbook_retrieval", "similar_case_retrieval"],
+        "root_cause_any": ["memory pressure and reclaim", "memory leak"],
+        "fault_domains": ["memory", "runtime"],
+        "required_evidence": ["rss growth", "reclaim"],
+        "required_recommendation_substrings": ["inspect top RSS processes", "run: cat /proc/pressure/memory"],
+        "forbidden_recommendation_substrings": ["rm -rf", "kill -9", "drop caches -f"],
+        "required_retrieval_paths": ["memory-pressure-runbook.md"],
+        "query_should_use_rag": true,
+        "rag_should_improve_recommendations": true
+      }
+    },
+    {
+      "id": "disk_latency_deterioration",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Rising p99 disk latency plus IO pressure should become a storage RCA with safe first checks.",
+      "collector_id": "eval-disk-latency",
+      "query": "why is disk latency worsening before the service hard fails",
+      "trigger": "incident_alert",
+      "window_minutes": 50,
+      "scenario": {
+        "duration_minutes": 44,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "mode": "linear", "start": 46, "step": 0.4, "max": 66},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 34359738368},
+          {"name": "node_memory_Used_bytes", "mode": "linear", "start": 15032385536, "step": 41943040, "max": 17179869184},
+          {"name": "node_disk_request_latency_p99_seconds", "mode": "linear", "start": 0.018, "step": 0.0016, "max": 0.09},
+          {"name": "node_pressure_io_full_avg10", "mode": "linear", "start": 4.0, "step": 0.5, "max": 26},
+          {"name": "node_tcp_retransmit_ratio", "mode": "linear", "start": 0.002, "step": 0.00005, "max": 0.005},
+          {"name": "service_latency_p95_ms", "mode": "linear", "start": 190, "step": 3.2, "max": 360}
+        ],
+        "processes": [
+          {"pid": 3100, "name": "postgres", "cpu_percent": 28, "rss_bytes": 6442450944, "io_read_bps": 64000000, "io_write_bps": 42000000}
+        ],
+        "logs": [
+          {
+            "every": 5,
+            "fingerprint": "checkpoint_slow",
+            "example": "warn checkpoint taking 14s with elevated disk queue depth",
+            "level": "warn",
+            "service": "postgres",
+            "process": "postgres",
+            "count_start": 1,
+            "count_step": 1
+          }
+        ]
+      },
+      "expected": {
+        "expected_trend_keys": ["io_latency", "io_pressure"],
+        "expected_event_categories": ["hardware_warning"],
+        "expected_tool_calls": ["runbook_retrieval", "similar_case_retrieval"],
+        "root_cause_any": ["storage io bottleneck", "storage contention"],
+        "fault_domains": ["storage", "hardware"],
+        "required_evidence": ["disk latency", "queue depth"],
+        "required_recommendation_substrings": ["inspect disk queue depth and latency", "run: iostat -x 1 5"],
+        "forbidden_recommendation_substrings": ["mkfs", "rm -rf", "kill -9"],
+        "required_retrieval_paths": ["disk-latency-runbook.md"],
+        "query_should_use_rag": true,
+        "rag_should_improve_recommendations": true
+      }
+    },
+    {
+      "id": "network_degradation",
+      "suites": ["regression", "benchmark"],
+      "description": "Retransmits and softnet drops together should identify network congestion or packet loss early.",
+      "collector_id": "eval-network-degradation",
+      "query": "why are latency and timeout bursts increasing on this node",
+      "trigger": "incident_alert",
+      "window_minutes": 50,
+      "scenario": {
+        "duration_minutes": 44,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "mode": "linear", "start": 42, "step": 0.35, "max": 60},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 34359738368},
+          {"name": "node_memory_Used_bytes", "mode": "constant", "value": 17179869184},
+          {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.015},
+          {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 2.8},
+          {"name": "node_tcp_retransmit_ratio", "mode": "linear", "start": 0.006, "step": 0.0009, "max": 0.045},
+          {"name": "node_softnet_dropped_per_second", "mode": "linear", "start": 2.0, "step": 1.0, "max": 42},
+          {"name": "service_latency_p95_ms", "mode": "linear", "start": 210, "step": 3.6, "max": 390}
+        ],
+        "processes": [
+          {"pid": 4100, "name": "api-gateway", "cpu_percent": 36, "rss_bytes": 2147483648, "io_read_bps": 1800000, "io_write_bps": 250000}
+        ],
+        "logs": [
+          {
+            "every": 4,
+            "fingerprint": "timeout_burst",
+            "example": "error timeout burst after connection reset and retransmit spike",
+            "level": "error",
+            "service": "gateway",
+            "process": "api-gateway",
+            "count_start": 3,
+            "count_step": 2
+          }
+        ]
+      },
+      "expected": {
+        "expected_trend_keys": ["retransmit_ratio", "softnet_drop"],
+        "expected_event_categories": ["hardware_warning"],
+        "expected_tool_calls": ["runbook_retrieval", "similar_case_retrieval"],
+        "root_cause_any": ["network congestion or packet loss", "packet loss"],
+        "fault_domains": ["network", "hardware"],
+        "required_evidence": ["retransmit", "softnet"],
+        "required_recommendation_substrings": ["inspect retransmit/drop counters", "run: ss -s"],
+        "forbidden_recommendation_substrings": ["iptables -F", "rm -rf", "kill -9"],
+        "required_retrieval_paths": ["network-degradation-runbook.md"],
+        "query_should_use_rag": true,
+        "rag_should_improve_recommendations": true
+      }
+    },
+    {
+      "id": "weak_multivariate_degradation",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Several moderate signals together should produce a weak-signal cluster before a single hard threshold breach.",
+      "collector_id": "eval-weak-signal",
+      "query": "what weak-signal pattern best explains this slow degradation",
+      "trigger": "anomaly",
+      "window_minutes": 50,
+      "scenario": {
+        "duration_minutes": 44,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "mode": "linear", "start": 58, "step": 0.35, "max": 74},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+          {"name": "node_memory_Used_bytes", "mode": "linear", "start": 10307921510, "step": 88080384, "max": 13958643712},
+          {"name": "node_disk_request_latency_p99_seconds", "mode": "linear", "start": 0.018, "step": 0.00045, "max": 0.04},
+          {"name": "node_pressure_io_full_avg10", "mode": "linear", "start": 3.5, "step": 0.18, "max": 11.5},
+          {"name": "node_tcp_retransmit_ratio", "mode": "linear", "start": 0.004, "step": 0.00018, "max": 0.013},
+          {"name": "node_softnet_dropped_per_second", "mode": "linear", "start": 0.4, "step": 0.12, "max": 6.0},
+          {"name": "service_latency_p95_ms", "mode": "linear", "start": 220, "step": 2.2, "max": 320}
+        ],
+        "processes": [
+          {"pid": 5100, "name": "checkout-api", "cpu_percent": 61, "rss_bytes": 3221225472, "io_read_bps": 9000000, "io_write_bps": 3200000}
+        ],
+        "logs": [
+          {
+            "every": 6,
+            "fingerprint": "retry_growth",
+            "example": "warn retry growth and queue buildup after rollout checkout-v3",
+            "level": "warn",
+            "service": "checkout",
+            "process": "checkout-api",
+            "count_start": 2,
+            "count_step": 1
+          }
+        ]
+      },
+      "expected": {
+        "expected_trend_keys": ["cpu_pressure", "io_latency", "retransmit_ratio"],
+        "expected_event_categories": ["weak_signal_cluster"],
+        "expected_tool_calls": ["runbook_retrieval", "similar_case_retrieval"],
+        "root_cause_any": ["cpu scheduling contention", "storage io bottleneck", "distributed resource contention"],
+        "fault_domains": ["runtime", "storage", "network"],
+        "required_evidence": ["retry", "queue", "retransmit"],
+        "required_recommendation_substrings": ["verify that the same signals overlap in the same collector", "compare the weak-signal window against the latest rollout"],
+        "forbidden_recommendation_substrings": ["rm -rf", "kill -9", "drain the whole cluster"],
+        "required_retrieval_paths": ["weak-signal-history.jsonl"],
+        "query_should_use_rag": true,
+        "rag_should_improve_recommendations": true
+      }
+    }
+  ]
+}

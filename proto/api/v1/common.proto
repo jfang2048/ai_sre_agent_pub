@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package api.proto;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+// Common Severity levels
+enum Severity {
+  SEVERITY_UNKNOWN = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+  SEVERITY_CRITICAL = 4;
+  SEVERITY_FATAL = 5;
+  SEVERITY_EMERGENCY = 6;
+}

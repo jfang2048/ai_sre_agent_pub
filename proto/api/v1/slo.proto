@@ -1,0 +1,398 @@
+syntax = "proto3";
+
+package api.proto;
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+import "google/protobuf/timestamp.proto";
+
+import "api/v1/common.proto";
+
+// SLO types
+enum SLOType {
+  SLO_TYPE_UNKNOWN = 0;
+  SLO_TYPE_AVAILABILITY = 1;
+  SLO_TYPE_LATENCY = 2;
+  SLO_TYPE_THROUGHPUT = 3;
+  SLO_TYPE_RESOURCE = 4;
+  SLO_TYPE_CUSTOM = 5;
+}
+
+// SLO mode defines how the SLO is calculated
+enum SLOMode {
+  SLO_MODE_UNKNOWN = 0;
+  SLO_MODE_METRIC_BASED = 1;
+  SLO_MODE_REQUEST_BASED = 2;
+  SLO_MODE_WINDOW_BASED = 3;
+}
+
+// Time window types
+enum WindowType {
+  WINDOW_TYPE_UNKNOWN = 0;
+  WINDOW_TYPE_ROLLING = 1;
+  WINDOW_TYPE_CALENDAR = 2;
+}
+
+// Error budget calculation methods
+enum ErrorBudgetMethod {
+  ERROR_BUDGET_METHOD_UNKNOWN = 0;
+  ERROR_BUDGET_METHOD_SLIDING_WINDOW = 1;
+  ERROR_BUDGET_METHOD_TIME_SLICE = 2;
+  ERROR_BUDGET_METHOD_REQUEST_BASED = 3;
+}
+
+// SLO (Service Level Objective) definition
+message SLO {
+  string id = 1;
+  string name = 2;
+  string display_name = 3;
+  string description = 4;
+
+  SLOType type = 5;
+  SLOMode mode = 6;
+
+  // Target configuration
+  oneof target {
+    double availability_target = 10;      // e.g., 0.9995 for 99.95%
+    LatencyTarget latency_target = 11;
+    ThroughputTarget throughput_target = 12;
+    ResourceTarget resource_target = 13;
+    double custom_target = 14;
+  }
+
+  // Time window for SLO evaluation
+  TimeWindow window = 20;
+
+  // SLI configuration
+  SLIConfig sli = 30;
+
+  // Error budget configuration
+  ErrorBudgetConfig error_budget = 40;
+
+  // Alerting rules
+  repeated SLOAlertRule alerts = 50;
+
+  // Labels for grouping
+  map<string, string> labels = 60;
+
+  // Status
+  bool enabled = 70;
+}
+
+// LatencyTarget defines latency-based SLO targets
+message LatencyTarget {
+  double value = 1;           // e.g., 200ms
+  string unit = 2;
+  double percentile = 3;      // e.g., 0.95 for p95
+}
+
+// ThroughputTarget defines throughput-based SLO targets
+message ThroughputTarget {
+  double read_mbps = 1;
+  double write_mbps = 2;
+  double read_iops = 3;
+  double write_iops =4;
+  double rps = 5;             // requests per second
+}
+
+// ResourceTarget defines resource-based SLO targets
+message ResourceTarget {
+  double cpu_percent = 1;
+  double memory_percent = 2;
+  double disk_percent = 3;
+  double network_percent = 4;
+}
+
+// TimeWindow defines the time window for SLO evaluation
+message TimeWindow {
+  WindowType type = 1;
+
+  oneof window {
+    RollingWindow rolling = 10;
+    CalendarWindow calendar = 11;
+  }
+}
+
+// RollingWindow defines a rolling time window
+message RollingWindow {
+  int32 duration_seconds = 1;
+}
+
+// CalendarWindow defines a calendar-based time window
+message CalendarWindow {
+  string start = 1;          // e.g., "00:00"
+  int32 duration_seconds = 2;
+}
+
+// SLIConfig configures the Service Level Indicator
+message SLIConfig {
+  string type = 1;
+  MetricSource metric = 2;
+  AggregationConfig aggregation = 3;
+
+  // For metric-based SLIs
+  oneof config {
+    PromQLMetric promql = 10;
+    ProcMetric proc = 11;
+    CustomMetric custom = 12;
+  }
+}
+
+// MetricSource for SLI
+message MetricSource {
+  MetricSourceType type = 1;
+  string query = 2;          // PromQL query, proc path, etc.
+  map<string, string> labels = 3;
+}
+
+enum MetricSourceType {
+  METRIC_SOURCE_TYPE_UNKNOWN = 0;
+  METRIC_SOURCE_TYPE_PROMETHEUS = 1;
+  METRIC_SOURCE_TYPE_PROC = 2;
+  METRIC_SOURCE_TYPE_KUBERNETES = 3;
+  METRIC_SOURCE_TYPE_CUSTOM = 4;
+}
+
+// AggregationConfig for SLI calculation
+message AggregationConfig {
+  string function = 1;       // avg, sum, max, min, etc.
+  int32 interval_seconds = 2;
+}
+
+// PromQLMetric defines a Prometheus-based metric
+message PromQLMetric {
+  string query = 1;
+}
+
+// ProcMetric defines a /proc-based metric
+message ProcMetric {
+  string source = 1;         // e.g., /proc/meminfo, /proc/stat
+  string field = 2;
+  map<string, string> sources = 3;  // For compound metrics
+}
+
+// CustomMetric defines a custom metric source
+message CustomMetric {
+  string handler = 1;
+  map<string, string> config = 2;
+}
+
+// ErrorBudgetConfig configures error budget calculation
+message ErrorBudgetConfig {
+  ErrorBudgetMethod method = 1;
+  double alert_threshold = 2;  // Alert when budget drops below this %
+}
+
+// SLOAlertRule defines an SLO-related alert rule
+message SLOAlertRule {
+  string id = 1;
+  string name = 2;
+  Severity severity = 3;
+  SLOAlertCondition condition = 4;
+  int32 suppress_for_seconds = 5;
+}
+
+// SLOAlertCondition defines when to alert
+message SLOAlertCondition {
+  SLOConditionType type = 1;
+
+  oneof condition {
+    SLOThresholdCondition threshold = 10;
+    SLOPredictionCondition prediction = 11;
+  }
+}
+
+enum SLOConditionType {
+  SLO_CONDITION_TYPE_UNKNOWN = 0;
+  SLO_CONDITION_TYPE_THRESHOLD = 1;
+  SLO_CONDITION_TYPE_PREDICTION = 2;
+}
+
+message SLOThresholdCondition {
+  string metric = 1;
+  double threshold = 2;
+}
+
+message SLOPredictionCondition {
+  string metric = 1;
+  double threshold = 2;
+}
+
+// SLOStatus represents the current status of an SLO
+message SLOStatus {
+  string slo_id = 1;
+  string slo_name = 2;
+
+  // Current SLI value
+  double sli_value = 10;
+
+  // Target value
+  double target = 11;
+
+  // Error budget
+  double error_budget_remaining = 20;  // Percentage
+  double error_budget_remaining_seconds = 21;
+
+  // Burn rate
+  double burn_rate = 30;
+  double burn_rate_1h = 31;
+  double burn_rate_24h = 32;
+
+  // Status indicators
+  bool meeting_target = 40;
+  bool breach_imminent = 41;
+  bool breached = 42;
+
+  // Time range
+  google.protobuf.Timestamp window_start = 50;
+  google.protobuf.Timestamp window_end = 51;
+
+  // Last update
+  google.protobuf.Timestamp last_update = 60;
+}
+
+// SLIReport is a detailed report of SLI performance
+message SLIReport {
+  string slo_id = 1;
+  string slo_name = 2;
+
+  // Time series of SLI values
+  repeated SLIDataPoint sli_data = 10;
+
+  // Summary statistics
+  SLISummary summary = 20;
+
+  // Events that affected SLO
+  repeated SLOEvent events = 30;
+}
+
+message SLIDataPoint {
+  google.protobuf.Timestamp timestamp = 1;
+  double value = 2;
+  bool met_target = 3;
+}
+
+message SLISummary {
+  double min = 1;
+  double max = 2;
+  double avg = 3;
+  double p50 = 4;
+  double p95 = 5;
+  double p99 = 6;
+  double percentile_target = 7;
+}
+
+// SLOEvent represents an event that affected SLO performance
+message SLOEvent {
+  string id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string type = 3;           // breach, recovery, degradation, etc.
+  string message = 4;
+  double sli_value = 5;
+  map<string, string> labels = 6;
+}
+
+// SLORequest/Response messages
+message GetSLORequest {
+  string id = 1;
+  string name = 2;
+}
+
+message GetSLOResponse {
+  SLO slo = 1;
+}
+
+message ListSLOsRequest {
+  bool enabled_only = 1;
+  map<string, string> label_matcher = 2;
+}
+
+message ListSLOsResponse {
+  repeated SLO slos = 1;
+}
+
+message GetSLOStatusRequest {
+  string slo_id = 1;
+  google.protobuf.Timestamp timestamp = 2;  // Optional, defaults to now
+}
+
+message GetSLOStatusResponse {
+  SLOStatus status = 1;
+}
+
+message ListSLOStatusRequest {
+  repeated string slo_ids = 1;
+}
+
+message ListSLOStatusResponse {
+  repeated SLOStatus statuses = 1;
+}
+
+message CreateSLORequest {
+  SLO slo = 1;
+}
+
+message CreateSLOResponse {
+  SLO slo = 1;
+}
+
+message UpdateSLORequest {
+  string id = 1;
+  SLO slo = 2;
+}
+
+message UpdateSLOResponse {
+  SLO slo = 1;
+}
+
+message DeleteSLORequest {
+  string id = 1;
+}
+
+message DeleteSLOResponse {
+  bool success = 1;
+}
+
+message GetSLIReportRequest {
+  string slo_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+}
+
+message GetSLIReportResponse {
+  SLIReport report = 1;
+}
+
+// SLOService manages SLOs
+service SLOService {
+  // Get a single SLO
+  rpc GetSLO(GetSLORequest) returns (GetSLOResponse);
+
+  // List all SLOs
+  rpc ListSLOs(ListSLOsRequest) returns (ListSLOsResponse);
+
+  // Create a new SLO
+  rpc CreateSLO(CreateSLORequest) returns (CreateSLOResponse);
+
+  // Update an existing SLO
+  rpc UpdateSLO(UpdateSLORequest) returns (UpdateSLOResponse);
+
+  // Delete an SLO
+  rpc DeleteSLO(DeleteSLORequest) returns (DeleteSLOResponse);
+
+  // Get current SLO status
+  rpc GetSLOStatus(GetSLOStatusRequest) returns (GetSLOStatusResponse);
+
+  // List multiple SLO statuses
+  rpc ListSLOStatus(ListSLOStatusRequest) returns (ListSLOStatusResponse);
+
+  // Get detailed SLI report
+  rpc GetSLIReport(GetSLIReportRequest) returns (GetSLIReportResponse);
+
+  // Stream SLO status updates
+  rpc WatchSLOStatus(WatchSLOStatusRequest) returns (stream SLOStatus);
+}
+
+message WatchSLOStatusRequest {
+  repeated string slo_ids = 1;
+}

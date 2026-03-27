@@ -1,0 +1,1 @@
+{"collector_id":"collector-labels","hostname":"node-labels","labels":{"env":"prod","region":"us-west","zone":"us-west-2a"},"last_seen":"2026-02-21T20:28:12.740833879+01:00","gpu_count":0,"gpus":{}}

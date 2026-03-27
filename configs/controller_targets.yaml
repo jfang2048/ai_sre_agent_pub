@@ -1,0 +1,36 @@
+# Controller-side inventory of known collectors (v0.7)
+---
+collectors:
+  - id: "collector-local"
+    name: "local-dev-collector"
+    hostname: "collector-local"
+    address: "127.0.0.1"
+    port: 9464
+    enabled: true
+    labels:
+      env: "dev"
+      topology: "single-node"
+    tags: ["single-node", "local"]
+    auth:
+      mode: "none"
+      description: "Local development collector metrics/health listener"
+    metadata:
+      role: "demo-default"
+
+  - id: "collector-edge-a"
+    name: "edge-a"
+    hostname: "edge-a.example.net"
+    address: "10.20.0.11"
+    port: 9464
+    enabled: false
+    labels:
+      env: "prod"
+      site: "dc-a"
+    tags: ["remote", "example"]
+    auth:
+      mode: "mtls"
+      server_name: "controller.example.net"
+      token_env: "SRE_COLLECTOR_TOKEN"
+      description: "Example remote collector entry for separated deployments"
+    metadata:
+      owner: "sre"

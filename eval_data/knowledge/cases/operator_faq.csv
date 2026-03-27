@@ -1,0 +1,4 @@
+Question,LinkToAnswer
+How do I verify retry amplification after rollout?,Check rollout timing against retry-rate growth and request queue build-up before changing replica count.
+How do I confirm reclaim pressure safely?,Use cat /proc/pressure/memory and compare swap or OOM counters before restarting services.
+How do I inspect packet loss safely?,Use ss -s and ip -s link on the affected node before changing the application.

@@ -1,0 +1,173 @@
+---
+# Production SLO Definitions
+
+slos:
+  # API Availability SLO
+  - name: api_availability
+    display_name: "API Availability"
+    description: "Percentage of successful API requests"
+    target: 0.9995  # 99.95%
+    window:
+      rolling: 30d
+    mode: metric-based
+
+    # SLI Configuration
+    sli:
+      type: availability
+      metric:
+        type: prometheus
+        query: 'sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))'
+      aggregation:
+        function: avg
+        interval: 1m
+
+    # Error budget calculation
+    error_budget:
+      method: sliding-window
+      alert_threshold: 20  # Alert when 20% of error budget remaining
+
+    # Alerting rules
+    alerts:
+      - name: api_availability_burn_rate_high
+        severity: critical
+        condition:
+          type: threshold
+          metric: burn_rate
+          threshold: 10  # 10x normal burn rate
+        suppress_for: 15m
+
+      - name: api_availability_slo_breach_imminent
+        severity: warning
+        condition:
+          type: prediction
+          metric: error_budget_remaining
+          threshold: 25  # 25% remaining
+        suppress_for: 1h
+
+  # API Latency SLO
+  - name: api_latency
+    display_name: "API Latency"
+    description: "95th percentile request latency"
+    target:
+      value: 200ms
+      percentile: 0.95
+    window:
+      calendar:
+        start: "00:00"
+        duration: 24h
+    mode: metric-based
+
+    sli:
+      type: latency
+      metric:
+        type: prometheus
+        query: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))'
+      aggregation:
+        function: max
+        interval: 5m
+
+    error_budget:
+      method: time-slice
+
+    alerts:
+      - name: api_latency_p95_high
+        severity: warning
+        condition:
+          type: threshold
+          metric: latency_p95
+          threshold: 150ms  # 75% of target
+        suppress_for: 30m
+
+      - name: api_latency_p95_critical
+        severity: critical
+        condition:
+          type: threshold
+          metric: latency_p95
+          threshold: 180ms  # 90% of target
+        suppress_for: 15m
+
+  # Storage Throughput SLO
+  - name: storage_throughput
+    display_name: "Storage Throughput"
+    description: "Storage system read/write throughput"
+    target:
+      read_mbps: 500
+      write_mbps: 300
+    window:
+      rolling: 1h
+    mode: metric-based
+
+    sli:
+      type: throughput
+      metric:
+        type: proc
+        source: diskstats
+      aggregation:
+        function: avg
+        interval: 1m
+
+    alerts:
+      - name: storage_throughput_degraded
+        severity: warning
+        condition:
+          type: threshold
+          metric: throughput
+          threshold: 80  # 80% of target
+        suppress_for: 20m
+
+  # System Resource SLO
+  - name: system_resources
+    display_name: "System Resources"
+    description: "CPU, Memory, and Disk usage"
+    target:
+      cpu_percent: 80
+      memory_percent: 85
+      disk_percent: 90
+    window:
+      rolling: 5m
+    mode: metric-based
+
+    sli:
+      type: resource
+      metric:
+        type: proc
+        sources:
+          - cpu: "/proc/stat"
+          - memory: "/proc/meminfo"
+          - disk: "/proc/diskstats"
+      aggregation:
+        function: max
+        interval: 30s
+
+    alerts:
+      - name: cpu_usage_high
+        severity: warning
+        condition:
+          type: threshold
+          metric: cpu_usage
+          threshold: 80
+        suppress_for: 10m
+
+      - name: memory_usage_high
+        severity: warning
+        condition:
+          type: threshold
+          metric: memory_usage
+          threshold: 85
+        suppress_for: 10m
+
+      - name: disk_usage_high
+        severity: critical
+        condition:
+          type: threshold
+          metric: disk_usage
+          threshold: 90
+        suppress_for: 1h
+
+      - name: oom_risk_detected
+        severity: critical
+        condition:
+          type: threshold
+          metric: memory_usage
+          threshold: 95
+        suppress_for: 5m

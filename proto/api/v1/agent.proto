@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package api.proto;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
+
+// CollectorService is the service exposed by the Controller to receive data from Probes.
+service CollectorService {
+  // Register allows a Probe to register itself with the Controller.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // StreamMetrics allows a Probe to push metrics continuously via a bidirectional stream.
+  // The Controller can also send commands back to the Probe via this stream.
+  rpc StreamMetrics(stream MetricBatch) returns (stream Command);
+}
+
+// === Registration Messages ===
+
+message RegisterRequest {
+  string agent_uuid = 1;      // Unique ID of the probe (persisted)
+  string hostname = 2;        // Hostname of the monitored machine
+  string version = 3;         // Probe version
+  string os = 4;              // OS (e.g. "linux")
+  string arch = 5;            // Architecture (e.g. "amd64")
+  map<string, string> tags = 6; // Metadata tags (env=prod, role=web)
+  int64 verified_time = 7;    // Client timestamp for clock skew check
+}
+
+message RegisterResponse {
+  bool accepted = 1;          // True if registration succeeded
+  string message = 2;         // Error message or welcome text
+  int64 server_time = 3;      // Server timestamp
+  Config config = 4;          // Initial configuration
+}
+
+// === Metric Messages ===
+
+message MetricBatch {
+  string agent_uuid = 1;
+  int64 timestamp_ms = 2;
+  repeated Metric metrics = 3;
+}
+
+message Metric {
+  string name = 1;
+  double value = 2;
+  map<string, string> labels = 3;
+  MetricType type = 4;
+}
+
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  METRIC_TYPE_GAUGE = 1;
+  METRIC_TYPE_COUNTER = 2;
+}
+
+// === Command / Control Messages ===
+
+message Command {
+  string command_id = 1;
+  CommandType type = 2;
+  string payload = 3; // JSON payload for the command
+}
+
+enum CommandType {
+  COMMAND_TYPE_UNSPECIFIED = 0;
+  COMMAND_TYPE_UPDATE_CONFIG = 1;
+  COMMAND_TYPE_RESTART = 2;
+  COMMAND_TYPE_EXEC_SCRIPT = 3; // For future remediation
+}
+
+message CommandAck {
+  string command_id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Configuration pushed to the probe
+message Config {
+  int32 scrape_interval_seconds = 1;
+  repeated string enabled_collectors = 2;
+  // Thresholds, etc.
+}
+
+// Legacy AgentStatus for backward compatibility or UI use
+message AgentStatus {
+  string agent_id = 1;
+  string state = 2;
+  string version = 3;
+  google.protobuf.Timestamp last_heartbeat = 4;
+  int64 uptime_seconds = 5;
+  string hostname = 6;
+}

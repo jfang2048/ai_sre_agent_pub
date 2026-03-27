@@ -1,0 +1,61 @@
+# Sample SLO configuration for testing
+slo:
+  # API availability SLO
+  - name: api-availability
+    display_name: "API Availability"
+    description: "Percentage of successful API requests"
+    target: 0.999  # 99.9%
+    window:
+      rolling:
+        duration: 30d
+        count: 1000
+    backend:
+      metrics:
+        - name: http.requests.total
+          type: counter
+        - name: http.errors.total
+          type: counter
+    sli:
+      success_metric: http.requests.total
+      failure_metric: http.errors.total
+    alerting:
+      burnrate:
+        - window: 1h
+          threshold: 10
+        - window: 6h
+          threshold: 2
+        - window: 24h
+          threshold: 1.1
+
+  # Latency SLO
+  - name: api-latency
+    display_name: "API Latency (P99)"
+    description: "99th percentile latency"
+    target: 500ms  # 500ms
+    window:
+      rolling:
+        duration: 7d
+        count: 10000
+    backend:
+      metric: http.request.duration
+      aggregation: histogram
+      percentile: 0.99
+    sli:
+      threshold: 0.5  # 500ms in seconds
+    alerting:
+      burnrate:
+        - window: 1h
+          threshold: 20
+
+  # Database SLO
+  - name: database-availability
+    display_name: "Database Availability"
+    description: "Percentage of successful database queries"
+    target: 0.9995
+    window:
+      calendar:
+        start: month
+    backend:
+      metrics:
+        - name: db.queries.total
+        - name: db.errors.total

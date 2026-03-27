@@ -1,0 +1,69 @@
+{
+  "schema_version": "v1",
+  "cases": [
+    {
+      "id": "memory_runbook_recall",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Runbook retrieval should prioritize the memory-pressure guide for sustained RSS growth queries.",
+      "query": "memory leak rss growth reclaim pressure on checkout-api",
+      "noisy_query": "memory leak rss growth reclaim pressure on checkout-api plus unrelated certificate rotation dns audit notes",
+      "intent": "runbook",
+      "top_k": 4,
+      "expected_paths": ["memory-pressure-runbook.md"],
+      "expected_knowledge_types": ["runbook"],
+      "expected_case_types": ["runbook"],
+      "expected_signals": ["memory"],
+      "min_recall_at_k": 1.0,
+      "min_precision_at_k": 0.25,
+      "min_noisy_recall_at_k": 1.0
+    },
+    {
+      "id": "disk_runbook_recall",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Disk-latency queries should recover the storage runbook instead of unrelated references.",
+      "query": "disk latency queue depth io pressure checkpoint slow",
+      "noisy_query": "disk latency queue depth io pressure checkpoint slow plus unrelated certificate review",
+      "intent": "runbook",
+      "top_k": 4,
+      "expected_paths": ["disk-latency-runbook.md"],
+      "expected_knowledge_types": ["runbook"],
+      "expected_case_types": ["runbook"],
+      "expected_signals": ["storage"],
+      "min_recall_at_k": 1.0,
+      "min_precision_at_k": 0.25,
+      "min_noisy_recall_at_k": 1.0
+    },
+    {
+      "id": "network_runbook_recall",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "Network degradation queries should recover the network runbook and preserve signal tags.",
+      "query": "tcp retransmit softnet drops timeout latency packet loss",
+      "noisy_query": "tcp retransmit softnet drops timeout latency packet loss plus compliance and certificate chatter",
+      "intent": "runbook",
+      "top_k": 4,
+      "expected_paths": ["network-degradation-runbook.md"],
+      "expected_knowledge_types": ["runbook"],
+      "expected_case_types": ["runbook"],
+      "expected_signals": ["network"],
+      "min_recall_at_k": 1.0,
+      "min_precision_at_k": 0.25,
+      "min_noisy_recall_at_k": 1.0
+    },
+    {
+      "id": "weak_signal_history_recall",
+      "suites": ["regression", "benchmark"],
+      "description": "Weak multivariate queries should surface historical incidents instead of only generic references.",
+      "query": "similar incident with moderate io latency retransmits queue growth after rollout",
+      "noisy_query": "similar incident with moderate io latency retransmits queue growth after rollout plus random certificate and faq chatter",
+      "intent": "historical_incident",
+      "top_k": 4,
+      "expected_paths": ["weak-signal-history.jsonl"],
+      "expected_knowledge_types": ["historical_incident"],
+      "expected_case_types": ["historical_incident"],
+      "expected_signals": ["deployment", "network", "storage"],
+      "min_recall_at_k": 1.0,
+      "min_precision_at_k": 0.25,
+      "min_noisy_recall_at_k": 1.0
+    }
+  ]
+}

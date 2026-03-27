@@ -1,0 +1,36 @@
+# Production Environment Configuration
+
+# Override defaults for production
+---
+
+logging:
+  level: "info"
+  format: "json"
+
+monitoring:
+  ebpf:
+    enabled: true
+    sample_rate: 5  # Lower sampling in prod
+  kubernetes:
+    enabled: true
+    in_cluster: true
+
+alerting:
+  evaluation_interval: 15s  # More frequent in prod
+  default_severity: "info"
+
+remediation:
+  enabled: true  # Enable in production with caution
+  preventive:
+    enabled: false  # Start disabled, enable after validation
+  reactive:
+    enabled: true
+
+performance:
+  workers:
+    collectors: 8
+    processors: 16
+    notifiers: 4
+
+security:
+  drop_capabilities: true

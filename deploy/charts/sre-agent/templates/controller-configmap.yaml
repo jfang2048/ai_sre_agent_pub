@@ -1,0 +1,65 @@
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}-config
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+data:
+  controller.yaml: |
+    listen: "0.0.0.0:{{ .Values.controller.service.httpPort }}"
+    grpc_listen: "0.0.0.0:{{ .Values.controller.service.grpcPort }}"
+    log_level: "info"
+    deployment:
+      mode: {{ include "sre-agent.controllerDeploymentMode" . | quote }}
+      cluster_name: {{ include "sre-agent.clusterName" . | quote }}
+      data_root: {{ include "sre-agent.controllerDataRoot" . | quote }}
+      external_url: {{ .Values.controller.externalURL | quote }}
+    api:
+      rate_limit_enabled: {{ .Values.controller.api.rateLimitEnabled }}
+      rate_limit_rps: {{ .Values.controller.api.rateLimitRPS }}
+      rate_limit_burst: {{ .Values.controller.api.rateLimitBurst }}
+      audit_mutations: {{ .Values.controller.api.auditMutations }}
+    web:
+      path: "/var/lib/ai-sre-agent/controller/web"
+    inventory:
+      enabled: true
+      heartbeat_ttl: "90s"
+      targets_file: "/etc/ai-sre-agent/controller_targets.yaml"
+    agent:
+      rag_enabled: {{ .Values.controller.env.ragEnabled | quote }}
+      rag_dataset_path: {{ include "sre-agent.controllerRagDatasetPath" . | quote }}
+      rag_index_path: {{ include "sre-agent.controllerRagIndexPath" . | quote }}
+      rag_source_paths: {{ toJson .Values.controller.rag.sourcePaths }}
+      rag_top_k: {{ .Values.controller.rag.topK }}
+      rag_max_snippets: {{ .Values.controller.rag.maxSnippets }}
+      rag_max_chars: {{ .Values.controller.rag.maxChars }}
+      rag_max_query_chars: {{ .Values.controller.rag.maxQueryChars }}
+      rag_max_findings: {{ .Values.controller.rag.maxFindings }}
+      rag_min_confidence: {{ .Values.controller.rag.minConfidence }}
+      rag_chunk_size: {{ .Values.controller.rag.chunkSize }}
+      rag_chunk_overlap: {{ .Values.controller.rag.chunkOverlap }}
+      rag_chunk_strategy: {{ .Values.controller.rag.chunkStrategy | quote }}
+      rag_retrieval_mode: {{ .Values.controller.rag.retrievalMode | quote }}
+      rag_embedding_provider: {{ .Values.controller.rag.embeddingProvider | quote }}
+      rag_embedding_model: {{ .Values.controller.rag.embeddingModel | quote }}
+      rag_embedding_base_url: {{ .Values.controller.rag.embeddingBaseURL | quote }}
+      rag_vector_backend: {{ .Values.controller.rag.vectorBackend | quote }}
+      rag_vector_endpoint: {{ .Values.controller.rag.vectorEndpoint | quote }}
+      rag_vector_collection: {{ .Values.controller.rag.vectorCollection | quote }}
+      rag_vector_database: {{ .Values.controller.rag.vectorDatabase | quote }}
+      rag_vector_timeout: {{ .Values.controller.rag.vectorTimeout | quote }}
+      rag_rebuild_policy: {{ .Values.controller.env.ragRebuildPolicy | quote }}
+      policy_file: {{ printf "%s/controller/configs/agent_playbooks.yaml" (include "sre-agent.controllerDataRoot" .) | quote }}
+{{- with .Values.controller.configInline }}
+{{ . | nindent 4 }}
+{{- end }}
+  controller_targets.yaml: |
+{{- if .Values.controller.staticTargets }}
+{{ toYaml .Values.controller.staticTargets | nindent 4 }}
+{{- else }}
+    []
+{{- end }}
+{{- end }}

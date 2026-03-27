@@ -1,0 +1,39 @@
+global:
+  deploymentMode: distributed
+  clusterName: prod-eu1
+  dataRoot: /var/lib/ai-sre-agent
+
+controller:
+  replicas: 3
+  externalURL: https://ai-sre-agent.example.com
+  podAntiAffinity:
+    enabled: true
+    type: required
+  ha:
+    enabled: true
+    backend: etcd
+    etcdEndpoints:
+      - http://etcd-0.etcd.sre.svc.cluster.local:2379
+      - http://etcd-1.etcd.sre.svc.cluster.local:2379
+      - http://etcd-2.etcd.sre.svc.cluster.local:2379
+  ingress:
+    enabled: true
+    hosts:
+      - host: ai-sre-agent.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+  rag:
+    vectorBackend: milvus
+    vectorEndpoint: http://milvus.monitoring.svc.cluster.local:19530
+    vectorCollection: ai_sre_agent_knowledge
+    vectorDatabase: ai_sre
+    vectorTokenSecretName: milvus-rag-token
+    vectorTokenSecretKey: token
+  api:
+    rateLimitEnabled: true
+    rateLimitRPS: 40
+    rateLimitBurst: 80
+
+collector:
+  deploymentMode: distributed

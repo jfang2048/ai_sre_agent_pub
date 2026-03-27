@@ -1,0 +1,845 @@
+{
+  "schema_version": "v1",
+  "cases": [
+    {
+      "id": "cpu_build_worker_recurring_burst",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "cpu",
+      "description": "Build and compile workers often pin CPU for short windows; repeated healthy runs should become expected recurring bursts.",
+      "collector_id": "eval-build-cpu",
+      "service": "build-compile-worker",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [34, 36, 38, 72, 78, 82, 84]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [48, 49, 50, 52, 53, 54, 55]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [34, 36, 38, 71, 79, 83, 85]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [48, 49, 50, 52, 53, 54, 55]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "no corroborating"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "cpu_traffic_surge_without_harm",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "cpu",
+      "description": "Request bursts and autoscaling lag can drive CPU and network up together without becoming a real incident when latency and errors stay healthy.",
+      "collector_id": "eval-traffic-surge",
+      "service": "frontend-api",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [38, 42, 48, 72, 81, 86, 88]},
+          {"name": "node_network_total_receive_bytes_per_second", "sequence": [6000000, 8000000, 10000000, 26000000, 34000000, 42000000, 48000000]},
+          {"name": "node_network_total_transmit_bytes_per_second", "sequence": [5000000, 7000000, 9000000, 22000000, 30000000, 38000000, 43000000]},
+          {"name": "service_latency_p95_ms", "sequence": [95, 100, 108, 116, 118, 117, 114]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [52, 53, 54, 56, 57, 57, 58]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [36, 38, 40, 46, 48, 49, 50]},
+              {"name": "node_network_total_receive_bytes_per_second", "sequence": [6000000, 7000000, 8000000, 9000000, 10000000, 11000000, 12000000]},
+              {"name": "node_network_total_transmit_bytes_per_second", "sequence": [5000000, 6000000, 7000000, 8500000, 9500000, 10500000, 11500000]},
+              {"name": "service_latency_p95_ms", "sequence": [92, 95, 98, 101, 103, 104, 105]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [52, 53, 54, 54, 55, 55, 56]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "suspicious_deviation",
+        "reason_any": ["load-driven", "downgraded"],
+        "disposition": "downgraded",
+        "triggered": true
+      }
+    },
+    {
+      "id": "cpu_busy_loop_runaway",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "cpu",
+      "description": "A runaway CPU loop without matching workload history should remain a real anomaly.",
+      "collector_id": "eval-busy-loop",
+      "service": "checkout-api",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [21, 23, 24, 88, 96, 99, 99]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [42, 42, 43, 44, 44, 45, 45]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [20, 22, 23, 24, 25, 24, 23]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [42, 42, 43, 43, 44, 44, 45]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["high-water mark", "real anomaly"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "deployment_cpu_spike_after_rollout",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "cpu",
+      "description": "A restart or rollout can cause a short CPU spike; with deploy context and brief duration it should be downgraded instead of treated as a hard incident.",
+      "collector_id": "eval-deploy-cpu",
+      "service": "cart-api",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [26, 30, 35, 63, 72, 76, 77]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [44, 46, 48, 50, 52, 53, 54]}
+        ],
+        "logs": [
+          {"every": 3, "fingerprint": "rollout_restart", "example": "deployment rollout restarted cart-api pods and warmed handlers", "level": "warn", "service": "cart-api", "process": "cart-api", "count_start": 1, "count_step": 0}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 1,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [25, 29, 33, 54, 61, 64, 65]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [44, 45, 47, 48, 49, 50, 51]}
+            ],
+            "logs": [
+              {"every": 3, "fingerprint": "rollout_restart", "example": "deployment rollout restarted cart-api pods", "level": "warn", "service": "cart-api", "process": "cart-api", "count_start": 1, "count_step": 0}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "suspicious_deviation",
+        "reason_any": ["recent deploy", "downgraded"],
+        "disposition": "downgraded",
+        "triggered": true
+      }
+    },
+    {
+      "id": "memory_startup_warmup_recurring",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "memory",
+      "description": "Service startup can legitimately grow RSS while caches, models, or classloaders warm up; repeated healthy warmups should be suppressed.",
+      "collector_id": "eval-startup-memory",
+      "service": "startup-model-loader",
+      "signal_id": "memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [52, 58, 64, 72, 78, 79, 79]},
+          {"name": "node_cpu_usage_percent", "sequence": [24, 26, 30, 42, 45, 43, 40]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [50, 56, 63, 71, 77, 78, 78]},
+              {"name": "node_cpu_usage_percent", "sequence": [22, 24, 28, 40, 44, 42, 39]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "no corroborating"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "deployment_service_latency_warmup_sparse",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "A rollout can temporarily push p95 latency up while handlers, caches, or connections warm. With sparse history it should stay visible, but it should still be explained as deploy/startup context rather than a hard fault.",
+      "collector_id": "eval-deploy-latency-sparse",
+      "service": "recommendation-api",
+      "signal_id": "service_latency",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "service_latency_p95_ms", "sequence": [118, 132, 168, 238, 304, 352, 372]},
+          {"name": "node_cpu_usage_percent", "sequence": [24, 28, 34, 48, 58, 56, 52]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [48, 49, 50, 52, 53, 53, 54]}
+        ],
+        "logs": [
+          {"every": 2, "fingerprint": "recommendation_rollout", "example": "deployment rollout restarted recommendation-api pods and warmed caches", "level": "warn", "service": "recommendation-api", "process": "recommendation-api", "count_start": 1, "count_step": 0}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 1,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "service_latency_p95_ms", "sequence": [112, 126, 154, 214, 268, 308, 320]},
+              {"name": "node_cpu_usage_percent", "sequence": [22, 26, 32, 42, 50, 49, 46]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [47, 48, 49, 50, 51, 52, 52]}
+            ],
+            "logs": [
+              {"every": 2, "fingerprint": "recommendation_rollout", "example": "deployment rollout restarted recommendation-api pods", "level": "warn", "service": "recommendation-api", "process": "recommendation-api", "count_start": 1, "count_step": 0}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "suspicious_deviation",
+        "reason_any": ["recent deploy", "downgraded"],
+        "disposition": "downgraded",
+        "triggered": true
+      }
+    },
+    {
+      "id": "deployment_service_latency_warmup_recurring",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "A startup or rollout can create a recurring p95 warmup spike. Once the same shape repeats cleanly, it should stop being treated as a fresh incident.",
+      "collector_id": "eval-deploy-latency-recurring",
+      "service": "search-api",
+      "signal_id": "service_latency",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "service_latency_p95_ms", "sequence": [120, 138, 176, 252, 326, 354, 348]},
+          {"name": "node_cpu_usage_percent", "sequence": [26, 31, 38, 52, 59, 57, 54]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [49, 50, 51, 53, 54, 54, 55]}
+        ],
+        "logs": [
+          {"every": 2, "fingerprint": "search_rollout", "example": "deployment rollout restarted search-api pods and warmed query caches", "level": "warn", "service": "search-api", "process": "search-api", "count_start": 1, "count_step": 0}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "service_latency_p95_ms", "sequence": [118, 136, 174, 248, 318, 346, 342]},
+              {"name": "node_cpu_usage_percent", "sequence": [25, 30, 37, 50, 57, 55, 52]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [48, 49, 50, 52, 53, 53, 54]}
+            ],
+            "logs": [
+              {"every": 2, "fingerprint": "search_rollout", "example": "deployment rollout restarted search-api pods", "level": "warn", "service": "search-api", "process": "search-api", "count_start": 1, "count_step": 0}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "no corroborating"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "memory_gradual_leak",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "memory",
+      "description": "A monotonic RSS climb over the window should stay anomalous instead of being normalized into a recurring burst.",
+      "collector_id": "eval-memory-leak-classifier",
+      "service": "api-service",
+      "signal_id": "memory_leak_rate",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [61, 66, 72, 79, 86, 92, 97]},
+          {"name": "node_cpu_usage_percent", "sequence": [34, 35, 36, 38, 40, 41, 42]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [58, 59, 60, 61, 62, 63, 64]},
+              {"name": "node_cpu_usage_percent", "sequence": [30, 31, 32, 33, 34, 35, 35]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["memory leak"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "memory_oom_kill_pressure",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "memory",
+      "description": "Approaching the limit plus OOMKill-style evidence must stay a confirmed anomaly.",
+      "collector_id": "eval-oom-kill",
+      "service": "api-memory-bound",
+      "signal_id": "memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [84, 88, 92, 95, 97, 98, 99]},
+          {"name": "node_cpu_usage_percent", "sequence": [42, 44, 46, 50, 55, 58, 60]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "oom_killed", "example": "container api-7d9d OOMKilled after memory cgroup hit limit", "level": "error", "service": "api-memory-bound", "process": "api-memory-bound", "count_start": 3, "count_step": 2}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 3,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [60, 62, 64, 66, 67, 68, 69]},
+              {"name": "node_cpu_usage_percent", "sequence": [34, 35, 36, 37, 38, 39, 40]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["oom", "kill signals"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "memory_node_eviction_pressure",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "memory",
+      "description": "Node-level memory pressure with eviction symptoms is an infrastructure incident, not a harmless workload burst.",
+      "collector_id": "eval-node-eviction",
+      "service": "node-agent",
+      "signal_id": "memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [87, 90, 93, 95, 96, 97, 98]},
+          {"name": "node_cpu_usage_percent", "sequence": [36, 38, 40, 43, 46, 47, 48]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "eviction", "example": "kubelet eviction manager: evicted pods due to node memory pressure", "level": "error", "service": "node-agent", "process": "node-agent", "count_start": 2, "count_step": 1}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 3,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [68, 69, 70, 71, 72, 73, 74]},
+              {"name": "node_cpu_usage_percent", "sequence": [34, 35, 36, 37, 38, 39, 40]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["eviction"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "gpu_expected_training_burst",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "gpu",
+      "description": "Training and inference jobs can drive GPU utilization and memory sharply up without being anomalous if that pattern repeats cleanly.",
+      "collector_id": "eval-gpu-train",
+      "service": "trainer-gpu",
+      "signal_id": "gpu_memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [74, 82, 90, 95, 96, 97, 96]},
+          {"name": "node_gpu_memory_used_percent", "sequence": [70, 79, 87, 92, 94, 95, 94]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [73, 81, 89, 95, 96, 97, 96]},
+              {"name": "node_gpu_memory_used_percent", "sequence": [69, 78, 86, 92, 94, 95, 94]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "no corroborating"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "gpu_memory_saturation_novel",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "gpu",
+      "description": "Novel GPU memory saturation without matching workload history should stay anomalous.",
+      "collector_id": "eval-gpu-memory-saturation",
+      "service": "serving-gpu",
+      "signal_id": "gpu_memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [44, 48, 52, 57, 60, 63, 64]},
+          {"name": "node_gpu_memory_used_percent", "sequence": [72, 82, 90, 95, 97, 98, 98]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [35, 38, 40, 42, 44, 45, 46]},
+              {"name": "node_gpu_memory_used_percent", "sequence": [38, 40, 42, 43, 44, 45, 46]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["high-water mark"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "gpu_memory_pinned_low_util",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "gpu",
+      "description": "Low GPU utilization with pinned GPU memory is a practical stuck-workload or resource-retention pattern.",
+      "collector_id": "eval-gpu-pinned",
+      "service": "model-serving-gpu",
+      "signal_id": "gpu_memory_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [12, 11, 10, 9, 8, 8, 7]},
+          {"name": "node_gpu_memory_used_percent", "sequence": [86, 89, 92, 95, 96, 96, 96]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [24, 26, 28, 30, 29, 28, 27]},
+              {"name": "node_gpu_memory_used_percent", "sequence": [40, 42, 44, 46, 47, 48, 49]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["pinned gpu memory", "stuck workload"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "gpu_fault_xid",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "gpu",
+      "description": "XID-like errors and driver faults must override normal utilization history and stay confirmed anomalies.",
+      "collector_id": "eval-gpu-fault",
+      "service": "trainer-gpu",
+      "signal_id": "gpu_utilization",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [74, 82, 90, 95, 96, 97, 96]},
+          {"name": "node_gpu_memory_used_percent", "sequence": [70, 79, 87, 92, 94, 95, 94]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "gpu_xid", "example": "NVRM: Xid 79, GPU has fallen off the bus", "level": "error", "service": "trainer-gpu", "process": "trainer-gpu", "count_start": 1, "count_step": 1}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [74, 82, 90, 95, 96, 97, 96]},
+              {"name": "node_gpu_memory_used_percent", "sequence": [70, 79, 87, 92, 94, 95, 94]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "confirmed_anomaly",
+        "reason_any": ["gpu fault"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "gpu_correlated_latency_errors",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "gpu",
+      "description": "GPU pressure plus rising latency and error bursts should become a correlated anomaly instead of a tolerated workload burst.",
+      "collector_id": "eval-gpu-correlated",
+      "service": "inference-gpu",
+      "signal_id": "gpu_utilization",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [72, 81, 88, 92, 94, 95, 95]},
+          {"name": "service_latency_p95_ms", "sequence": [120, 140, 180, 250, 310, 360, 420]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "inference_errors", "example": "error inference timeout burst while GPU queue backlog increased", "level": "error", "service": "inference-gpu", "process": "inference-gpu", "count_start": 2, "count_step": 2}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_gpu_utilization_sm_avg_percent", "sequence": [72, 81, 88, 92, 94, 95, 95]},
+              {"name": "service_latency_p95_ms", "sequence": [92, 94, 96, 98, 100, 102, 104]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "correlated_anomaly",
+        "reason_any": ["current evidence"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "batch_cpu_recurring_clean",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "Recurring batch or compile bursts with no errors, no log anomaly, and no latency regression should trend toward suppression.",
+      "collector_id": "eval-batch-clean",
+      "service": "batch-cleaner",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [30, 34, 40, 68, 76, 82, 85]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [40, 41, 42, 44, 45, 46, 47]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 5,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [30, 34, 41, 69, 77, 83, 86]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [40, 41, 42, 43, 44, 45, 46]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["no corroborating", "similar spikes"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "batch_cpu_recurring_with_harm",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "The same recurring workload pattern must still escalate when latency and error evidence rise with it.",
+      "collector_id": "eval-batch-harm",
+      "service": "batch-cleaner",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [30, 34, 40, 68, 76, 82, 85]},
+          {"name": "service_latency_p95_ms", "sequence": [95, 100, 108, 150, 220, 320, 430]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [40, 41, 42, 44, 45, 46, 47]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "batch_errors", "example": "error batch cleaner retries and queue buildup after CPU burst", "level": "error", "service": "batch-cleaner", "process": "batch-cleaner", "count_start": 1, "count_step": 2}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 5,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [30, 34, 41, 69, 77, 83, 86]},
+              {"name": "service_latency_p95_ms", "sequence": [92, 95, 98, 100, 102, 104, 106]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [40, 41, 42, 43, 44, 45, 46]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "correlated_anomaly",
+        "reason_any": ["current evidence"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    },
+    {
+      "id": "network_backup_upload_recurring",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "Backup, artifact upload, and batch-transfer jobs regularly spike throughput; repeated healthy bursts should be suppressed.",
+      "collector_id": "eval-backup-network",
+      "service": "artifact-upload",
+      "signal_id": "network_throughput",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_network_total_receive_bytes_per_second", "sequence": [8000000, 10000000, 12000000, 40000000, 58000000, 72000000, 85000000]},
+          {"name": "node_network_total_transmit_bytes_per_second", "sequence": [6000000, 8000000, 10000000, 36000000, 54000000, 68000000, 82000000]}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_network_total_receive_bytes_per_second", "sequence": [8000000, 10000000, 12000000, 42000000, 60000000, 74000000, 86000000]},
+              {"name": "node_network_total_transmit_bytes_per_second", "sequence": [6000000, 8000000, 10000000, 38000000, 56000000, 70000000, 84000000]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "no corroborating"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "deployment_log_burst_recurring",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "Rollouts and restarts can generate short log bursts; recurring, healthy rollout logs should not keep paging operators.",
+      "collector_id": "eval-deploy-logs",
+      "service": "deploy-agent",
+      "signal_id": "log_burst",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "service_log_burst_count", "sequence": [2, 4, 6, 18, 26, 34, 38]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "deploy_log_burst", "example": "deployment rollout restarted deploy-agent pods and warmed service cache", "level": "warn", "service": "deploy-agent", "process": "deploy-agent", "count_start": 2, "count_step": 4}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "service_log_burst_count", "sequence": [2, 3, 5, 17, 25, 35, 39]}
+            ],
+            "logs": [
+              {"every": 1, "fingerprint": "deploy_log_burst", "example": "deployment rollout restarted deploy-agent pods", "level": "warn", "service": "deploy-agent", "process": "deploy-agent", "count_start": 2, "count_step": 4}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "expected_recurring_burst",
+        "reason_any": ["similar spikes", "healthy burst"],
+        "disposition": "suppressed",
+        "triggered": false
+      }
+    },
+    {
+      "id": "moderate_cpu_with_latency_and_errors",
+      "suites": ["fast", "regression", "benchmark"],
+      "category": "multi_signal",
+      "description": "A moderate metric deviation can still be incident-worthy when log and latency evidence align behind it.",
+      "collector_id": "eval-moderate-corroborated",
+      "service": "checkout-api",
+      "signal_id": "cpu_pressure",
+      "window_minutes": 45,
+      "scenario": {
+        "duration_minutes": 7,
+        "step_minutes": 1,
+        "metric_series": [
+          {"name": "node_cpu_usage_percent", "sequence": [44, 46, 49, 58, 63, 67, 69]},
+          {"name": "service_latency_p95_ms", "sequence": [110, 120, 150, 190, 240, 320, 480]},
+          {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+          {"name": "node_memory_Used_bytes", "sequence": [50, 51, 52, 53, 54, 55, 56]}
+        ],
+        "logs": [
+          {"every": 1, "fingerprint": "checkout_errors", "example": "error checkout retries and timeouts rising with queue buildup", "level": "error", "service": "checkout-api", "process": "checkout-api", "count_start": 1, "count_step": 3}
+        ]
+      },
+      "history": [
+        {
+          "repeat": 4,
+          "every_hours": 24,
+          "scenario": {
+            "duration_minutes": 7,
+            "step_minutes": 1,
+            "metric_series": [
+              {"name": "node_cpu_usage_percent", "sequence": [42, 45, 48, 54, 57, 59, 60]},
+              {"name": "service_latency_p95_ms", "sequence": [100, 102, 104, 105, 106, 108, 110]},
+              {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 100},
+              {"name": "node_memory_Used_bytes", "sequence": [50, 51, 52, 53, 54, 55, 56]}
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "label": "correlated_anomaly",
+        "reason_any": ["current evidence"],
+        "disposition": "escalated",
+        "triggered": true
+      }
+    }
+  ]
+}

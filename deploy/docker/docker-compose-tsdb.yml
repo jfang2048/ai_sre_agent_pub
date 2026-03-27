@@ -1,0 +1,43 @@
+---
+services:
+  controller:
+    environment:
+      SRE_TSDB_ENABLED: ${SRE_TSDB_ENABLED:-1}
+      SRE_TSDB_PROVIDER: ${SRE_TSDB_PROVIDER:-influxdb}
+      SRE_TSDB_URL: ${SRE_TSDB_URL:-http://influxdb:8086}
+      SRE_TSDB_ORG: ${SRE_TSDB_ORG:-ai-sre-agent}
+      SRE_TSDB_BUCKET: ${SRE_TSDB_BUCKET:-controller_metrics}
+      SRE_TSDB_TOKEN: ${SRE_TSDB_TOKEN:-dev-influx-token}
+      SRE_TSDB_RETENTION: ${SRE_TSDB_RETENTION:-168h}
+      SRE_TSDB_FALLBACK_TO_MEMORY: ${SRE_TSDB_FALLBACK_TO_MEMORY:-1}
+      SRE_TSDB_MANAGE_BUCKET: ${SRE_TSDB_MANAGE_BUCKET:-0}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  influxdb:
+    image: influxdb:2.7
+    restart: unless-stopped
+    ports:
+      - "${SRE_BIND_HOST:-127.0.0.1}:${SRE_TSDB_PORT:-8086}:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${SRE_TSDB_INIT_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${SRE_TSDB_INIT_PASSWORD:-change-me-dev}
+      DOCKER_INFLUXDB_INIT_ORG: ${SRE_TSDB_ORG:-ai-sre-agent}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${SRE_TSDB_BUCKET:-controller_metrics}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${SRE_TSDB_TOKEN:-dev-influx-token}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${SRE_TSDB_RETENTION:-168h}
+    volumes:
+      - tsdb-data:/var/lib/influxdb2
+      - tsdb-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://127.0.0.1:8086"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  tsdb-data:
+  tsdb-config:
