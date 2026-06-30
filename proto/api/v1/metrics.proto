@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package api.metrics;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto/metrics;metrics";
+
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  METRIC_TYPE_COUNTER = 1;
+  METRIC_TYPE_GAUGE = 2;
+  METRIC_TYPE_HISTOGRAM = 3;
+}
+
+message MetricLabel {
+  string key = 1;
+  string value = 2;
+}
+
+message MetricPoint {
+  google.protobuf.Timestamp timestamp = 1;
+  double value = 2;
+}
+
+message Metric {
+  string name = 1;
+  string description = 2;
+  MetricType type = 3;
+  repeated MetricLabel labels = 4;
+  repeated MetricPoint points = 5;
+}
+
+message MetricBatch {
+  repeated Metric metrics = 1;
+  string source = 2;
+  google.protobuf.Timestamp collected_at = 3;
+}

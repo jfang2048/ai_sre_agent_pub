@@ -1,0 +1,25 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+rules:
+  {{- toYaml .Values.rbac.controllerClusterRules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "sre-agent.controllerName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sre-agent.controllerServiceAccountName" . }}
+    namespace: {{ include "sre-agent.namespace" . }}
+{{- end }}

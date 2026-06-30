@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-controller-config
+  namespace: sre-agent
+  labels:
+    app.kubernetes.io/name: sre-controller
+    app.kubernetes.io/part-of: ai-sre-agent
+data:
+  controller.yaml: |
+    listen: "0.0.0.0:8080"
+    grpc_listen: "0.0.0.0:9090"
+    log_level: "info"
+    deployment:
+      mode: "cluster-lite"
+      cluster_name: "example-cluster"
+      data_root: "/var/lib/ai-sre-agent"
+      insecure_override: true
+    api:
+      rate_limit_enabled: true
+      rate_limit_rps: 25
+      rate_limit_burst: 60
+      action_rate_limit_enabled: true
+      action_rate_limit_rps: 5
+      action_rate_limit_burst: 10
+      audit_mutations: true
+      allowed_origins: []
+    auth:
+      enabled: true
+      mode: "token"
+      allow_insecure_disable: false
+      token_secret_env: "SRE_AGENT_CONTROLLER_TOKEN_SECRET"
+      token_issuer: "ai-sre-agent-controller"
+      token_audience: "controller-api"
+      ingest_auth_enabled: true
+      ingest_token_audience: "controller-ingest"
+    web:
+      path: "/var/lib/ai-sre-agent/controller/web"
+    inventory:
+      enabled: true
+      heartbeat_ttl: "90s"
+      targets_file: "/etc/ai-sre-agent/controller_targets.yaml"
+    ingest:
+      transport:
+        allow_plaintext: true
+        tls:
+          enabled: false
+          require_client_cert: false
+          ca_file: ""
+          cert_file: ""
+          key_file: ""
+        allowed_cluster_names: ["example-cluster"]
+    agent:
+      rag_enabled: true
+      rag_dataset_path: "/var/lib/ai-sre-agent/controller/dataset"
+      rag_index_path: "/var/lib/ai-sre-agent/controller/data/agent/rag/index.json"
+      rag_rebuild_policy: "if_missing"
+      rag_vector_backend: "local"
+      rag_vector_collection: "ai_sre_agent_knowledge"
+      rag_vector_timeout: "5s"
+      policy_file: "/var/lib/ai-sre-agent/controller/configs/agent_playbooks.yaml"

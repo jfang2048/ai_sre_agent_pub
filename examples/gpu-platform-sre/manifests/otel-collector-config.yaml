@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-platform-otel-collector
+  namespace: gpu-platform-observability
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: sre-agent-controller
+              kubernetes_sd_configs:
+                - role: endpoints
+                  namespaces:
+                    names: [ai-sre-agent]
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+                  regex: sre-controller
+                  action: keep
+            - job_name: vllm
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names: [ai-serving]
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_sre_agent_io_model_runtime]
+                  regex: vllm
+                  action: keep
+    processors:
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: gpu-platform-sre-demo
+            action: upsert
+      batch: {}
+    exporters:
+      logging:
+        verbosity: basic
+      otlp:
+        endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [resource, batch]
+          exporters: [logging, otlp]
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [resource, batch]
+          exporters: [logging, otlp]
+        logs:
+          receivers: [otlp]
+          processors: [resource, batch]
+          exporters: [logging, otlp]

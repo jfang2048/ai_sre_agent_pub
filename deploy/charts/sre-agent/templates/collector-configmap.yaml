@@ -1,0 +1,39 @@
+{{- if and .Values.collector.enabled .Values.collector.transportAuth.enabled (not .Values.collector.transportAuth.tokenSecretName) }}
+{{- fail "collector.transportAuth.enabled requires collector.transportAuth.tokenSecretName" }}
+{{- end }}
+{{- if and .Values.collector.enabled (not .Values.collector.transport.allowPlaintext) (not .Values.collector.transport.tls.enabled) }}
+{{- fail "collector.transport.allowPlaintext=false requires collector.transport.tls.enabled=true" }}
+{{- end }}
+{{- if .Values.collector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sre-agent.collectorName" . }}-config
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.collectorSelectorLabels" . | nindent 4 }}
+data:
+  collector.yaml: |
+    deployment:
+      mode: {{ include "sre-agent.collectorDeploymentMode" . | quote }}
+      cluster_name: {{ include "sre-agent.clusterName" . | quote }}
+      data_root: {{ include "sre-agent.collectorDataRoot" . | quote }}
+    privilege_profile: {{ include "sre-agent.collectorPrivilegeProfile" . | quote }}
+    transport:
+      allow_plaintext: {{ .Values.collector.transport.allowPlaintext }}
+      auth:
+        enabled: {{ .Values.collector.transportAuth.enabled }}
+        bearer_token_env: "SRE_COLLECTOR_INGEST_TOKEN"
+      tls:
+        enabled: {{ .Values.collector.transport.tls.enabled }}
+        ca_file: {{ ternary "/etc/ai-sre-agent/tls/collector/ca/ca.crt" "" (ne .Values.collector.transport.tls.caSecretName "") | quote }}
+        cert_file: {{ ternary "/etc/ai-sre-agent/tls/collector/client/tls.crt" "" (ne .Values.collector.transport.tls.certSecretName "") | quote }}
+        key_file: {{ ternary "/etc/ai-sre-agent/tls/collector/client/tls.key" "" (ne .Values.collector.transport.tls.certSecretName "") | quote }}
+        server_name: {{ .Values.collector.transport.tls.serverName | quote }}
+    probe_core:
+      binary_path: "/usr/local/bin/sre-probe-core"
+{{- with .Values.collector.configInline }}
+{{ . | nindent 4 }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,8 @@
+[submodule "dataset/sources/git/prometheus-operator-runbooks"]
+	path = dataset/sources/git/prometheus-operator-runbooks
+	url = https://github.com/prometheus-operator/runbooks.git
+	branch = main
+[submodule "dataset/sources/git/scoutflo-sre-playbooks"]
+	path = dataset/sources/git/scoutflo-sre-playbooks
+	url = https://github.com/Scoutflo/Scoutflo-SRE-Playbooks.git
+	branch = master

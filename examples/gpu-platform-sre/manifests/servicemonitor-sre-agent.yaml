@@ -1,0 +1,41 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sre-agent-controller
+  namespace: ai-sre-agent
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - ai-sre-agent
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sre-controller
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: sre-agent-collector
+  namespace: ai-sre-agent
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - ai-sre-agent
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sre-collector
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

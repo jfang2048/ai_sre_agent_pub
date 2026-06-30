@@ -1,0 +1,18 @@
+# Container-default collector inventory for the controller image
+---
+collectors:
+  - id: "collector-local"
+    name: "compose-collector"
+    hostname: "collector"
+    address: "collector"
+    port: 9464
+    enabled: true
+    labels:
+      env: "container-demo"
+      topology: "single-node"
+    tags: ["compose", "default"]
+    auth:
+      mode: "none"
+      description: "Collector metrics endpoint inside the default compose network"
+    metadata:
+      role: "default-compose-target"

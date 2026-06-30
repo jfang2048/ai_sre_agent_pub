@@ -1,0 +1,316 @@
+---
+namespace:
+  create: true
+  name: sre-agent
+  labels: {}
+
+global:
+  commonLabels: {}
+  imagePullSecrets: []
+  # Helm defaults to a local-dev-like posture so the chart can bootstrap
+  # without a shared workflow backend or ingest TLS. Use the example values
+  # files for guarded cluster-lite or distributed rollouts.
+  deploymentMode: local-dev
+  clusterName: default-cluster
+  dataRoot: /var/lib/ai-sre-agent
+
+controller:
+  enabled: true
+  deploymentMode: ""
+  clusterName: ""
+  dataRoot: ""
+  externalURL: ""
+  deployment:
+    insecureOverride: false
+  image:
+    repository: ai-sre-agent/controller
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  ha:
+    enabled: false
+    backend: etcd
+    # Followers stay readable but reject gRPC ingest writes. Point collectors at
+    # active-only routing or multiple controller endpoints for failover.
+    allowFollowerRead: true
+    electionKey: /ai-sre-agent/controller/leader
+    leaseTTL: 15s
+    observeInterval: 3s
+    campaignTimeout: 5s
+    etcdEndpoints: []
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  service:
+    type: ClusterIP
+    httpPort: 8080
+    grpcPort: 9090
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: ai-sre-agent.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  api:
+    rateLimitEnabled: true
+    rateLimitRPS: 25
+    rateLimitBurst: 60
+    actionRateLimitEnabled: true
+    actionRateLimitRPS: 5
+    actionRateLimitBurst: 10
+    auditMutations: true
+    # Leave empty to allow only same-origin browser requests. Local-dev configs
+    # carry their own localhost list; the chart is the guarded rollout path.
+    allowedOrigins: []
+  auth:
+    # The chart defaults to a guarded controller API surface. Create the Secret
+    # named here before rollout or override these values with your own names.
+    enabled: true
+    mode: token
+    # Backward-compatible escape hatch for auth-only checks. The chart keeps it
+    # off and uses deployment.insecureOverride for full posture bypass.
+    allowInsecureDisable: false
+    tokenSecretName: sre-controller-auth
+    tokenSecretKey: token-secret
+    tokenIssuer: ai-sre-agent-controller
+    tokenAudience: controller-api
+    ingestAuthEnabled: true
+    ingestTokenAudience: controller-ingest
+    # Compatibility mode only. Keep these empty unless you still need older
+    # API key callers during migration.
+    apiKeySecretName: ""
+    apiKeySecretKey: api-key
+    readAPIKeySecretName: ""
+    readAPIKeySecretKey: read-api-key
+    actionAPIKeySecretName: ""
+    actionAPIKeySecretKey: action-api-key
+  workflowStore:
+    # bbolt keeps workflow state on the controller volume. postgres moves run
+    # metadata, approval state, verification state, and idempotency into a
+    # shared backend. memory is local-dev only.
+    backend: bbolt
+    postgres:
+      dsnSecretName: ""
+      dsnSecretKey: dsn
+  artifacts:
+    # workflow follows workflowStore.backend. Use postgres only if artifact
+    # metadata should use a separate DSN. Payloads can stay on filesystem for
+    # local development or move to S3 for shared-survivable artifact storage.
+    metadataBackend: workflow
+    metadataPath: /var/lib/ai-sre-agent/controller/data/agent/workflows/artifacts.db
+    postgres:
+      dsnSecretName: ""
+      dsnSecretKey: dsn
+    payloadBackend: filesystem
+    payloadRootPath: /var/lib/ai-sre-agent/controller/data/agent/workflows
+    # This is only an operator assertion. The controller still treats
+    # filesystem payloads as local/non-shared by default in production-like
+    # modes unless deployment.insecureOverride is set explicitly.
+    payloadShared: false
+    s3:
+      endpoint: ""
+      region: us-east-1
+      bucket: ""
+      prefix: ""
+      pathStyle: true
+      insecure: false
+      accessKeySecretName: ""
+      accessKeySecretKey: access_key
+      secretKeySecretName: ""
+      secretKeySecretKey: secret_key
+      sessionTokenSecretName: ""
+      sessionTokenSecretKey: session_token
+    gc:
+      enabled: true
+      interval: 1h
+      batchSize: 128
+  ingestTransport:
+    allowPlaintext: true
+    tls:
+      enabled: false
+      requireClientCert: false
+      certSecretName: ""
+      certSecretKey: tls.crt
+      keySecretKey: tls.key
+      caSecretName: ""
+      caSecretKey: ca.crt
+    allowedCollectorIDs: []
+    allowedClusterNames: []
+    allowedPeerSubjects: []
+  env:
+    ingestPersistEnabled: "1"
+    ragEnabled: "1"
+    ragRebuildPolicy: if_missing
+    llmEnabled: "0"
+    dryRun: "1"
+    tsdbEnabled: "0"
+    tsdbProvider: influxdb
+    tsdbURL: http://influxdb.monitoring.svc.cluster.local:8086
+    tsdbOrg: ai-sre-agent
+    tsdbBucket: controller_metrics
+    tsdbRetention: 168h
+    tsdbFallbackToMemory: "1"
+    tsdbManageBucket: "0"
+  rag:
+    datasetPath: ""
+    indexPath: ""
+    sourcePaths: []
+    topK: 5
+    maxSnippets: 4
+    maxChars: 280
+    maxQueryChars: 640
+    maxFindings: 6
+    minConfidence: 0.18
+    chunkSize: 900
+    chunkOverlap: 120
+    chunkStrategy: auto
+    retrievalMode: hybrid
+    embeddingProvider: local
+    embeddingModel: local-hash-64
+    embeddingBaseURL: ""
+    vectorBackend: local
+    vectorEndpoint: ""
+    vectorCollection: ai_sre_agent_knowledge
+    vectorDatabase: ""
+    vectorToken: ""
+    vectorTokenSecretName: ""
+    vectorTokenSecretKey: token
+    vectorTimeout: 5s
+  staticTargets: []
+  configInline: ""
+  extraEnv: []
+  extraEnvFromSecrets: []
+  podAnnotations: {}
+  startupProbe:
+    enabled: true
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 24
+  podSecurityContext:
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAntiAffinity:
+    enabled: true
+    type: preferred
+    topologyKey: kubernetes.io/hostname
+    weight: 100
+  dataVolume:
+    # This keeps controller workflow state and the default local RAG index on a
+    # PVC. It does not turn the controller into a distributed durable backend.
+    type: pvc
+    size: 20Gi
+    storageClassName: ""
+    accessModes: ["ReadWriteOnce"]
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+collector:
+  enabled: true
+  deploymentMode: ""
+  clusterName: ""
+  dataRoot: ""
+  privilegeProfile: deep-runtime
+  image:
+    repository: ai-sre-agent/collector
+    tag: ""
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  controllerEndpoint: ""
+  collectionInterval: 10s
+  level: "5"
+  metricsPort: 9464
+  logPaths: /var/log/syslog,/var/log/messages,/var/log/kern.log
+  configInline: ""
+  transportAuth:
+    # The chart uses a shared collector service token by default. Mint it with
+    # the controller signing secret and audience `controller-ingest`.
+    enabled: true
+    tokenSecretName: sre-collector-ingest-auth
+    tokenSecretKey: token
+  transport:
+    allowPlaintext: true
+    tls:
+      enabled: false
+      caSecretName: ""
+      caSecretKey: ca.crt
+      certSecretName: ""
+      certSecretKey: tls.crt
+      keySecretKey: tls.key
+      serverName: ""
+  extraEnv: []
+  extraEnvFromSecrets: []
+  podAnnotations: {}
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  deepRuntimeCapabilities: ["BPF", "PERFMON", "NET_ADMIN", "SYS_RESOURCE"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations:
+    - operator: Exists
+  affinity: {}
+  hostObserver:
+    enabled: true
+  nvidia:
+    visibleDevices: all
+    driverCapabilities: utility,compute
+
+rbac:
+  create: true
+  controllerClusterRules:
+    - apiGroups: [""]
+      resources: ["nodes", "pods", "namespaces", "services", "endpoints"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      verbs: ["get", "list", "watch"]
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces: []

@@ -1,0 +1,182 @@
+# SRE Collector configuration (push-first agent)
+---
+
+collector_id: ""
+hostname: ""
+version: "v0.9"
+labels: {}
+deployment:
+  mode: "local-dev"      # local-dev | standalone | cluster-lite | distributed
+  cluster_name: "local"
+  data_root: ""
+# Collector privilege profile:
+# - minimal: container-safe fallback path, no host logs, no eBPF, no probe-core
+# - observability: host logs + basic host surfaces, no eBPF, no probe-core
+# - deep-runtime: host observer path with eBPF + probe-core + runtime security
+# - gpu: probe-core GPU path without the deep-runtime eBPF/security path
+privilege_profile: "deep-runtime"
+
+controller_endpoints:
+  # Single-node development default. Remote collectors should override this
+  # with the central controller gRPC address reachable from that host.
+  # In HA controller deployments, use either leader-aware routing or a list of
+  # controller pod/peer endpoints so transport failover can retry when a
+  # follower rejects write-bearing ingest with gRPC Unavailable.
+  - "localhost:9090"
+
+collection_interval: "5s"
+adaptive_polling: true
+min_collection_interval: "1s"
+max_collection_interval: "20s"
+# When true, cadence-cached fallback process lists and log fingerprints are not
+# resent every batch. The controller carries the previous view forward until the
+# helper actually refreshes again.
+suppress_cached_aux_payloads: true
+# When true, near-identical process payloads from the active source are not
+# resent every cycle. The collector periodically forces a refresh so the
+# controller still gets a real process snapshot on a bounded interval.
+suppress_unchanged_process_payloads: true
+process_payload_refresh_interval: "1m"
+# When true, cache-hit legacy compatibility hardware-tier metrics are also
+# omitted from steady-state batches. The controller keeps the previous slow
+# hardware view until that tier really refreshes again.
+suppress_cached_compat_hardware_metrics: true
+# Suppress unchanged low-churn collector/runtime inventory between periodic full
+# refreshes so every batch does not resend the same topology/source-mode state.
+suppress_unchanged_low_churn_metrics: true
+low_churn_metrics_refresh_interval: "5m"
+# Expensive compatibility helpers are intentionally slower than the main loop:
+# - compatibility /proc process fallback uses max(collection_interval, probe_core.interval * host_proc_fallback_interval_samples)
+# - log tailing uses max(15s, 3 * collection_interval)
+# - external metrics command uses max(30s, 6 * collection_interval)
+# - when the collector falls back to the legacy Go probe, that path also caches
+#   runtime/deep/kernel-event/RCA/GPU tiers and only refreshes the deeper tiers
+#   on wider cadences or when the fallback path itself sees a basic anomaly trigger
+# - the legacy Go fallback also keeps hardware-ish thermal/NIC/RDMA scans on a
+#   separate slow tier instead of refreshing them with PSI/TCP/sockstat
+# During incident mode they can temporarily tighten back to the active collector cadence.
+topk: 10
+
+spool_dir: "./data/collector/spool"
+spool_max_bytes: 134217728
+spool_sync_interval: "1s"
+spool_offset_sync_interval: "1s"
+
+log_paths: []
+
+shm_enabled: false
+shm_name: "/sre_collector_metrics"
+
+grpc_compress: true
+mirror_send: false
+metrics_listen_address: ":9464"
+tracing_jaeger_endpoint: ""
+
+# Collection level:
+# 1 basic, 2 extended, 3 per-process, 4 logs, 5 RCA (CPU/memory/io/network attribution)
+# Use 5 to populate full per-process rankings in /api/v1/top/programs and /ui tabs.
+level: 5
+
+transport:
+  dial_timeout: "10s"
+  rpc_timeout: "10s"
+  allow_plaintext: true
+  auth:
+    enabled: false
+    bearer_token_env: "SRE_COLLECTOR_INGEST_TOKEN"
+  tls:
+    enabled: false
+    # Supply a CA bundle for guarded controller TLS. Client cert/key remain
+    # optional until the controller requires mTLS.
+    ca_file: ""
+    cert_file: ""
+    key_file: ""
+    server_name: ""
+    insecure_skip_verify: false
+    reload_interval: "30s"
+
+# Mandatory primary path: kernel-first eBPF/event stream plus C++ probe-core.
+# /proc and sysfs remain compatibility fallbacks for constrained environments only.
+ebpf:
+  enabled: true
+  socket_path: "./data/collector/run/sre_collector_ebpf.sock"
+  categories: ["syscall", "process", "network", "file", "security", "resource"]
+  max_msg_bytes: 65536
+  ring_size: 2048
+  event_flush_limit: 256
+  allowed_listen_ports: [22, 53, 80, 443, 2379, 2380, 3000, 5432, 6443, 8080, 8443, 9090]
+  synthetic_poll_interval: "10s"
+  long_lived_tcp_threshold: "5m"
+
+# Mandatory primary host telemetry path.
+# The collector expects probe-core to be the active source for host/process/runtime metrics.
+# probe-core itself is kernel-first (perf/netlink/sysfs/cgroup PSI) and only falls back to
+# /proc/sysfs when the kernel path is unavailable or explicitly forced.
+probe_core:
+  enabled: true
+  binary_path: "./build/sre-probe-core"
+  # Optional Unix-style module selection (empty or ["all"] means all modules):
+  collectors: []
+  # Extra raw probe-core args (do not include --collectors when collectors is set above).
+  # Keep host-mode on "auto" to prefer kernel collectors and only degrade to /proc when needed.
+  args: ["--host-mode", "auto"]
+  # Internal probe-core sample cadence. Keep this tighter than the collector push cadence
+  # to preserve short GPU/PCIe/process spikes without forcing 1s controller writes cluster-wide.
+  interval: "1s"
+  compression: "none"  # none|gzip
+  queue_depth: 16
+  window_samples: 6
+  process_interval_samples: 2
+  host_proc_fallback_interval_samples: 10
+  pressure_interval_samples: 3
+  netlink_interval_samples: 2
+  gpu_interval_samples: 1
+  nice: 10
+  startup_timeout: "3s"
+  stale_after: "15s"
+  frame_max_bytes: 8388608
+  # When false, probe-core host/resource metrics that already have collector-side
+  # node_*/rca_* aliases are not duplicated as raw probe_core_* metrics.
+  emit_raw_aliased_metrics: false
+  # Compatibility fallback only. This enables the legacy Go collector path when probe-core
+  # cannot start or becomes stale. It is not the intended steady-state mode.
+  fallback_to_go: true
+
+# Collector-side security audit:
+# - uses eBPF runtime events as the primary source for runtime/process/network/file security signals
+# - uses probe-core process snapshots for resource correlation
+# - uses /proc and filesystem walks only for host posture and compatibility gaps
+security:
+  enabled: true
+  audit_interval: "5m"
+  recent_event_limit: 128
+  baseline_warmup_samples: 3
+  max_walk_entries: 6000
+  large_file_threshold_bytes: 104857600
+  rapid_growth_threshold_bytes: 16777216
+
+# The collector is an early-warning observer, not the primary workload.
+# These limits make it yield first when the node is under pressure.
+protection:
+  enabled: true
+  nice: 10
+  max_cpu_percent: 5
+  max_cpu_time_per_interval: "250ms"
+  memory_soft_limit_bytes: 268435456
+  spool_high_watermark_ratio: 0.50
+  spool_critical_watermark_ratio: 0.80
+  max_drain_records_per_cycle: 8
+  max_drain_duration: "750ms"
+  disable_logs_under_pressure: true
+  disable_security_under_pressure: true
+  disable_external_under_pressure: true
+
+# Hardware discovery is cached and refreshed rarely so runtime collectors can
+# stay low-overhead while still adapting thresholds and sub-collector cadences.
+hardware:
+  enabled: true
+  refresh_interval: "6h"
+
+# Optional: external metrics command (fast C++ helper provided in cpp/proc_metrics/main.cpp)
+external_metrics_cmd: ""
+external_metrics_timeout: "500ms"

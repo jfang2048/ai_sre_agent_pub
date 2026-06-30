@@ -1,0 +1,15 @@
+apiVersion: v2
+name: sre-agent
+description: Container-first AI SRE Agent with split controller and collector runtimes
+type: application
+version: 0.9.0
+appVersion: "v0.9"
+home: https://github.com/jfang2048/ai_sre_agent_pub
+sources:
+  - https://github.com/jfang2048/ai_sre_agent_pub
+keywords:
+  - sre
+  - observability
+  - ebpf
+  - incident-response
+  - ai

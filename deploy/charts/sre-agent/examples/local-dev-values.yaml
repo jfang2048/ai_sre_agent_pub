@@ -1,0 +1,30 @@
+global:
+  deploymentMode: local-dev
+  clusterName: local-dev
+
+controller:
+  deployment:
+    insecureOverride: false
+  auth:
+    enabled: true
+    mode: token
+    tokenSecretName: sre-controller-auth
+    tokenSecretKey: token-secret
+    ingestAuthEnabled: true
+  workflowStore:
+    backend: bbolt
+  artifacts:
+    metadataBackend: workflow
+    payloadBackend: filesystem
+    payloadShared: false
+  ingestTransport:
+    allowPlaintext: true
+
+collector:
+  privilegeProfile: deep-runtime
+  transportAuth:
+    enabled: true
+    tokenSecretName: sre-collector-ingest-auth
+    tokenSecretKey: token
+  transport:
+    allowPlaintext: true

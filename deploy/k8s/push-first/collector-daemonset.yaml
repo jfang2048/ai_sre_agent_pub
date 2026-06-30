@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sre-collector
+  namespace: sre-agent
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: sre-collector
+  namespace: sre-agent
+  labels:
+    app.kubernetes.io/name: sre-collector
+    app.kubernetes.io/part-of: ai-sre-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sre-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sre-collector
+        app.kubernetes.io/part-of: ai-sre-agent
+    spec:
+      serviceAccountName: sre-collector
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: collector
+          image: ai-sre-agent/collector:v0.9
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_CONFIG
+              value: /etc/ai-sre-agent/collector.yaml
+            - name: SRE_COLLECTOR_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_CONTROLLER_ENDPOINTS
+              value: sre-controller.sre-agent.svc.cluster.local:9090
+            - name: SRE_COLLECTOR_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sre-collector-ingest-auth
+                  key: token
+            - name: SRE_COLLECTOR_COLLECTION_INTERVAL
+              value: 10s
+            - name: SRE_COLLECTOR_LEVEL
+              value: "5"
+            - name: SRE_COLLECTOR_METRICS_ADDR
+              value: :9464
+            - name: SRE_COLLECTOR_LOG_PATHS
+              value: /var/log/syslog,/var/log/messages,/var/log/kern.log
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: utility,compute
+          ports:
+            - name: metrics
+              containerPort: 9464
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["BPF", "PERFMON", "NET_ADMIN", "SYS_RESOURCE"]
+          volumeMounts:
+            - name: collector-config
+              mountPath: /etc/ai-sre-agent/collector.yaml
+              subPath: collector.yaml
+              readOnly: true
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            - name: host-kernel-debug
+              mountPath: /sys/kernel/debug
+            - name: host-bpf
+              mountPath: /sys/fs/bpf
+            - name: host-modules
+              mountPath: /lib/modules
+              readOnly: true
+            - name: host-logs
+              mountPath: /var/log
+              readOnly: true
+            - name: collector-data
+              mountPath: /var/lib/ai-sre-agent/collector/data
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: collector-config
+          configMap:
+            name: sre-collector-config
+            items:
+              - key: collector.yaml
+                path: collector.yaml
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: host-kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+            type: DirectoryOrCreate
+        - name: host-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: DirectoryOrCreate
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+            type: Directory
+        - name: host-logs
+          hostPath:
+            path: /var/log
+            type: DirectoryOrCreate
+        - name: collector-data
+          emptyDir: {}

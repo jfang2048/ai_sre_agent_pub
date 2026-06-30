@@ -1,0 +1,85 @@
+---
+name: ai-sre-agent
+
+x-common-security: &common-security
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+  tmpfs:
+    - /tmp:size=64m
+
+services:
+  controller:
+    <<: *common-security
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.controller
+      args:
+        VERSION: ${SRE_VERSION:-v0.7}
+        COMMIT: ${SRE_BUILD_COMMIT:-dev}
+        BUILD_DATE: ${SRE_BUILD_DATE:-unknown}
+        REPO_URL: ${REPO_URL:-}
+        REPO_REF: ${REPO_REF:-}
+    image: ${SRE_CONTROLLER_IMAGE:-ai-sre-agent/controller:v0.7}
+    ports:
+      - "${SRE_BIND_HOST:-127.0.0.1}:${SRE_CONTROLLER_HTTP_PORT:-8080}:8080"
+      - "${SRE_BIND_HOST:-127.0.0.1}:${SRE_CONTROLLER_GRPC_PORT:-9090}:9090"
+    environment:
+      SRE_CONTROLLER_CONFIG: /etc/ai-sre-agent/controller.yaml
+      SRE_CONTROLLER_HTTP_LISTEN: 0.0.0.0:8080
+      SRE_CONTROLLER_GRPC_LISTEN: 0.0.0.0:9090
+      SRE_CONTROLLER_WEB_PATH: /var/lib/ai-sre-agent/controller/web
+      SRE_INGEST_PERSIST_ENABLED: ${SRE_INGEST_PERSIST_ENABLED:-1}
+      SRE_AGENT_RAG_ENABLED: ${SRE_AGENT_RAG_ENABLED:-1}
+      SRE_AGENT_RAG_REBUILD_POLICY: ${SRE_AGENT_RAG_REBUILD_POLICY:-if_missing}
+      SRE_AGENT_LLM_ENABLED: ${SRE_AGENT_LLM_ENABLED:-0}
+      SRE_AGENT_DRY_RUN: ${SRE_AGENT_DRY_RUN:-1}
+    volumes:
+      - controller-data:/var/lib/ai-sre-agent/controller/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  collector:
+    <<: *common-security
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.collector
+      args:
+        VERSION: ${SRE_VERSION:-v0.7}
+        COMMIT: ${SRE_BUILD_COMMIT:-dev}
+        BUILD_DATE: ${SRE_BUILD_DATE:-unknown}
+        REPO_URL: ${REPO_URL:-}
+        REPO_REF: ${REPO_REF:-}
+    image: ${SRE_COLLECTOR_IMAGE:-ai-sre-agent/collector:v0.7}
+    depends_on:
+      controller:
+        condition: service_healthy
+    environment:
+      SRE_COLLECTOR_CONFIG: /etc/ai-sre-agent/collector.yaml
+      SRE_COLLECTOR_CONTROLLER_ENDPOINTS: ${SRE_COLLECTOR_CONTROLLER_ENDPOINTS:-controller:9090}
+      SRE_COLLECTOR_ID: ${SRE_COLLECTOR_ID:-collector-local}
+      SRE_COLLECTOR_HOSTNAME: ${SRE_COLLECTOR_HOSTNAME:-collector-local}
+      SRE_COLLECTOR_COLLECTION_INTERVAL: ${SRE_COLLECTOR_COLLECTION_INTERVAL:-5s}
+      SRE_COLLECTOR_METRICS_ADDR: :9464
+      SRE_COLLECTOR_LEVEL: ${SRE_COLLECTOR_LEVEL:-5}
+    expose:
+      - "9464"
+    volumes:
+      - collector-data:/var/lib/ai-sre-agent/collector/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9464/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  controller-data:
+  collector-data:

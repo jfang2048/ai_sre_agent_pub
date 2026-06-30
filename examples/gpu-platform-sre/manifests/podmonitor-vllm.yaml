@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - ai-serving
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm
+      sre-agent.io/workload-kind: model-serving
+      sre-agent.io/model-runtime: vllm
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

@@ -1,0 +1,149 @@
+{
+  "schema_version": "v1",
+  "cases": [
+    {
+      "id": "memory_leak_full_runtime",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "The full multi-agent runtime should preserve explicit analysis, JSON handoff, governed validation, post-action status, evidence, and memory for the memory-pressure incident.",
+      "incident_type": "memory",
+      "incident_case_id": "memory_leak_trend",
+      "seeded_context": "Sustained RSS growth, reclaim pressure, warning logs, and a real memory-pressure RCA path.",
+      "expected_root_cause_any": ["memory pressure and reclaim", "memory leak"],
+      "expected_validated_recommendation_substrings": ["inspect top RSS processes", "run: cat /proc/pressure/memory"],
+      "expected_governance_behavior": {
+        "require_message_protocol": true,
+        "require_validation_agent": true,
+        "expected_validation_mode": "bounded_react",
+        "expected_execution_category": "read_only_validation",
+        "expect_dry_run": true
+      },
+      "expected_post_action_outcome": {
+        "expected_verdict_any": ["insufficient_evidence"],
+        "expected_fallback_mode": "not_executed"
+      },
+      "expected_artifact_coverage": {
+        "require_analysis_handoff": true,
+        "require_validation_report": true,
+        "require_action_plan": true,
+        "require_post_action_validation": true,
+        "require_evidence_package": true,
+        "require_memory_writeback": true,
+        "required_message_types": [
+          "analysis_handoff",
+          "validation_request",
+          "validation_result",
+          "action_decision",
+          "post_action_validation"
+        ]
+      }
+    },
+    {
+      "id": "disk_latency_full_runtime",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "The full runtime should keep storage RCA, validation, evidence packaging, and memory write-back aligned for disk-latency deterioration.",
+      "incident_type": "storage",
+      "incident_case_id": "disk_latency_deterioration",
+      "seeded_context": "Rising disk latency, IO pressure, service slowdown, and storage-oriented evidence collection.",
+      "expected_root_cause_any": ["storage io bottleneck", "storage contention"],
+      "expected_validated_recommendation_substrings": ["inspect disk queue depth and latency", "run: iostat -x 1 5"],
+      "expected_governance_behavior": {
+        "require_message_protocol": true,
+        "require_validation_agent": true,
+        "expected_validation_mode": "bounded_react",
+        "expected_execution_category": "read_only_validation",
+        "expect_dry_run": true
+      },
+      "expected_post_action_outcome": {
+        "expected_verdict_any": ["insufficient_evidence"],
+        "expected_fallback_mode": "not_executed"
+      },
+      "expected_artifact_coverage": {
+        "require_analysis_handoff": true,
+        "require_validation_report": true,
+        "require_action_plan": true,
+        "require_post_action_validation": true,
+        "require_evidence_package": true,
+        "require_memory_writeback": true,
+        "required_message_types": [
+          "analysis_handoff",
+          "validation_request",
+          "validation_result",
+          "action_decision",
+          "post_action_validation"
+        ]
+      }
+    },
+    {
+      "id": "weak_signal_full_runtime",
+      "suites": ["fast", "regression", "benchmark"],
+      "description": "The full runtime should preserve cross-agent information retention and message integrity on the weak-signal degradation case.",
+      "incident_type": "weak_signal",
+      "incident_case_id": "weak_multivariate_degradation",
+      "seeded_context": "Moderate multi-signal drift, rollout context, and retrieval-assisted weak-signal synthesis.",
+      "expected_root_cause_any": ["cpu scheduling contention", "storage io bottleneck", "distributed resource contention"],
+      "expected_validated_recommendation_substrings": ["verify that the same signals overlap in the same collector", "compare the weak-signal window against the latest rollout"],
+      "expected_governance_behavior": {
+        "require_message_protocol": true,
+        "require_validation_agent": true,
+        "expected_validation_mode": "bounded_react",
+        "expected_execution_category": "read_only_validation",
+        "expect_dry_run": true
+      },
+      "expected_post_action_outcome": {
+        "expected_verdict_any": ["insufficient_evidence"],
+        "expected_fallback_mode": "not_executed"
+      },
+      "expected_artifact_coverage": {
+        "require_analysis_handoff": true,
+        "require_validation_report": true,
+        "require_action_plan": true,
+        "require_post_action_validation": true,
+        "require_evidence_package": true,
+        "require_memory_writeback": true,
+        "required_message_types": [
+          "analysis_handoff",
+          "validation_request",
+          "validation_result",
+          "action_decision",
+          "post_action_validation"
+        ]
+      }
+    },
+    {
+      "id": "network_degradation_full_runtime",
+      "suites": ["regression", "benchmark"],
+      "description": "The full runtime should keep network RCA, validation, governance, and message history replayable for the packet-loss case.",
+      "incident_type": "network",
+      "incident_case_id": "network_degradation",
+      "seeded_context": "Retransmit growth, softnet drops, timeout bursts, and network RCA with retrieval support.",
+      "expected_root_cause_any": ["network congestion or packet loss", "packet loss"],
+      "expected_validated_recommendation_substrings": ["inspect retransmit/drop counters", "run: ss -s"],
+      "expected_governance_behavior": {
+        "require_message_protocol": true,
+        "require_validation_agent": true,
+        "expected_validation_mode": "bounded_react",
+        "expected_execution_category": "read_only_validation",
+        "expect_dry_run": true
+      },
+      "expected_post_action_outcome": {
+        "expected_verdict_any": ["insufficient_evidence"],
+        "expected_fallback_mode": "not_executed"
+      },
+      "expected_artifact_coverage": {
+        "require_analysis_handoff": true,
+        "require_validation_report": true,
+        "require_action_plan": true,
+        "require_post_action_validation": true,
+        "require_evidence_package": true,
+        "require_memory_writeback": true,
+        "required_message_types": [
+          "analysis_handoff",
+          "validation_request",
+          "validation_result",
+          "action_decision",
+          "post_action_validation"
+        ]
+      }
+    }
+  ]
+}

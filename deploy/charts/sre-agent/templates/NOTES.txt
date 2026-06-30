@@ -1,0 +1,31 @@
+AI SRE Agent {{ .Chart.AppVersion }} has been rendered in split controller/collector mode.
+
+Controller defaults in this chart are guarded:
+  - HTTP auth is enabled by default and expects a controller signing secret.
+  - Collector ingest auth is enabled by default and expects a collector bearer-token Secret.
+  - Browser origins default to same-origin unless you set controller.api.allowedOrigins.
+  - Controller workflow and local RAG state stay on the controller data volume.
+
+Controller service:
+  kubectl -n {{ include "sre-agent.namespace" . }} get svc {{ include "sre-agent.controllerName" . }}
+
+Controller logs:
+{{- if .Values.controller.ha.enabled }}
+  kubectl -n {{ include "sre-agent.namespace" . }} logs statefulset/{{ include "sre-agent.controllerName" . }} --tail=100
+{{- else }}
+  kubectl -n {{ include "sre-agent.namespace" . }} logs deploy/{{ include "sre-agent.controllerName" . }} --tail=100
+{{- end }}
+
+Collector logs:
+  kubectl -n {{ include "sre-agent.namespace" . }} logs ds/{{ include "sre-agent.collectorName" . }} --tail=100
+
+Port-forward the controller UI/API locally:
+  kubectl -n {{ include "sre-agent.namespace" . }} port-forward svc/{{ include "sre-agent.controllerName" . }} 8080:{{ .Values.controller.service.httpPort }}
+
+Then open:
+  http://127.0.0.1:8080/
+
+Quick verification:
+  curl -fsS http://127.0.0.1:8080/healthz
+  curl -fsS http://127.0.0.1:8080/readyz
+  curl -fsS http://127.0.0.1:8080/api/v1/status | jq '.deployment'

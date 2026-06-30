@@ -1,0 +1,48 @@
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sre-agent.controllerName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+  {{- with .Values.controller.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.controller.service.type }}
+  selector:
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.controller.service.httpPort }}
+      targetPort: http
+    - name: grpc
+      port: {{ .Values.controller.service.grpcPort }}
+      targetPort: grpc
+{{- if .Values.controller.ha.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sre-agent.controllerPeerServiceName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "sre-agent.controllerSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.controller.service.httpPort }}
+      targetPort: http
+    - name: grpc
+      port: {{ .Values.controller.service.grpcPort }}
+      targetPort: grpc
+{{- end }}
+{{- end }}

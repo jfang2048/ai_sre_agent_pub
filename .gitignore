@@ -1,0 +1,200 @@
+# ============================================================================
+# Build outputs and local caches
+# ============================================================================
+/build/
+/bin/
+/dist/
+/out/
+/.gocache/
+/backend/.gocache/
+/backend/build/
+/backend/data/
+*.test
+*.out
+*.a
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.exe~
+*.bpf.o
+
+# Legacy repo-root binaries
+/sre-collector
+/sre-controller
+/sre-agent
+/obs-agent
+/agent
+
+# ============================================================================
+# Runtime state and generated data
+# ============================================================================
+/data/*
+!/data/README.md
+!/data/.gitkeep
+/logs/
+/tmp/
+/temp/
+*.log
+*.log.*
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+*.wal
+*.spool
+/spool/
+
+# Controller/runtime storage paths
+/data/controller/ingest/
+/data/controller/tsdb/
+/data/agent/rag/index.json
+/data/agent/rag/cache/
+/data/agent/rag/quarantine.json
+/data/bootstrap/
+/data/gpu/
+/var/
+
+# Optional local archive corpora are kept outside the public source tree.
+/dataset/raw/archives/*
+!/dataset/raw/archives/README.md
+!/dataset/raw/archives/manifest.json
+
+# Playwright/UI generated outputs
+/tests/ui/test-results/
+/tests/ui/playwright-report/
+/tests/ui/.cache/
+/docs/images/ui-captures/generated/
+
+# ============================================================================
+# Frontend dependencies and build assets
+# ============================================================================
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+/frontend/.vite/
+/tests/ui/node_modules/
+/node_modules/
+/web/assets/
+/webui/assets/
+/ui/assets/
+
+# ============================================================================
+# Generated protocol/codegen outputs
+# ============================================================================
+*.pb.go
+*_grpc.pb.go
+!backend/pkg/**/*.pb.go
+!backend/pkg/**/*_grpc.pb.go
+
+# ============================================================================
+# Environment files and secrets
+# ============================================================================
+*.env
+*.env.*
+!.env.example
+!configs/*.env.example
+!configs/.env.example
+/configs/agent.env
+/configs/*.env.local
+/configs/*.env.private
+/configs/*.env.secret
+/.envrc
+*.secret
+*.secrets
+*.token
+*.tokens
+*.apikey
+*.credentials
+*.auth
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.der
+*.jks
+*.keystore
+*.kubeconfig
+/kubeconfig
+/secrets/
+**/secrets/
+/.aws/
+/.ssh/
+/.gnupg/
+
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ============================================================================
+# Docs/site packaging artifacts
+# ============================================================================
+/docs/_build/
+/docs/site/
+/build/publish-tree/
+
+# ============================================================================
+# Dependency/vendor directories
+# ============================================================================
+/vendor/
+
+# ============================================================================
+# IDE/editor state
+# ============================================================================
+/.idea/
+/.vscode/
+/.vscode-server/
+*.swp
+*.swo
+*~
+*.iml
+*.ipr
+/.metadata/
+/.project
+/.classpath
+/.settings/
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# Coverage and benchmark outputs
+# ============================================================================
+/coverage.out
+/coverage.html
+/coverage.xml
+*.cover
+*.coverprofile
+/benchmarks/
+
+# ============================================================================
+# Native SDK / cargo leftovers
+# ============================================================================
+/sdk/build/
+/sdk/.cache/
+/target/
+/Cargo.lock
+
+# ============================================================================
+# Local tooling state
+# ============================================================================
+/.air.toml
+/.claude/settings.local.json
+/.tmpbin/
+/.tmpbuild/
+/research/
+/examples/gpu-platform-sre/evidence/
+/docs/
+
+dataset/*.zedx
+dataset/sources/web/*.html
+dataset/sources/web/*.md
+dataset/processed/
+.omx/

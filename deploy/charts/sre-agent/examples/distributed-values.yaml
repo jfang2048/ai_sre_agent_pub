@@ -1,0 +1,90 @@
+global:
+  deploymentMode: distributed
+  clusterName: prod-eu1
+  dataRoot: /var/lib/ai-sre-agent
+
+controller:
+  replicas: 3
+  externalURL: https://ai-sre-agent.example.com
+  deployment:
+    insecureOverride: false
+  dataVolume:
+    type: pvc
+    size: 50Gi
+  podAntiAffinity:
+    enabled: true
+    type: required
+  ha:
+    enabled: true
+    backend: etcd
+    etcdEndpoints:
+      - http://etcd-0.etcd.sre.svc.cluster.local:2379
+      - http://etcd-1.etcd.sre.svc.cluster.local:2379
+      - http://etcd-2.etcd.sre.svc.cluster.local:2379
+  ingress:
+    enabled: true
+    hosts:
+      - host: ai-sre-agent.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+  rag:
+    vectorBackend: milvus
+    vectorEndpoint: http://milvus.monitoring.svc.cluster.local:19530
+    vectorCollection: ai_sre_agent_knowledge
+    vectorDatabase: ai_sre
+    vectorTokenSecretName: milvus-rag-token
+    vectorTokenSecretKey: token
+  api:
+    rateLimitEnabled: true
+    rateLimitRPS: 40
+    rateLimitBurst: 80
+    allowedOrigins:
+      - https://ai-sre-agent.example.com
+  auth:
+    enabled: true
+    mode: token
+    tokenSecretName: sre-controller-auth
+    tokenSecretKey: token-secret
+    ingestAuthEnabled: true
+    allowInsecureDisable: false
+  workflowStore:
+    backend: postgres
+    postgres:
+      dsnSecretName: sre-controller-workflow-postgres
+      dsnSecretKey: dsn
+  artifacts:
+    metadataBackend: workflow
+    payloadBackend: s3
+    payloadShared: true
+    s3:
+      endpoint: minio.monitoring.svc.cluster.local:9000
+      region: us-east-1
+      bucket: ai-sre-agent-artifacts
+      prefix: prod-eu1/controller
+      pathStyle: true
+      accessKeySecretName: sre-controller-artifact-s3
+      secretKeySecretName: sre-controller-artifact-s3
+  ingestTransport:
+    allowPlaintext: false
+    tls:
+      enabled: true
+      requireClientCert: true
+      certSecretName: sre-controller-ingest-tls
+      caSecretName: sre-ingest-ca
+    allowedClusterNames:
+      - prod-eu1
+
+collector:
+  deploymentMode: distributed
+  privilegeProfile: deep-runtime
+  transportAuth:
+    enabled: true
+    tokenSecretName: sre-collector-ingest-auth
+    tokenSecretKey: token
+  transport:
+    allowPlaintext: false
+    tls:
+      enabled: true
+      caSecretName: sre-ingest-ca
+      certSecretName: sre-collector-ingest-tls

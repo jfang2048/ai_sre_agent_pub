@@ -1,0 +1,231 @@
+{{- if .Values.collector.enabled }}
+{{- $profile := include "sre-agent.collectorPrivilegeProfile" . -}}
+{{- $hostPID := and .Values.collector.hostObserver.enabled (eq $profile "deep-runtime") -}}
+{{- $mountHostSys := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountHostSys" .) "true") -}}
+{{- $mountHostLogs := eq (include "sre-agent.collectorMountHostLogs" .) "true" -}}
+{{- $mountKernelDebug := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountKernelDebug" .) "true") -}}
+{{- $mountBPFFS := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountBPFFS" .) "true") -}}
+{{- $mountKernelModules := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountKernelModules" .) "true") -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "sre-agent.collectorName" . }}
+  namespace: {{ include "sre-agent.namespace" . }}
+  labels:
+    {{- include "sre-agent.labels" . | nindent 4 }}
+    {{- include "sre-agent.collectorSelectorLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sre-agent.collectorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sre-agent.collectorSelectorLabels" . | nindent 8 }}
+        {{- include "sre-agent.labels" . | nindent 8 }}
+      {{- with .Values.collector.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "sre-agent.collectorServiceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      hostPID: {{ $hostPID }}
+      containers:
+        - name: collector
+          image: "{{ .Values.collector.image.repository }}:{{ default .Chart.AppVersion .Values.collector.image.tag }}"
+          imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_CONFIG
+              value: /etc/ai-sre-agent/collector.yaml
+            - name: SRE_COLLECTOR_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SRE_COLLECTOR_PRIVILEGE_PROFILE
+              value: {{ $profile | quote }}
+            - name: SRE_COLLECTOR_CONTROLLER_ENDPOINTS
+              value: {{ include "sre-agent.controllerEndpoint" . | quote }}
+            {{- if .Values.collector.transportAuth.enabled }}
+            - name: SRE_COLLECTOR_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.collector.transportAuth.tokenSecretName }}
+                  key: {{ .Values.collector.transportAuth.tokenSecretKey | quote }}
+            {{- end }}
+            - name: SRE_COLLECTOR_COLLECTION_INTERVAL
+              value: {{ .Values.collector.collectionInterval | quote }}
+            - name: SRE_COLLECTOR_LEVEL
+              value: {{ .Values.collector.level | quote }}
+            - name: SRE_COLLECTOR_METRICS_ADDR
+              value: {{ printf ":%v" .Values.collector.metricsPort | quote }}
+            - name: SRE_COLLECTOR_LOG_PATHS
+              value: {{ .Values.collector.logPaths | quote }}
+            {{- if eq $profile "gpu" }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: {{ .Values.collector.nvidia.visibleDevices | quote }}
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: {{ .Values.collector.nvidia.driverCapabilities | quote }}
+            {{- end }}
+            {{- range .Values.collector.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            {{- range .Values.collector.extraEnvFromSecrets }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey }}
+                  optional: {{ default true .optional }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.collector.metricsPort }}
+          securityContext:
+            runAsUser: {{ .Values.collector.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.collector.securityContext.runAsGroup }}
+            readOnlyRootFilesystem: {{ .Values.collector.securityContext.readOnlyRootFilesystem }}
+            allowPrivilegeEscalation: {{ .Values.collector.securityContext.allowPrivilegeEscalation }}
+            capabilities:
+              drop:
+                {{- toYaml .Values.collector.securityContext.capabilities.drop | nindent 16 }}
+              {{- if and (eq $profile "deep-runtime") .Values.collector.deepRuntimeCapabilities }}
+              add:
+                {{- toYaml .Values.collector.deepRuntimeCapabilities | nindent 16 }}
+              {{- end }}
+          volumeMounts:
+            - name: collector-config
+              mountPath: /etc/ai-sre-agent/collector.yaml
+              subPath: collector.yaml
+              readOnly: true
+            {{- if $mountHostSys }}
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            {{- end }}
+            {{- if $mountKernelDebug }}
+            - name: host-kernel-debug
+              mountPath: /sys/kernel/debug
+            {{- end }}
+            {{- if $mountBPFFS }}
+            - name: host-bpf
+              mountPath: /sys/fs/bpf
+            {{- end }}
+            {{- if $mountKernelModules }}
+            - name: host-modules
+              mountPath: /lib/modules
+              readOnly: true
+            {{- end }}
+            {{- if $mountHostLogs }}
+            - name: host-logs
+              mountPath: /var/log
+              readOnly: true
+            {{- end }}
+            {{- if .Values.collector.transport.tls.caSecretName }}
+            - name: collector-tls-ca
+              mountPath: /etc/ai-sre-agent/tls/collector/ca
+              readOnly: true
+            {{- end }}
+            {{- if .Values.collector.transport.tls.certSecretName }}
+            - name: collector-tls-client
+              mountPath: /etc/ai-sre-agent/tls/collector/client
+              readOnly: true
+            {{- end }}
+            - name: collector-data
+              mountPath: /var/lib/ai-sre-agent/collector/data
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.collector.resources | nindent 12 }}
+      {{- with .Values.collector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: collector-config
+          configMap:
+            name: {{ include "sre-agent.collectorName" . }}-config
+            items:
+              - key: collector.yaml
+                path: collector.yaml
+        {{- if $mountHostSys }}
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        {{- end }}
+        {{- if $mountKernelDebug }}
+        - name: host-kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if $mountBPFFS }}
+        - name: host-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if $mountKernelModules }}
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+            type: Directory
+        {{- end }}
+        {{- if $mountHostLogs }}
+        - name: host-logs
+          hostPath:
+            path: /var/log
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.collector.transport.tls.caSecretName }}
+        - name: collector-tls-ca
+          secret:
+            secretName: {{ .Values.collector.transport.tls.caSecretName }}
+            items:
+              - key: {{ .Values.collector.transport.tls.caSecretKey | quote }}
+                path: ca.crt
+        {{- end }}
+        {{- if .Values.collector.transport.tls.certSecretName }}
+        - name: collector-tls-client
+          secret:
+            secretName: {{ .Values.collector.transport.tls.certSecretName }}
+            items:
+              - key: {{ .Values.collector.transport.tls.certSecretKey | quote }}
+                path: tls.crt
+              - key: {{ .Values.collector.transport.tls.keySecretKey | quote }}
+                path: tls.key
+        {{- end }}
+        - name: collector-data
+          emptyDir: {}
+{{- end }}

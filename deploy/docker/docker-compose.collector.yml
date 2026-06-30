@@ -1,0 +1,43 @@
+name: ai-sre-agent-collector
+
+services:
+  collector:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.collector
+      args:
+        VERSION: ${SRE_VERSION:-v0.9}
+        COMMIT: ${SRE_BUILD_COMMIT:-dev}
+        BUILD_DATE: ${SRE_BUILD_DATE:-unknown}
+        REPO_URL: ${REPO_URL:-}
+        REPO_REF: ${REPO_REF:-}
+    image: ${SRE_COLLECTOR_IMAGE:-ai-sre-agent/collector:v0.9}
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64m
+    ports:
+      - "${SRE_COLLECTOR_METRICS_BIND_HOST:-127.0.0.1}:${SRE_COLLECTOR_METRICS_PORT:-9464}:9464"
+    environment:
+      SRE_COLLECTOR_CONFIG: /etc/ai-sre-agent/collector.yaml
+      SRE_COLLECTOR_CONTROLLER_ENDPOINTS: ${SRE_COLLECTOR_CONTROLLER_ENDPOINTS:-controller.example.net:9090}
+      SRE_COLLECTOR_ID: ${SRE_COLLECTOR_ID:-collector-remote}
+      SRE_COLLECTOR_HOSTNAME: ${SRE_COLLECTOR_HOSTNAME:-collector-remote}
+      SRE_COLLECTOR_COLLECTION_INTERVAL: ${SRE_COLLECTOR_COLLECTION_INTERVAL:-5s}
+      SRE_COLLECTOR_METRICS_ADDR: :9464
+      SRE_COLLECTOR_LEVEL: ${SRE_COLLECTOR_LEVEL:-5}
+    volumes:
+      - collector-data:/var/lib/ai-sre-agent/collector/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9464/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  collector-data:

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-sre-agent
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-serving
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-platform-observability
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    pod-security.kubernetes.io/enforce: baseline

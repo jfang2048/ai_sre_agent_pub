@@ -1,0 +1,77 @@
+namespace:
+  create: false
+  name: ai-sre-agent
+
+global:
+  deploymentMode: cluster-lite
+  clusterName: gpu-platform-sre-demo
+  dataRoot: /var/lib/ai-sre-agent
+  commonLabels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+
+controller:
+  enabled: true
+  image:
+    repository: ai-sre-agent/controller
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    type: ClusterIP
+    httpPort: 8080
+    grpcPort: 9090
+  auth:
+    enabled: true
+    tokenSecretName: sre-controller-auth
+    tokenSecretKey: token-secret
+    ingestAuthEnabled: true
+  env:
+    dryRun: "1"
+    llmEnabled: "0"
+    ragEnabled: "1"
+    ingestPersistEnabled: "1"
+    tsdbEnabled: "0"
+  dataVolume:
+    type: pvc
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+collector:
+  enabled: true
+  image:
+    repository: ai-sre-agent/collector
+    tag: ""
+    pullPolicy: IfNotPresent
+  privilegeProfile: deep-runtime
+  collectionInterval: 10s
+  metricsPort: 9464
+  transportAuth:
+    enabled: true
+    tokenSecretName: sre-collector-ingest-auth
+    tokenSecretKey: token
+  hostObserver:
+    enabled: true
+  nvidia:
+    visibleDevices: all
+    driverCapabilities: utility,compute
+  tolerations:
+    - operator: Exists
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+rbac:
+  create: true
+
+networkPolicy:
+  enabled: true

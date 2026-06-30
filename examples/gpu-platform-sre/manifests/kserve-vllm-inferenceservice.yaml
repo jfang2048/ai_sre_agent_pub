@@ -1,0 +1,46 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: vllm-openai
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/name: vllm
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    sre-agent.io/workload-kind: model-serving
+    sre-agent.io/model-runtime: vllm
+spec:
+  predictor:
+    minReplicas: 1
+    containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:latest
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - --host
+          - 0.0.0.0
+          - --port
+          - "8080"
+          - --model
+          - $(MODEL_ID)
+          - --served-model-name
+          - gpu-platform-demo
+        env:
+          - name: MODEL_ID
+            value: facebook/opt-125m
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-model-access
+                key: token
+                optional: true
+        ports:
+          - name: http1
+            containerPort: 8080
+        resources:
+          requests:
+            cpu: "2"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 24Gi
+            nvidia.com/gpu: "1"

@@ -1,0 +1,320 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "deploymentMode": {
+          "type": "string",
+          "enum": ["local-dev", "standalone", "cluster-lite", "distributed"]
+        }
+      }
+    },
+    "controller": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "deploymentMode": {
+          "type": "string",
+          "enum": ["", "local-dev", "standalone", "cluster-lite", "distributed"]
+        },
+        "dataVolume": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["pvc", "emptyDir"]
+            }
+          }
+        },
+        "ha": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "backend": {
+              "type": "string",
+              "enum": ["etcd"]
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "allowInsecureDisable": { "type": "boolean" },
+            "ingestAuthEnabled": { "type": "boolean" },
+            "mode": {
+              "type": "string",
+              "enum": ["token", "mixed", "api_key"]
+            }
+          }
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "allowedOrigins": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "workflowStore": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "backend": {
+              "type": "string",
+              "enum": ["bbolt", "postgres", "memory"]
+            },
+            "postgres": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "dsnSecretName": { "type": "string" },
+                "dsnSecretKey": { "type": "string" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "backend": { "const": "postgres" }
+                }
+              },
+              "then": {
+                "properties": {
+                  "postgres": {
+                    "required": ["dsnSecretName"]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "metadataBackend": {
+              "type": "string",
+              "enum": ["workflow", "bbolt", "postgres", "memory"]
+            },
+            "metadataPath": { "type": "string" },
+            "payloadBackend": {
+              "type": "string",
+              "enum": ["filesystem", "s3"]
+            },
+            "payloadRootPath": { "type": "string" },
+            "payloadShared": { "type": "boolean" },
+            "s3": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "endpoint": { "type": "string" },
+                "region": { "type": "string" },
+                "bucket": { "type": "string" },
+                "prefix": { "type": "string" },
+                "pathStyle": { "type": "boolean" },
+                "insecure": { "type": "boolean" },
+                "accessKeySecretName": { "type": "string" },
+                "accessKeySecretKey": { "type": "string" },
+                "secretKeySecretName": { "type": "string" },
+                "secretKeySecretKey": { "type": "string" },
+                "sessionTokenSecretName": { "type": "string" },
+                "sessionTokenSecretKey": { "type": "string" }
+              }
+            },
+            "gc": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "interval": { "type": "string" },
+                "batchSize": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "postgres": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "dsnSecretName": { "type": "string" },
+                "dsnSecretKey": { "type": "string" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "metadataBackend": { "const": "postgres" }
+                }
+              },
+              "then": {
+                "properties": {
+                  "postgres": {
+                    "required": ["dsnSecretName"]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "payloadBackend": { "const": "s3" }
+                }
+              },
+              "then": {
+                "properties": {
+                  "s3": {
+                    "required": ["endpoint", "bucket", "accessKeySecretName", "secretKeySecretName"]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "ingestTransport": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "allowPlaintext": { "type": "boolean" },
+            "allowedCollectorIDs": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedClusterNames": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedPeerSubjects": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "tls": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "requireClientCert": { "type": "boolean" },
+                "certSecretName": { "type": "string" },
+                "certSecretKey": { "type": "string" },
+                "keySecretKey": { "type": "string" },
+                "caSecretName": { "type": "string" },
+                "caSecretKey": { "type": "string" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "tls": {
+                    "properties": {
+                      "enabled": { "const": true }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "tls": {
+                    "required": ["certSecretName"]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "tls": {
+                    "properties": {
+                      "requireClientCert": { "const": true }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "tls": {
+                    "required": ["caSecretName"]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "collector": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "deploymentMode": {
+          "type": "string",
+          "enum": ["", "local-dev", "standalone", "cluster-lite", "distributed"]
+        },
+        "privilegeProfile": {
+          "type": "string",
+          "enum": ["minimal", "observability", "deep-runtime", "gpu"]
+        },
+        "deepRuntimeCapabilities": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transport": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "allowPlaintext": { "type": "boolean" },
+            "tls": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "caSecretName": { "type": "string" },
+                "caSecretKey": { "type": "string" },
+                "certSecretName": { "type": "string" },
+                "certSecretKey": { "type": "string" },
+                "keySecretKey": { "type": "string" },
+                "serverName": { "type": "string" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "allowPlaintext": { "const": false }
+                }
+              },
+              "then": {
+                "properties": {
+                  "tls": {
+                    "properties": {
+                      "enabled": { "const": true }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "transportAuth": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

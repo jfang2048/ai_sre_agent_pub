@@ -1,0 +1,102 @@
+# syntax=docker/dockerfile:1
+ARG GO_VERSION=1.25.7
+ARG DEBIAN_RELEASE=bookworm
+ARG VERSION=v0.9
+ARG COMMIT=dev
+ARG BUILD_DATE=unknown
+ARG REPO_URL=
+ARG REPO_REF=
+
+FROM debian:${DEBIAN_RELEASE}-slim AS source
+ARG REPO_URL
+ARG REPO_REF
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git rsync \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /work
+COPY . /src-context
+RUN if [ -n "${REPO_URL}" ]; then \
+      git clone "${REPO_URL}" /tmp/repo; \
+      if [ -n "${REPO_REF}" ]; then \
+        git -C /tmp/repo fetch --depth 1 origin "${REPO_REF}" && git -C /tmp/repo checkout FETCH_HEAD; \
+      fi; \
+      rsync -a --delete /tmp/repo/ /work/; \
+    else \
+      rsync -a --delete /src-context/ /work/; \
+    fi \
+    && rm -rf /work/.git /tmp/repo /src-context
+
+FROM golang:${GO_VERSION}-${DEBIAN_RELEASE} AS go-builder
+ARG VERSION
+ARG COMMIT
+ARG BUILD_DATE
+WORKDIR /src
+COPY --from=source /work/backend/go.mod /work/backend/go.sum ./backend/
+RUN cd backend && go mod download
+COPY --from=source /work/backend/ ./backend/
+RUN CGO_ENABLED=0 GOOS=linux go -C backend build \
+    -trimpath \
+    -ldflags "-s -w -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.Version=${VERSION} -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.Commit=${COMMIT} -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.BuildDate=${BUILD_DATE}" \
+    -o /out/sre-collector ./cmd/collector
+
+FROM debian:${DEBIAN_RELEASE}-slim AS probe-core-builder
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends g++ libprotobuf-dev pkg-config protobuf-compiler zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY --from=source /work/cpp/probe_core/ /src/cpp/probe_core/
+COPY --from=source /work/proto/ /src/proto/
+RUN mkdir -p /out /src/cpp/probe_core/generated \
+    && protoc --proto_path=/src/proto --cpp_out=/src/cpp/probe_core/generated /src/proto/probeipc/v1/probeipc.proto \
+    && PROBE_HEADER=/src/cpp/probe_core/generated/probeipc/v1/probeipc.pb.h \
+    && if [ -f "${PROBE_HEADER}" ]; then sed -i 's/^#if PROTOBUF_VERSION != /#if PROTOBUF_VERSION < /' "${PROBE_HEADER}"; fi \
+    && g++ -std=c++20 -O2 -Wall -Wextra -pthread \
+        $(pkg-config --cflags protobuf zlib) \
+        -I/src/cpp/probe_core/generated \
+        -o /out/sre-probe-core \
+        /src/cpp/probe_core/main.cpp \
+        /src/cpp/probe_core/subprocess.cpp \
+        /src/cpp/probe_core/gpu_nvml.cpp \
+        /src/cpp/probe_core/generated/probeipc/v1/probeipc.pb.cc \
+        $(pkg-config --libs protobuf zlib) -ldl
+
+FROM debian:${DEBIAN_RELEASE}-slim AS runtime
+ARG VERSION
+ARG COMMIT
+ARG BUILD_DATE
+ARG REPO_URL
+ARG REPO_REF
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl libprotobuf32 libstdc++6 tini zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 ai-sre-agent \
+    && useradd --uid 10001 --gid 10001 --home-dir /var/lib/ai-sre-agent --shell /usr/sbin/nologin --create-home ai-sre-agent \
+    && mkdir -p /etc/ai-sre-agent /var/lib/ai-sre-agent/collector \
+    && chown -R 10001:10001 /etc/ai-sre-agent /var/lib/ai-sre-agent
+LABEL org.opencontainers.image.title="AI SRE Agent Collector" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.source="${REPO_URL}" \
+      org.opencontainers.image.ref.name="${REPO_REF}" \
+      org.opencontainers.image.licenses="GPL-3.0"
+COPY --from=go-builder /out/sre-collector /usr/local/bin/sre-collector
+COPY --from=probe-core-builder /out/sre-probe-core /usr/local/bin/sre-probe-core
+COPY --from=source --chown=10001:10001 /work/scripts/run-collector.sh /usr/local/bin/run-collector.sh
+COPY --from=source --chown=10001:10001 /work/configs/container/collector.yaml /etc/ai-sre-agent/collector.yaml
+RUN chmod +x /usr/local/bin/run-collector.sh \
+    && mkdir -p /var/lib/ai-sre-agent/collector/data \
+    && chown -R 10001:10001 /var/lib/ai-sre-agent/collector
+ENV SRE_COLLECTOR_CONFIG=/etc/ai-sre-agent/collector.yaml \
+    SRE_COLLECTOR_PROBE_CORE_BINARY_PATH=/usr/local/bin/sre-probe-core \
+    SRE_COLLECTOR_METRICS_ADDR=:9464
+WORKDIR /var/lib/ai-sre-agent/collector
+VOLUME ["/var/lib/ai-sre-agent/collector/data"]
+EXPOSE 9464
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 CMD curl -fsS http://127.0.0.1:9464/healthz >/dev/null || exit 1
+USER 10001:10001
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/run-collector.sh"]
+CMD ["--log-format", "json"]

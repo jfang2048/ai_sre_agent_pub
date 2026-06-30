@@ -1,0 +1,54 @@
+global:
+  deploymentMode: cluster-lite
+  clusterName: prod-eu1
+  dataRoot: /var/lib/ai-sre-agent
+
+controller:
+  deployment:
+    insecureOverride: false
+  auth:
+    enabled: true
+    mode: token
+    tokenSecretName: sre-controller-auth
+    tokenSecretKey: token-secret
+    ingestAuthEnabled: true
+  workflowStore:
+    backend: postgres
+    postgres:
+      dsnSecretName: sre-controller-workflow-postgres
+      dsnSecretKey: dsn
+  artifacts:
+    metadataBackend: workflow
+    payloadBackend: s3
+    payloadShared: true
+    s3:
+      endpoint: minio.monitoring.svc.cluster.local:9000
+      region: us-east-1
+      bucket: ai-sre-agent-artifacts
+      prefix: prod-eu1/controller
+      pathStyle: true
+      accessKeySecretName: sre-controller-artifact-s3
+      secretKeySecretName: sre-controller-artifact-s3
+  ingestTransport:
+    allowPlaintext: false
+    tls:
+      enabled: true
+      requireClientCert: true
+      certSecretName: sre-controller-ingest-tls
+      caSecretName: sre-ingest-ca
+    allowedClusterNames:
+      - prod-eu1
+
+collector:
+  deploymentMode: cluster-lite
+  privilegeProfile: observability
+  transportAuth:
+    enabled: true
+    tokenSecretName: sre-collector-ingest-auth
+    tokenSecretKey: token
+  transport:
+    allowPlaintext: false
+    tls:
+      enabled: true
+      caSecretName: sre-ingest-ca
+      certSecretName: sre-collector-ingest-tls

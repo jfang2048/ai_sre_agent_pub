@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sre-controller
+  namespace: sre-agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sre-controller
+  namespace: sre-agent
+  labels:
+    app.kubernetes.io/name: sre-controller
+    app.kubernetes.io/part-of: ai-sre-agent
+spec:
+  selector:
+    app.kubernetes.io/name: sre-controller
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: grpc
+      port: 9090
+      targetPort: grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sre-controller
+  namespace: sre-agent
+  labels:
+    app.kubernetes.io/name: sre-controller
+    app.kubernetes.io/part-of: ai-sre-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sre-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sre-controller
+        app.kubernetes.io/part-of: ai-sre-agent
+    spec:
+      serviceAccountName: sre-controller
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: ai-sre-agent/controller:v0.9
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SRE_CONTROLLER_CONFIG
+              value: /etc/ai-sre-agent/controller.yaml
+            - name: SRE_CONTROLLER_HTTP_LISTEN
+              value: 0.0.0.0:8080
+            - name: SRE_CONTROLLER_GRPC_LISTEN
+              value: 0.0.0.0:9090
+            - name: SRE_CONTROLLER_WEB_PATH
+              value: /var/lib/ai-sre-agent/controller/web
+            - name: SRE_AGENT_WORKFLOW_STORE_BACKEND
+              value: bbolt
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_METADATA_BACKEND
+              value: workflow
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_PAYLOAD_BACKEND
+              value: filesystem
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_PAYLOAD_SHARED
+              value: "false"
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_GC_ENABLED
+              value: "true"
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_GC_INTERVAL
+              value: 1h
+            - name: SRE_AGENT_WORKFLOW_ARTIFACT_GC_BATCH_SIZE
+              value: "128"
+            - name: SRE_AGENT_CONTROLLER_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sre-controller-auth
+                  key: token-secret
+            - name: SRE_INGEST_PERSIST_ENABLED
+              value: "1"
+            - name: SRE_AGENT_RAG_ENABLED
+              value: "1"
+            - name: SRE_AGENT_RAG_REBUILD_POLICY
+              value: if_missing
+            - name: SRE_AGENT_RAG_VECTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sre-controller-rag
+                  key: vector-token
+                  optional: true
+            - name: SRE_AGENT_LLM_ENABLED
+              value: "0"
+            - name: SRE_AGENT_DRY_RUN
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 9090
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: controller-config
+              mountPath: /etc/ai-sre-agent/controller.yaml
+              subPath: controller.yaml
+              readOnly: true
+            - name: controller-targets
+              mountPath: /etc/ai-sre-agent/controller_targets.yaml
+              subPath: controller_targets.yaml
+              readOnly: true
+            - name: controller-data
+              mountPath: /var/lib/ai-sre-agent/controller/data
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: controller-config
+          configMap:
+            name: sre-controller-config
+            items:
+              - key: controller.yaml
+                path: controller.yaml
+        - name: controller-targets
+          configMap:
+            name: sre-controller-targets
+            items:
+              - key: controller_targets.yaml
+                path: controller_targets.yaml
+        - name: controller-data
+          # Raw cluster-lite keeps controller durability on emptyDir for fast
+          # bring-up. Use the Helm chart with PVC-backed controller data for
+          # longer-lived controller state.
+          emptyDir: {}

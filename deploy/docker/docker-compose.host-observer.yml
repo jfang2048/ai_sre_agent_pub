@@ -1,0 +1,22 @@
+---
+services:
+  collector:
+    user: "0:0"
+    pid: host
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    cap_drop: []
+    cap_add:
+      - BPF
+      - PERFMON
+      - NET_ADMIN
+      - SYS_RESOURCE
+    volumes:
+      - /sys:/sys:ro
+      - /sys/kernel/debug:/sys/kernel/debug
+      - /lib/modules:/lib/modules:ro
+      - /var/log:/var/log:ro
+      - /sys/fs/bpf:/sys/fs/bpf
+    environment:
+      SRE_COLLECTOR_LOG_PATHS: ${SRE_COLLECTOR_LOG_PATHS:-/var/log/syslog,/var/log/messages,/var/log/kern.log}

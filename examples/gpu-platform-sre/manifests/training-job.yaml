@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-artifacts
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tiny-training-placeholder
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/name: tiny-training-placeholder
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    sre-agent.io/workload-kind: training
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tiny-training-placeholder
+        app.kubernetes.io/part-of: gpu-platform-sre-demo
+        sre-agent.io/workload-kind: training
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "-c"]
+          args:
+            - |
+              import json, os, time
+              out = "/models/demo"
+              os.makedirs(out, exist_ok=True)
+              payload = {
+                  "artifact_type": "placeholder-model-metadata",
+                  "created_unix": int(time.time()),
+                  "source_job": "tiny-training-placeholder",
+                  "serving_fallback_model": "facebook/opt-125m",
+                  "note": "This proves platform artifact flow only; it is not a trained model."
+              }
+              with open(os.path.join(out, "metadata.json"), "w", encoding="utf-8") as fh:
+                  json.dump(payload, fh, indent=2)
+              print(json.dumps(payload, indent=2))
+          volumeMounts:
+            - name: model-artifacts
+              mountPath: /models
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: model-artifacts
+          persistentVolumeClaim:
+            claimName: model-artifacts

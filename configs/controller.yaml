@@ -1,0 +1,416 @@
+# SRE Controller Configuration
+# =============================
+#
+# The controller aggregates metrics from multiple probes and provides
+# a unified API and web dashboard.
+#
+# Terminology:
+#   - Probe: The controlled-side data collector on monitored hosts
+#   - Controller: This component - the central aggregation server
+#   - Agent: The overall AI SRE system (NOT the probe component)
+---
+
+# Address to listen on for HTTP requests (loopback by default for safer local deployments)
+listen: "127.0.0.1:8080"
+
+# gRPC ingest listener (push-first telemetry, loopback by default)
+grpc_listen: "127.0.0.1:9090"
+# Log level: debug, info, warn, error
+log_level: "info"
+
+# Release version advertised by /api/v1/status
+version: "v0.9"
+
+# Deployment metadata lets one config file describe local-dev, standalone, and
+# cluster-friendly layouts without rewriting every path by hand.
+deployment:
+  mode: "local-dev"      # local-dev | standalone | cluster-lite | distributed
+  cluster_name: "local"
+  data_root: ""
+  external_url: ""
+  # Non-local modes fail startup when auth or local durability posture is
+  # unsafe unless this flag is set deliberately.
+  insecure_override: false
+
+# Scrape configuration (optional pull mode)
+scrape:
+  # How often to pull metrics from configured nodes (when nodes are set)
+  interval: "15s"
+  # Timeout for scrape requests
+  timeout: "10s"
+
+# List of probe nodes to monitor (optional legacy pull mode).
+# Split deployments should usually keep this empty and maintain
+# `inventory.targets_file` instead.
+nodes: []
+
+# Web UI configuration
+web:
+  # Path to static web files
+  path: "./web"
+
+# HTTP API governance. Local development keeps the shared rate limiter off by
+# default so quick manual testing is friction-free; cluster/container configs
+# turn it on explicitly.
+api:
+  rate_limit_enabled: false
+  rate_limit_rps: 20
+  rate_limit_burst: 40
+  action_rate_limit_enabled: false
+  action_rate_limit_rps: 5
+  action_rate_limit_burst: 10
+  audit_mutations: true
+  allowed_origins:
+    - "http://127.0.0.1:3000"
+    - "http://localhost:3000"
+    - "http://127.0.0.1:4173"
+    - "http://localhost:4173"
+    - "http://127.0.0.1:5173"
+    - "http://localhost:5173"
+    - "http://127.0.0.1:8080"
+    - "http://localhost:8080"
+
+# API authentication
+# auth:
+#   enabled: false
+#   # local-dev keeps auth disabled without extra flags. Non-local modes must
+#   # either enable auth or set this override deliberately.
+#   allow_insecure_disable: false
+#   # token | mixed | api_key
+#   mode: "token"
+#   token_secret_env: "SRE_AGENT_CONTROLLER_TOKEN_SECRET"
+#   token_issuer: "ai-sre-agent-controller"
+#   token_audience: "controller-api"
+#   ingest_auth_enabled: true
+#   ingest_token_audience: "controller-ingest"
+#   # Compatibility mode only. Keep these empty unless you are migrating older
+#   # clients off shared API keys.
+#   api_key_env: "SRE_AGENT_CONTROLLER_API_KEY"
+#   read_api_key_env: "SRE_AGENT_CONTROLLER_READ_API_KEY"
+#   action_api_key_env: "SRE_AGENT_CONTROLLER_ACTION_API_KEY"
+
+# Alerting configuration (future expansion)
+# alerting:
+#   enabled: false
+#   # Webhook URL for alerts
+#   webhook_url: ""
+
+# ============================================================================
+# Analysis Engine Configuration
+# ============================================================================
+# The analysis engine provides automated root cause analysis
+analysis:
+  # Enable the analysis engine
+  enabled: true
+
+  # How often to run analysis cycles
+  interval: "30s"
+
+  # Level 1: Threshold-based alerts
+  # Fast, deterministic alerts based on static thresholds
+  threshold_alerts: true
+
+  # Level 2: Statistical anomaly detection
+  # Detects unusual patterns using z-score and trend analysis
+  anomaly_detection: true
+
+  # Level 2.5: ML seasonal baseline anomaly detection
+  ml_anomaly_detection: true
+  ml_method: "seasonal_baseline"
+  ml_seasonal_period: 12
+  ml_score_threshold: 3.0
+
+  # Level 3: Correlation analysis
+  # Finds relationships between different metrics
+  correlation_analysis: true
+  cross_node_correlation: true
+
+  # Level 4: LLM-assisted analysis (optional)
+  # Requires SRE_AGENT_LLM_API_KEY environment variable
+  llm_enabled: false
+  llm_provider: "openai"    # openai, anthropic, google/gemini, local
+  llm_model: "gpt-4o-mini"  # Model-specific
+
+# ============================================================================
+# Ingest Store (Retention + Embedded Persistence)
+# ============================================================================
+ingest:
+  node_retention: "24h"
+  history_samples_per_node: 1440
+  max_nodes: 5000
+  persistence:
+    enabled: false
+    path: "./data/controller/ingest/store.db"
+    sync_interval: "5s"
+    compaction_interval: "30m"
+    max_db_size_bytes: 536870912   # 512 MiB
+    compact_tx_max_size: 8388608   # 8 MiB
+  transport:
+    allow_plaintext: true
+    tls:
+      enabled: false
+      require_client_cert: false
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+    allowed_collector_ids: []
+    allowed_cluster_names: []
+    allowed_peer_subjects: []
+
+# ============================================================================
+# Controller-side Durable Time-series Storage
+# ============================================================================
+# The collector stays lightweight and ships telemetry batches to the controller.
+# The controller can optionally persist trend-safe metric history into InfluxDB.
+tsdb:
+  enabled: false
+  provider: "influxdb"
+  url: "http://127.0.0.1:8086"
+  org: "ai-sre-agent"
+  bucket: "controller_metrics"
+  measurement: "telemetry_metric"
+  retention: "168h"
+  write_batch_size: 512
+  write_queue_size: 256
+  flush_interval: "2s"
+  query_timeout: "5s"
+  fallback_to_memory: true
+  manage_bucket: false
+  # token is intentionally env-driven via SRE_TSDB_TOKEN
+
+# ============================================================================
+# Unified Orchestration (Resource Pooling + Priority Scheduling)
+# ============================================================================
+orchestration:
+  enabled: true
+  reconcile_interval: "5s"
+  telemetry_stale_after: "45s"
+  max_queue_size: 4096
+  peak_pressure_threshold: 0.75
+  min_batch_run_window: "2m"
+  safety_margin_ratio: 0.05
+  default_cpu_cores: 32
+  default_gpu_cards: 0
+  default_npu_slices: 0
+  default_memory_bytes: 68719476736   # 64GiB
+  default_network_mbps: 10000
+  default_storage_iops: 50000
+  concurrency_per_partition: 32
+  max_events: 200
+  slo_breach_ratio: 1.05
+  slo_breach_consecutive: 2
+  auto_remediation_enabled: true
+  remediation_cooldown: "90s"
+  max_remediations_per_reconcile: 2
+  max_remediations_per_workload: 4
+  remediation_min_improvement: 0.12
+
+# ============================================================================
+# Probe Inventory (Static + Optional Heartbeat Registration)
+# ============================================================================
+inventory:
+  enabled: true
+  heartbeat_ttl: "90s"
+  # Controller-side list of known collectors. This remains useful even though
+  # the main telemetry path is push-first (collector -> controller gRPC).
+  targets_file: "./configs/controller_targets.yaml"
+
+# ============================================================================
+# Kubernetes Integration (Read-only Multi-cluster Discovery)
+# ============================================================================
+kubernetes:
+  enabled: false
+  refresh_interval: "20s"
+  request_timeout: "6s"
+  max_pods_per_cluster: 5000
+  clusters: []
+  # Example:
+  # clusters:
+  #   - name: "prod-a"
+  #     in_cluster: false
+  #     kubeconfig: "/etc/sre-agent/kubeconfig"
+  #     context: "prod-a"
+  #     namespace: "*"
+  #     label_selector: "app.kubernetes.io/part-of=ai-infra"
+
+# ============================================================================
+# Agent Orchestration (Control Plane)
+# ============================================================================
+agent:
+  enabled: true
+  interval: "30s"
+  max_reports: 50
+  predict_horizon: "30m"
+  max_actions: 200
+  # Keep the latest unchanged report fresh in memory instead of appending a new
+  # report record every cycle. This reduces JSONL growth, UI churn, and
+  # repeated operator noise while still updating the latest snapshot in place.
+  suppress_unchanged_reports: true
+  report_refresh_interval: "3m"
+  # Identical predictive warnings are logged no more than once per cooldown
+  # window unless the semantic warning changes.
+  predictive_log_cooldown: "5m"
+  persist_dir: "./data/agent"
+  # Closed-loop workflow state defaults under:
+  #   ./data/agent/workflows/        durable evidence + memory write-back
+  #   ./data/agent/workflow_runs.db  durable run store
+  # Override with:
+  #   SRE_AGENT_WORKFLOW_DATA_PATH
+  #   SRE_AGENT_WORKFLOW_STORE_BACKEND
+  #   SRE_AGENT_WORKFLOW_STORE_PATH
+  #   SRE_AGENT_WORKFLOW_POSTGRES_DSN
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_METADATA_BACKEND
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_METADATA_PATH
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_POSTGRES_DSN
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_PAYLOAD_BACKEND
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_PAYLOAD_ROOT_PATH
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_PAYLOAD_SHARED
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_ENDPOINT
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_REGION
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_BUCKET
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_PREFIX
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_ACCESS_KEY
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_SECRET_KEY
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_SESSION_TOKEN
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_PATH_STYLE
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_S3_INSECURE
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_GC_ENABLED
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_GC_INTERVAL
+  #   SRE_AGENT_WORKFLOW_ARTIFACT_GC_BATCH_SIZE
+  # postgres moves run metadata into shared state. Artifact metadata can
+  # follow that backend. Filesystem payloads stay controller-local unless the
+  # filesystem root itself survives replacement. S3-backed payloads close that
+  # artifact failover gap without changing hot ingest ownership.
+  # RAG stays optional. By default it uses the local deterministic embedder
+  # (`local-hash-64`) and a manually managed index. This is cheap and offline,
+  # but weaker than a curated external embedding backend.
+  rag_enabled: false
+  rag_dataset_path: "./dataset"
+  rag_index_path: "./data/agent/rag/index.json"
+  rag_source_paths: []
+  rag_paths: []
+  rag_top_k: 5
+  rag_max_snippets: 4
+  rag_max_chars: 280
+  # The query-service trims the retrieval query before calling RAG so repeated
+  # findings/anomaly hints and stale/no-op boilerplate do not bloat lexical or
+  # vector search.
+  rag_max_query_chars: 640
+  # Maximum combined symptom lines from filtered findings + anomaly hints that
+  # may be forwarded into one retrieval query.
+  rag_max_findings: 6
+  # Retrieval below this confidence is kept out of the LLM prompt and returned
+  # as a suppressed retrieval summary instead of weak context.
+  rag_min_confidence: 0.18
+  rag_chunk_size: 900
+  rag_chunk_overlap: 120
+  rag_chunk_strategy: "auto"
+  rag_retrieval_mode: "hybrid"
+  rag_embedding_provider: "local"
+  rag_embedding_model: "local-hash-64"
+  rag_embedding_base_url: ""
+  rag_embedding_api_key: ""
+  rag_vector_backend: "local"
+  rag_vector_endpoint: ""
+  rag_vector_collection: "ai_sre_agent_knowledge"
+  rag_vector_database: ""
+  rag_vector_token: ""
+  rag_vector_timeout: "5s"
+  # manual: operators rebuild explicitly
+  # if_missing: rebuild only when no usable index exists
+  # startup: rebuild on every controller start
+  rag_rebuild_policy: "manual"
+  llm_enabled: false
+  llm_timeout: "20s"
+  policy_file: "./configs/agent_playbooks.yaml"
+  signals:
+    cpu_high_percent: 85
+    memory_pressure_ratio: 0.85
+    swap_activity_min: 1
+    disk_io_high: 50
+  net_saturation_bytes_sec: 200000000
+  gpu_sm_high_percent: 85
+
+# ============================================================================
+# Incident Orchestration (Context Aggregation)
+# ============================================================================
+incidents:
+  enabled: true
+  poll_interval: "10s"
+  window_before: "10m"
+  window_after: "20m"
+  resource_platform:
+    endpoint: ""           # Optional HTTP API for CMDB/asset graph
+    api_token_env: ""      # Env var name holding the token
+    timeout: "3s"
+    static: []             # Optional static service→resource mappings
+  monitoring_platform:
+    endpoint: ""           # Optional Prometheus/VictoriaMetrics gateway
+    api_token_env: ""
+    timeout: "5s"
+    step: "30s"
+  logging_platform:
+    endpoint: ""           # Optional log search API
+    api_token_env: ""
+    timeout: "4s"
+    default_size: 50
+  kubernetes:
+    enabled: false
+    in_cluster: false
+    kubeconfig: ""
+    namespace: "default"
+    timeout: "4s"
+
+# ============================================================================
+# High Availability (single active + optional read-only standby)
+# ============================================================================
+ha:
+  enabled: false
+  # Followers keep safe reads but reject both write-sensitive HTTP routes and
+  # gRPC ingest writes. Collector routing must therefore reach the active
+  # controller or use explicit endpoint failover.
+  mode: "active"   # active | standby
+
+# ============================================================================
+# GPU Observability (Fleet Aggregation + Persistence)
+# ============================================================================
+gpu:
+  enabled: true
+  persist_dir: "./data/gpu"
+  flush_interval: "10s"
+  retention: "168h"
+  max_processes_per_gpu: 20
+  timeline_samples_per_gpu: 720
+  timeline_samples_per_process: 360
+  event_buffer_per_node: 1024
+  recent_events_in_snapshot: 200
+
+# ============================================================================
+# External Checks (API/Dependency Health)
+# ============================================================================
+checks:
+  enabled: false
+  interval: "60s"
+  timeout: "10s"
+  max_history: 50
+  checks:
+    - id: "status-api"
+      type: "http"
+      target: "https://status.example.com/health"
+      method: "GET"
+      enabled: true
+      expect_status: [200]
+      # Optional headers from env vars:
+      header_env:
+        Authorization: "SRE_AGENT_CHECK_HTTP_BEARER_TOKEN"
+
+    - id: "public-dns"
+      type: "dns"
+      target: "example.com"
+      enabled: true
+
+    - id: "tls-cert"
+      type: "tls"
+      target: "https://api.example.com"
+      enabled: true
+      tls_min_days: 30

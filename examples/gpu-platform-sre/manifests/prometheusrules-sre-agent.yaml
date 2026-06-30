@@ -1,0 +1,75 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gpu-platform-sre-agent
+  namespace: ai-sre-agent
+  labels:
+    app.kubernetes.io/part-of: gpu-platform-sre-demo
+    release: prometheus
+spec:
+  groups:
+    - name: gpu-platform-sre-agent.rules
+      rules:
+        - alert: SRECollectorScrapeMissing
+          expr: absent(up{namespace="ai-sre-agent",pod=~".*collector.*"} == 1) or min_over_time(up{namespace="ai-sre-agent",pod=~".*collector.*"}[5m]) == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: sre-collector
+          annotations:
+            summary: SRE collector scrape is missing or down
+            description: Requires Prometheus scrape labels with namespace and pod. Check ServiceMonitor/PodMonitor selectors and collector metrics port 9464.
+        - alert: SREControllerNotReady
+          expr: absent(up{namespace="ai-sre-agent",service=~".*controller.*"} == 1) or max by (namespace) (kube_deployment_status_replicas_available{namespace="ai-sre-agent",deployment=~".*controller.*"}) < 1
+          for: 5m
+          labels:
+            severity: critical
+            component: sre-controller
+          annotations:
+            summary: SRE controller is not ready
+            description: Uses scrape health and kube-state-metrics deployment availability when installed.
+        - alert: SRECollectorSpoolBacklogGrowth
+          expr: increase(collector_spool_backlog_bytes{namespace="ai-sre-agent"}[15m]) > 1048576 or max_over_time(collector_spool_backlog_bytes{namespace="ai-sre-agent"}[15m]) > 536870912
+          for: 15m
+          labels:
+            severity: warning
+            component: sre-collector
+          annotations:
+            summary: Collector spool backlog is growing
+            description: Assumes collector telemetry metric collector_spool_backlog_bytes is exported to Prometheus. Adjust label joins if collected through the controller.
+        - alert: SREGPUTelemetryMissingOnGPUNode
+          expr: (max by (node) (kube_node_status_allocatable{resource="nvidia_com_gpu"} > 0)) unless on (node) (max by (node) (node_gpu_info))
+          for: 10m
+          labels:
+            severity: warning
+            component: gpu-observability
+          annotations:
+            summary: GPU node has no SRE Agent GPU telemetry
+            description: Assumes kube-state-metrics node labels and SRE Agent node_gpu_info include a node label. Missing data is a telemetry gap, not a healthy zero.
+        - alert: VLLMPodCrashLooping
+          expr: max_over_time(kube_pod_container_status_waiting_reason{namespace="ai-serving",pod=~".*vllm.*",reason="CrashLoopBackOff"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: vllm
+          annotations:
+            summary: vLLM pod is crash looping
+            description: Requires kube-state-metrics. Use bad-rollout drill to validate signal and rollback evidence.
+        - alert: VLLMHighLatency
+          expr: histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{namespace="ai-serving"}[5m]))) > 5
+          for: 10m
+          labels:
+            severity: warning
+            component: vllm
+          annotations:
+            summary: vLLM p95 latency is high
+            description: Placeholder rule. Verify installed vLLM metric name and labels before using for paging.
+        - alert: VLLMHighErrorRate
+          expr: sum(rate(vllm:num_requests_failed_total{namespace="ai-serving"}[5m])) / clamp_min(sum(rate(vllm:num_requests_total{namespace="ai-serving"}[5m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            component: vllm
+          annotations:
+            summary: vLLM error rate is high
+            description: Placeholder rule. Verify installed vLLM request counter names before using for paging.
