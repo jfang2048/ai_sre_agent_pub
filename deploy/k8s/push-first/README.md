@@ -1,6 +1,6 @@
 # Push-First Kubernetes Deployment
 
-This directory is the raw `cluster-lite` Kubernetes path for `v0.9`.
+This directory is the raw `cluster-lite` Kubernetes path for `v0.95`.
 
 ## What It Deploys
 

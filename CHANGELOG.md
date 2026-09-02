@@ -2,8 +2,28 @@
 
 ## Unreleased
 
+## v0.95 - 2026-09-02
+
+### Security
+
+- Rewrote every public version branch to remove historical raw corpora, bundled third-party archives, screenshots, local-path helper scripts, and private commit email metadata.
+- Added a dependency-free public-repository audit for forbidden historical paths, non-`noreply` commit identities, sensitive filenames, credential-shaped tokens, private-key blocks, and workstation-specific absolute paths.
+- Changed public-tree preparation to copy tracked files only. Untracked files are no longer eligible for publication merely because `.gitignore` missed them.
+- Added regression coverage proving that untracked files are omitted and secret-shaped filenames and content fail closed.
+
+### Unix design
+
+- Kept repository audit, tree preparation, and publisher regression checks as separate shell commands with stable exit status contracts.
+- Preserved stdout for successful, composable results and stderr for diagnostics.
+- Separated public-release policy from runtime behavior and reused the same checks from local workflows, CI, and the security scan.
+- Reworked public web-source acquisition into a single-source-of-truth, line-oriented HTTPS reader with atomic file replacement and a network-free dry-run contract.
+- Removed dead corpus-specific routing rules so the RAG classifier depends on declared source shape and operational signals rather than private dataset or vendor names.
+- Replaced unsafe protobuf struct copies in collector caches and runtime profiles with protobuf-aware deep clones, eliminating copied mutex state and shared nested labels.
+
 ### Changed
 
+- Added explicit Python package boundaries for analysis, bridge, LLM, and model modules so editable tests and built distributions resolve the same import graph.
+- Updated the frontend toolchain to patched Vite, Vitest, React Router, Axios, and PostCSS releases; converted chunk selection to the Vite 8 function contract and restored a repository-local ESLint boundary.
 - The controller runtime is now documented and tested as skills-first: operational capabilities are governed through registry contracts, deterministic scoring, policy checks, normalized results, and replay-aware artifacts.
 - RAG is a read-only knowledge skill. `rag_query` and the other knowledge retrieval surfaces remain compatibility evidence skills, but retrieval text no longer owns control-plane causality.
 - Tool contracts now expose API-friendly skill fields for description, capability family, schemas, approval requirement, autonomy eligibility, query hints, follow-up families, idempotency, and replay semantics.

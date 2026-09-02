@@ -28,7 +28,7 @@ spec:
         - operator: Exists
       containers:
         - name: collector
-          image: ai-sre-agent/collector:v0.9
+          image: ai-sre-agent/collector:v0.95
           imagePullPolicy: IfNotPresent
           env:
             - name: NODE_NAME

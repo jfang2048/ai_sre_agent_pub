@@ -13,7 +13,7 @@
 .PHONY: all proto proto-check build build-collector build-controller build-probe-core build-probe-core-best-effort \
         run run-collector run-controller run-both run-multinode \
         rag-status rag-query rag-index rag-rebuild rag-update rag-demo \
-        test test-controller test-agent-workflow test-agent-replay test-all test-cover test-race test-stability test-screenshot-tools bench \
+        test test-controller test-agent-workflow test-agent-replay test-all test-cover test-race test-stability test-screenshot-tools test-publish-privacy test-dataset-fetch bench \
         eval-fast eval-regression eval-benchmark \
         predictive-test predictive-bench low-overhead-benchmark chaos-test \
         fmt fmt-check vet lint harness-boundary-check ci verify-version verify-readme-screenshots capture-keys validate-manifests \
@@ -26,12 +26,12 @@
         docker-up docker-up-tsdb docker-up-host-observer docker-down docker-down-tsdb docker-down-host-observer docker-down-full docker-logs docker-build docker-build-controller docker-build-collector docker-run-controller docker-run-collector docker-run-stack docker-stop-stack smoke \
         clean install install-collector-service install-controller-service \
         docker-controller docker \
-        security-scan security-audit sbom helm-package helm-smoke predictive-validation multiarch-build python-package-check \
+        security-scan security-audit public-repo-audit sbom helm-package helm-smoke predictive-validation multiarch-build python-package-check \
         help
 
 # Build configuration
 VERSION_FILE ?= $(CURDIR)/VERSION
-VERSION ?= $(shell cat $(VERSION_FILE) 2>/dev/null || echo v0.9)
+VERSION ?= $(shell cat $(VERSION_FILE) 2>/dev/null || echo v0.95)
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -247,6 +247,14 @@ test-ui:
 test-screenshot-tools:
 	@./scripts/test/screenshot_tooling.sh
 
+## test-publish-privacy: Verify the public-tree publisher fails closed
+test-publish-privacy:
+	@./scripts/test/publish_privacy.sh
+
+## test-dataset-fetch: Verify the line-oriented dataset fetch contract without network access
+test-dataset-fetch:
+	@./scripts/test/dataset_fetch.sh
+
 ## bench: Run benchmarks
 bench:
 	@mkdir -p $(GO_CACHE)
@@ -335,7 +343,7 @@ verify-version:
 		exit 1; \
 	fi; \
 	chart_version="$${current#v}.0"; \
-	stale="$$(grep -R -n -I -E 'v0\\.(6|7|8)([^0-9]|$$)|0\\.(6|7|8)\\.0([^0-9]|$$)' README.md README.zh-CN.md Makefile deploy/charts/sre-agent deploy/k8s/push-first deploy/docker/docker-compose.controller.yml deploy/docker/docker-compose.collector.yml configs backend/cmd backend/internal/controller backend/internal/collector .env.example scripts/bootstrap/manage_optional_datasets.sh scripts/docker-build-controller.sh scripts/docker-build-collector.sh scripts/docker-run-controller.sh scripts/docker-run-collector.sh scripts/docker-run-stack.sh scripts/publish/update_sync_and_push.sh scripts/publish/update_github.sh deploy/docker/Dockerfile.controller deploy/docker/Dockerfile.collector 2>/dev/null || true)"; \
+	stale="$$(grep -R -n -I -E 'v0\\.(6|7|8|9)([^0-9]|$$)|0\\.(6|7|8|9)\\.0([^0-9]|$$)' README.md README.zh-CN.md Makefile deploy/charts/sre-agent deploy/k8s/push-first deploy/docker/docker-compose.controller.yml deploy/docker/docker-compose.collector.yml configs backend/cmd backend/internal/controller backend/internal/collector .env.example scripts/bootstrap/manage_optional_datasets.sh scripts/docker-build-controller.sh scripts/docker-build-collector.sh scripts/docker-run-controller.sh scripts/docker-run-collector.sh scripts/docker-run-stack.sh scripts/publish/update_sync_and_push.sh scripts/publish/update_github.sh deploy/docker/Dockerfile.controller deploy/docker/Dockerfile.collector 2>/dev/null || true)"; \
 	if [ -n "$$stale" ]; then \
 		echo "Found stale previous-release references:"; \
 		echo "$$stale"; \
@@ -349,6 +357,22 @@ verify-version:
 	}; \
 	grep -n -F "appVersion: \"$$current\"" deploy/charts/sre-agent/Chart.yaml >/dev/null || { \
 		echo "Helm appVersion drift: expected $$current in deploy/charts/sre-agent/Chart.yaml"; \
+		exit 1; \
+	}; \
+	grep -n -F "\"version\": \"$$chart_version\"" frontend/package.json >/dev/null || { \
+		echo "Frontend package version drift: expected $$chart_version"; \
+		exit 1; \
+	}; \
+	grep -n -F "\"version\": \"$$chart_version\"" tests/ui/package.json >/dev/null || { \
+		echo "UI test package version drift: expected $$chart_version"; \
+		exit 1; \
+	}; \
+	grep -n -F "version = \"$$chart_version\"" python/pyproject.toml >/dev/null || { \
+		echo "Python package version drift: expected $$chart_version"; \
+		exit 1; \
+	}; \
+	grep -n -F "version=\"$$chart_version\"" python/setup.py >/dev/null || { \
+		echo "Python setup version drift: expected $$chart_version"; \
 		exit 1; \
 	}
 
@@ -388,6 +412,10 @@ security-scan:
 security-audit:
 	@mkdir -p $(GO_CACHE)
 	@$(GO) -C backend run ./cmd/security-audit -root $(CURDIR) -format markdown
+
+## public-repo-audit: Reject private paths, commit identities, and credential-shaped content
+public-repo-audit:
+	@./scripts/publish/audit_repository.sh
 
 ## sbom: Generate a CycloneDX SBOM when syft is installed
 sbom:

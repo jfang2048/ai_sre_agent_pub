@@ -2,27 +2,38 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+const chunkGroups: Record<string, string[]> = {
+    react: ['react', 'react-dom', 'react-router-dom'],
+    recharts: ['recharts'],
+    forcegraph: ['react-force-graph-2d'],
+    motion: ['framer-motion'],
+    query: ['@tanstack/react-query', 'axios'],
+    dnd: ['@dnd-kit/core', '@dnd-kit/sortable'],
+}
+
+function manualChunk(id: string): string | undefined {
+    for (const [chunk, packages] of Object.entries(chunkGroups)) {
+        if (packages.some((packageName) => id.includes(`/node_modules/${packageName}/`))) {
+            return chunk
+        }
+    }
+    return undefined
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [react()],
     resolve: {
         alias: {
-            '@': path.resolve(__dirname, './src'),
+            '@': path.resolve(import.meta.dirname, './src'),
         },
     },
     build: {
-        outDir: path.resolve(__dirname, '../web'),
+        outDir: path.resolve(import.meta.dirname, '../web'),
         emptyOutDir: true,
         rollupOptions: {
             output: {
-                manualChunks: {
-                    react: ['react', 'react-dom', 'react-router-dom'],
-                    recharts: ['recharts'],
-                    forcegraph: ['react-force-graph-2d'],
-                    motion: ['framer-motion'],
-                    query: ['@tanstack/react-query', 'axios'],
-                    dnd: ['@dnd-kit/core', '@dnd-kit/sortable'],
-                },
+                manualChunks: manualChunk,
             },
         },
     },

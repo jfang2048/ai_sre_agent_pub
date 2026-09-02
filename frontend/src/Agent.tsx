@@ -238,16 +238,6 @@ interface WorkflowToolCall {
     completed_at: string;
 }
 
-interface WorkflowAuditRecord {
-    id: string;
-    workflow_id: string;
-    stage: string;
-    action: string;
-    status: string;
-    output_summary?: string;
-    timestamp: string;
-}
-
 interface JointRiskReport {
     workflow_id: string;
     risk_score: number;
@@ -417,7 +407,10 @@ function AgentTab({ queuedQuery, onQueuedQueryHandled }: AgentTabProps) {
         return [...actions].sort((a, b) => priorityScore(a.priority) - priorityScore(b.priority));
     }, [response?.actions]);
 
-    const incidents = incidentsQuery.data?.incidents ?? [];
+    const incidents = useMemo(
+        () => incidentsQuery.data?.incidents ?? [],
+        [incidentsQuery.data?.incidents],
+    );
     useEffect(() => {
         if (!selectedIncidentID && incidents.length > 0) {
             setSelectedIncidentID(incidents[0].alert_id);

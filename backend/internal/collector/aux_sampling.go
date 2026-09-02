@@ -6,6 +6,7 @@ import (
 	"time"
 
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -283,8 +284,7 @@ func cloneProcessSamples(in []*telemetryv1.ProcessSample) []*telemetryv1.Process
 		if item == nil {
 			continue
 		}
-		copyItem := *item
-		out = append(out, &copyItem)
+		out = append(out, proto.Clone(item).(*telemetryv1.ProcessSample))
 	}
 	return out
 }
@@ -298,8 +298,7 @@ func cloneLogFingerprints(in []*telemetryv1.LogFingerprint) []*telemetryv1.LogFi
 		if item == nil {
 			continue
 		}
-		copyItem := *item
-		out = append(out, &copyItem)
+		out = append(out, proto.Clone(item).(*telemetryv1.LogFingerprint))
 	}
 	return out
 }
@@ -313,18 +312,7 @@ func cloneTelemetryMetrics(in []*telemetryv1.Metric) []*telemetryv1.Metric {
 		if item == nil {
 			continue
 		}
-		copyItem := *item
-		if len(item.Labels) > 0 {
-			copyItem.Labels = make([]*telemetryv1.Label, 0, len(item.Labels))
-			for _, label := range item.Labels {
-				if label == nil {
-					continue
-				}
-				copyLabel := *label
-				copyItem.Labels = append(copyItem.Labels, &copyLabel)
-			}
-		}
-		out = append(out, &copyItem)
+		out = append(out, proto.Clone(item).(*telemetryv1.Metric))
 	}
 	return out
 }

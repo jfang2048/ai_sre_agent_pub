@@ -13,6 +13,8 @@ Environment:
   SRE_PUBLISH_BRANCH            Branch used when pushing (default: main).
   SRE_PUBLISH_MAX_FILE_BYTES    Hard size limit for publish tree files (default: 45 MiB).
   SRE_PUBLISH_WARN_FILE_BYTES   Warning threshold for publish tree files (default: 20 MiB).
+  SRE_PUBLISH_ALLOW_PUBLIC_EMAILS
+                                Set to 1 only when public commit emails are intentional.
 USAGE
 }
 
@@ -30,7 +32,10 @@ publish_copy_worktree() {
   find "${dst}" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
   (
     cd "${PUBLISH_ROOT_DIR}"
-    git ls-files -z --cached --others --exclude-standard | \
+    # A public artifact is a projection of reviewed repository state. Untracked
+    # files are deliberately excluded even when they are not covered by
+    # .gitignore; callers must add them explicitly before they can be published.
+    git ls-files -z --cached | \
       while IFS= read -r -d '' path; do \
         if [[ -e "${path}" ]]; then \
           printf '%s\0' "${path}"; \
@@ -92,8 +97,11 @@ publish_secret_name_audit() {
   local dst="$1"
   local found=0
   while IFS= read -r -d '' file; do
-    case "${file}" in
-      *.pem|*.key|*.p12|*.pfx|*.crt|*.csr|*.der|*.jks|*.keystore|*.secret|*.secrets|*.token|*.tokens|*.credentials)
+    local relative lower
+    relative="${file#${dst}/}"
+    lower="${relative,,}"
+    case "${lower}" in
+      .env|*/.env|*.env.local|*.env.private|*.env.secret|*.pem|*.key|*.p12|*.pfx|*.crt|*.csr|*.der|*.jks|*.keystore|*.secret|*.secrets|*.token|*.tokens|*.credentials|*.kubeconfig|kubeconfig|*/kubeconfig|*/.aws/*|*/.ssh/*|*/.gnupg/*)
         printf 'publish secret-name violation: %s\n' "${file#${dst}/}" >&2
         found=1
         ;;
@@ -105,13 +113,94 @@ publish_secret_name_audit() {
   return 0
 }
 
+publish_sensitive_content_audit() {
+  local dst="$1"
+  local found=0
+  local pattern
+  pattern='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----|/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\)'
+
+  if command -v rg >/dev/null 2>&1; then
+    while IFS= read -r file; do
+      [[ -n "${file}" ]] || continue
+      printf 'publish sensitive-content violation: %s\n' "${file#${dst}/}" >&2
+      found=1
+    done < <(rg -Il --hidden --glob '!.git/**' "${pattern}" "${dst}" 2>/dev/null || true)
+  else
+    while IFS= read -r file; do
+      [[ -n "${file}" ]] || continue
+      printf 'publish sensitive-content violation: %s\n' "${file#${dst}/}" >&2
+      found=1
+    done < <(grep -RIlE --exclude-dir=.git "${pattern}" "${dst}" 2>/dev/null || true)
+  fi
+
+  if (( found != 0 )); then
+    return 1
+  fi
+  return 0
+}
+
+publish_history_audit() {
+  local found=0
+  local historical_path lower email size
+
+  while IFS= read -r historical_path; do
+    [[ -n "${historical_path}" ]] || continue
+    lower="${historical_path,,}"
+    case "${lower}" in
+      dataset/raw/*|screenshot/*|docs/images/*|do_refactor.sh|.codex|*.pem|*.key|*.p12|*.pfx|*.jks|*.keystore|*.kdbx|*.secret|*.secrets|*.token|*.tokens|*.credentials|*.kubeconfig|*/.aws/*|*/.ssh/*|*/.gnupg/*)
+        printf 'publish history-path violation: %s\n' "${historical_path}" >&2
+        found=1
+        ;;
+    esac
+  done < <(git -C "${PUBLISH_ROOT_DIR}" log --all --name-only --format= | sort -u)
+
+  while IFS=$'\t' read -r size historical_path; do
+    [[ -n "${historical_path}" ]] || continue
+    printf 'publish history-size violation: %s bytes %s\n' "${size}" "${historical_path}" >&2
+    found=1
+  done < <(
+    git -C "${PUBLISH_ROOT_DIR}" rev-list --objects --all \
+      | git -C "${PUBLISH_ROOT_DIR}" cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' \
+      | awk -v max="${PUBLISH_MAX_FILE_BYTES}" '
+          $1 == "blob" && $3 > max {
+            path = $0
+            sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", path)
+            printf "%s\t%s\n", $3, path
+          }
+        ' \
+      | sort -u
+  )
+
+  if [[ "${SRE_PUBLISH_ALLOW_PUBLIC_EMAILS:-0}" != "1" ]]; then
+    while IFS= read -r email; do
+      [[ -n "${email}" ]] || continue
+      case "${email}" in
+        *@users.noreply.github.com|*@noreply.github.com) ;;
+        *)
+          # Do not echo the address: the audit itself must not reproduce private data.
+          printf 'publish commit-identity violation: non-noreply email present\n' >&2
+          found=1
+          break
+          ;;
+      esac
+    done < <(git -C "${PUBLISH_ROOT_DIR}" log --all --format='%ae%n%ce' | sort -u)
+  fi
+
+  if (( found != 0 )); then
+    return 1
+  fi
+  return 0
+}
+
 publish_prepare_tree() {
   local dst="$1"
   publish_require_git_repo
+  publish_history_audit
   publish_copy_worktree "${dst}"
   publish_copy_tracked_metadata "${dst}"
   publish_file_audit "${dst}"
   publish_secret_name_audit "${dst}"
+  publish_sensitive_content_audit "${dst}"
 }
 
 publish_ensure_repo() {

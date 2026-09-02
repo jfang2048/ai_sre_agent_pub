@@ -4,8 +4,6 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 try:
     from openai import OpenAI  # type: ignore
 except Exception:  # pragma: no cover - optional dependency for local unit tests

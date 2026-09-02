@@ -12,7 +12,7 @@ class TestPythonCLI(unittest.TestCase):
         with redirect_stdout(out):
             rc = main(["--version"])
         self.assertEqual(0, rc)
-        self.assertEqual("0.7.0", out.getvalue().strip())
+        self.assertEqual("0.95.0", out.getvalue().strip())
 
     def test_serve_command_parse(self) -> None:
         args = build_parser().parse_args(
@@ -22,7 +22,7 @@ class TestPythonCLI(unittest.TestCase):
         self.assertEqual(50052, args.port)
 
     def test_version_semver(self) -> None:
-        self.assertEqual("0.7.0", __version__)
+        self.assertEqual("0.95.0", __version__)
 
     def test_no_command_prints_help(self) -> None:
         out = StringIO()

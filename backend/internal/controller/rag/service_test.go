@@ -185,7 +185,7 @@ func TestNewServiceQuarantinesInvalidIndexAndRebuildsWhenConfigured(t *testing.T
 	datasetDir := writeTestDataset(t)
 	indexPath := filepath.Join(t.TempDir(), "rag", "index.json")
 	invalidIndex := `{
-  "schema": "rag-v0.9",
+  "schema": "rag-v0.95",
   "built_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z",
   "documents": [

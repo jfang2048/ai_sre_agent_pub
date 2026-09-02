@@ -37,7 +37,7 @@ export default function TopProgramsPanel() {
         refetchInterval: 30_000,
     });
 
-    const programs = data?.programs ?? [];
+    const programs = useMemo(() => data?.programs ?? [], [data?.programs]);
     const summary = data?.summary;
 
     const hero = useMemo(() => {

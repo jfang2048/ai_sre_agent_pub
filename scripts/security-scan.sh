@@ -227,7 +227,14 @@ if require_tool gitleaks "gitleaks"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Dockerfile linting
+# 7. Public repository privacy audit
+# ---------------------------------------------------------------------------
+section "Public repository privacy audit"
+run_check "public repository privacy audit" "${OUT_DIR}/public-repo-audit.txt" \
+  "${ROOT_DIR}/scripts/publish/audit_repository.sh" || true
+
+# ---------------------------------------------------------------------------
+# 8. Dockerfile linting
 # ---------------------------------------------------------------------------
 section "Dockerfile linting (hadolint)"
 if require_tool hadolint "hadolint"; then
@@ -261,7 +268,7 @@ if require_tool hadolint "hadolint"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 8. Basic configuration linting
+# 9. Basic configuration linting
 # ---------------------------------------------------------------------------
 section "Configuration linting (yamllint)"
 if require_tool yamllint "yamllint"; then
@@ -288,7 +295,7 @@ if require_tool yamllint "yamllint"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 9. Runtime security audit (built-in)
+# 10. Runtime security audit (built-in)
 # ---------------------------------------------------------------------------
 section "Runtime security audit (security-audit CLI)"
 if run_check "security-audit build" "${OUT_DIR}/security-audit-build.txt" \

@@ -4,6 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_BUILD_OUTDIR="${SRE_FRONTEND_BUILD_OUTDIR:-/tmp/ai_sre_agent_frontend_build}"
 
+echo "[ci] public repository privacy audit"
+make -C "${ROOT_DIR}" public-repo-audit
+
+echo "[ci] public publisher fail-closed tests"
+make -C "${ROOT_DIR}" test-publish-privacy
+
+echo "[ci] dataset source stream contract"
+make -C "${ROOT_DIR}" test-dataset-fetch
+
 if [[ "${SRE_SKIP_FMT_CHECK:-0}" == "1" ]]; then
   echo "[ci] backend format check skipped (SRE_SKIP_FMT_CHECK=1)"
 else

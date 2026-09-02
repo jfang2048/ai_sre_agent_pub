@@ -13,7 +13,7 @@ import (
 
 const (
 	algorithmName    = "ewma+zscore+adaptive-threshold"
-	algorithmVersion = "v0.9"
+	algorithmVersion = "v0.95"
 )
 
 type Finding struct {

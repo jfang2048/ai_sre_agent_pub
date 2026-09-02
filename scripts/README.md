@@ -25,6 +25,8 @@ Why this split exists:
 
 - bootstrap concerns have different failure modes than runtime/dev scripts
 - publish helpers must enforce stricter filtering and file-size audits than normal development flows
+- public publishing consumes tracked files only; untracked inputs must first enter normal review
+- `scripts/publish/audit_repository.sh` is the composable history/content gate used by local checks, CI, and security scanning
 - test wrappers need isolated bootstrap behavior and should stay discoverable near CI commands
 
 中文原因补充:

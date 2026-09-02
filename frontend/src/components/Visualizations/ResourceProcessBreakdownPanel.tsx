@@ -208,7 +208,7 @@ function noDataGuidance(category: ResourceCategory): string {
         case 'gpu':
             return 'No active GPU process telemetry was observed. This is expected when the host has no NVIDIA GPU workload or when nvidia-smi/NVML is unavailable in the collector runtime.';
         case 'logs':
-            return 'No attributed logs were observed in the current window. This is expected when recent logs are quiet; otherwise configure SRE_COLLECTOR_LOG_PATHS and generate a test warning (for example: logger -p user.warning \"sre-agent test warning\").';
+            return 'No attributed logs were observed in the current window. This is expected when recent logs are quiet; otherwise configure SRE_COLLECTOR_LOG_PATHS and generate a test warning (for example: logger -p user.warning "sre-agent test warning").';
         default:
             return 'Set SRE_COLLECTOR_LEVEL=5 and confirm this collector is actively reporting process telemetry.';
     }

@@ -29,16 +29,16 @@ write_readme() {
   cat >"${README_PATH}" <<'DOC'
 # Optional Archive Corpora
 
-`dataset/raw/archives/` stays publish-safe in `v0.9`.
+`dataset/raw/archives/` stays local-only in `v0.95`.
 
 The original large archive inputs are not kept in the public source tree because they inflate clone size,
 trigger GitHub large-file warnings, and do not need to be downloaded by every contributor.
 
 Current policy:
 
-- `dataset/raw/structured/` remains the tracked seed knowledge base
+- reviewed public metadata remains under tracked `dataset/metadata/`
 - large archive corpora live in the local-only bootstrap store: `data/bootstrap/datasets/archives/`
-- this directory keeps only a manifest and usage notes
+- this ignored directory keeps a local manifest and usage notes
 
 Use `scripts/bootstrap/manage_optional_datasets.sh import --from <dir>` to import archive corpora into the local bootstrap store.
 When the local bootstrap directory exists, the local RAG tooling can include it through `SRE_AGENT_RAG_SOURCE_PATHS`.
@@ -70,7 +70,7 @@ for path in sorted(store.glob('*')):
         'status': 'available-in-local-bootstrap-store',
     })
 manifest = {
-    'version': 'v0.9',
+    'version': 'v0.95',
     'archives': archives,
 }
 manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')

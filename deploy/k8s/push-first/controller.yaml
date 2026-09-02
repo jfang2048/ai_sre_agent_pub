@@ -49,7 +49,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: controller
-          image: ai-sre-agent/controller:v0.9
+          image: ai-sre-agent/controller:v0.95
           imagePullPolicy: IfNotPresent
           env:
             - name: SRE_CONTROLLER_CONFIG

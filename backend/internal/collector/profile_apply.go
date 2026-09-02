@@ -5,6 +5,7 @@ import (
 	"time"
 
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func (c *Collector) ApplyRuntimeProfile(profile RuntimeProfile) RuntimeProfileStatus {
@@ -97,9 +98,7 @@ func cloneCollectorInfo(info *telemetryv1.CollectorInfo) *telemetryv1.CollectorI
 	if info == nil {
 		return nil
 	}
-	copy := *info
-	copy.Labels = append([]*telemetryv1.Label(nil), info.Labels...)
-	return &copy
+	return proto.Clone(info).(*telemetryv1.CollectorInfo)
 }
 
 func appendCollectorInfoRuntimeProfileLabels(info *telemetryv1.CollectorInfo, status RuntimeProfileStatus) {

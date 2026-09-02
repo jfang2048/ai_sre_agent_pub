@@ -9,7 +9,7 @@ import (
 	evidencev1 "github.com/jfang2048/ai_sre_agent_pub/internal/controller/evidence"
 )
 
-const workflowPipelineVersion = "v0.9-workflow-pipeline"
+const workflowPipelineVersion = "v0.95-workflow-pipeline"
 
 const (
 	WorkflowRuntimeModeDeterministic = "deterministic"

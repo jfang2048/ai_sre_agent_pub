@@ -3,7 +3,7 @@
 
 collector_id: ""
 hostname: ""
-version: "v0.9"
+version: "v0.95"
 labels: {}
 deployment:
   mode: "local-dev"      # local-dev | standalone | cluster-lite | distributed

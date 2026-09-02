@@ -222,7 +222,7 @@ func SeedDemoData(store *ingest.MemoryStore, logIdx *logindex.Index) {
 		store.UpsertCollector(&telemetryv1.CollectorInfo{
 			CollectorId: sc.id,
 			Hostname:    sc.hostname,
-			Version:     "v0.9-demo",
+			Version:     "v0.95-demo",
 			Os:          "linux",
 			Arch:        "amd64",
 			Labels:      mapToLabels(sc.labels),

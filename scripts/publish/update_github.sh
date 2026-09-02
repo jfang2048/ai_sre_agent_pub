@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/common.sh"
 TARGET_DIR="${SRE_PUBLISH_TARGET_DIR:-${PUBLISH_ROOT_DIR}_pub}"
 REMOTE_NAME="${SRE_PUBLISH_REMOTE:-origin}"
 BRANCH="${SRE_PUBLISH_BRANCH:-main}"
-COMMIT_MESSAGE="${SRE_PUBLISH_COMMIT_MESSAGE:-Publish AI SRE Agent v0.6 $(date '+%Y-%m-%d %H:%M:%S')}"
+COMMIT_MESSAGE="${SRE_PUBLISH_COMMIT_MESSAGE:-Publish AI SRE Agent v0.95 $(date '+%Y-%m-%d %H:%M:%S')}"
 NO_PUSH=0
 
 usage() {

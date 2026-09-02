@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sre-agent",
-    version="0.7.0",
+    version="0.95.0",
     description="AI-powered SRE agent for infrastructure monitoring and remediation",
     author="SRE Agent Team",
     license="GPL-3.0-only",

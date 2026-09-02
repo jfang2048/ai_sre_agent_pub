@@ -22,7 +22,7 @@ func TestStatusSnapshotIncludesPrivilegeAndFallbackPosture(t *testing.T) {
 		cfg: Config{
 			CollectorID:         "collector-a",
 			Hostname:            "node-a",
-			Version:             "v0.9",
+			Version:             "v0.95",
 			PrivilegeProfile:    PrivilegeProfileObservability,
 			ControllerEndpoints: []string{"controller-a:9090"},
 			Transport: TransportConfig{

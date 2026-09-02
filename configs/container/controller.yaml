@@ -3,7 +3,7 @@
 listen: "0.0.0.0:8080"
 grpc_listen: "0.0.0.0:9090"
 log_level: "info"
-version: "v0.9"
+version: "v0.95"
 deployment:
   mode: "local-dev"
   cluster_name: "default-cluster"

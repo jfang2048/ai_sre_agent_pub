@@ -7,8 +7,8 @@ source "${SCRIPT_DIR}/common.sh"
 
 TARGET_DIR="${SRE_PUBLISH_TARGET_DIR:-${PUBLISH_ROOT_DIR}_pub}"
 REMOTE_NAME="${SRE_PUBLISH_REMOTE:-origin}"
-TARGET_BRANCH="${SRE_PUBLISH_BRANCH:-v0.6}"
-COMMIT_MESSAGE="${SRE_PUBLISH_COMMIT_MESSAGE:-snapshot v0.6 $(date '+%Y-%m-%d %H:%M:%S')}"
+TARGET_BRANCH="${SRE_PUBLISH_BRANCH:-v0.95}"
+COMMIT_MESSAGE="${SRE_PUBLISH_COMMIT_MESSAGE:-snapshot v0.95 $(date '+%Y-%m-%d %H:%M:%S')}"
 NO_PUSH=0
 
 usage() {
@@ -18,7 +18,7 @@ usage: update_sync_and_push.sh [options]
 options:
   --target-dir <dir>   Target mirror repository directory.
   --remote <name>      Remote name to push to (default: origin).
-  --branch <name>      Version branch to replace (default: v0.6).
+  --branch <name>      Version branch to replace (default: v0.95).
   --message <msg>      Commit message.
   --no-push            Prepare and commit locally without pushing.
   --help               Show this message.

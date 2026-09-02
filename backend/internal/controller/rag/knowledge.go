@@ -125,8 +125,7 @@ func classifyKnowledgeType(doc SourceDocument) string {
 	case strings.Contains(path, "manifest.json"),
 		strings.Contains(path, "/readme"),
 		strings.Contains(path, "dataset layout"),
-		strings.Contains(title, "dataset layout"),
-		strings.Contains(path, "aiops2024-challenge-dataset.json"):
+		strings.Contains(title, "dataset layout"):
 		return "dataset_meta"
 	case containsAny(path, "runbook", "playbook", "manual", "guide", "troubleshoot", "faq"),
 		containsAny(title, runbookHeadingKeywords...),
@@ -167,7 +166,6 @@ func classifyCaseType(doc SourceDocument) string {
 }
 
 func defaultRetrievalWeight(doc SourceDocument) float64 {
-	path := strings.ToLower(doc.SourcePath)
 	family := strings.ToLower(strings.TrimSpace(doc.Metadata["source_family"]))
 	switch doc.KnowledgeType {
 	case "runbook":
@@ -209,9 +207,6 @@ func defaultRetrievalWeight(doc SourceDocument) float64 {
 			return 0.72
 		case "structured_helpdesk":
 			return 0.35
-		}
-		if strings.Contains(path, "dataset/raw/archives/zte_ereader") {
-			return 0.7
 		}
 		return 0.9
 	}
@@ -669,8 +664,6 @@ func inferGenericDomain(text string) string {
 		return "aws"
 	case containsAny(lower, "sentry"):
 		return "sentry"
-	case containsAny(lower, "zte", "pcf", "nrf", "rcp"):
-		return "telecom"
 	case containsAny(lower, "security", "credential", "certificate", "malware", "cve"):
 		return "security"
 	case containsAny(lower, "network", "timeout", "retransmit", "packet", "dns", "latency"):
@@ -733,9 +726,6 @@ func inferQueryDomains(query string, tokens []string) map[string]struct{} {
 	}
 	if containsAny(lower, "network", "timeout", "retransmit", "dns", "packet", "latency") {
 		addDomain("network")
-	}
-	if containsAny(lower, "pcf", "nrf", "rcp", "zte") {
-		addDomain("telecom")
 	}
 	if len(out) == 0 && len(tokens) > 0 {
 		for _, token := range tokens {

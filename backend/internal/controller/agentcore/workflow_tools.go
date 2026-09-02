@@ -22,7 +22,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const workflowToolVersion = "v0.9.0"
+const workflowToolVersion = "v0.95.0"
 
 // TopologyNode is a compact workflow topology node.
 type TopologyNode struct {

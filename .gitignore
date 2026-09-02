@@ -56,10 +56,8 @@
 /data/gpu/
 /var/
 
-# Optional local archive corpora are kept outside the public source tree.
-/dataset/raw/archives/*
-!/dataset/raw/archives/README.md
-!/dataset/raw/archives/manifest.json
+# Raw corpora and their local manifests are inputs, never public source.
+/dataset/raw/
 
 # Playwright/UI generated outputs
 /tests/ui/test-results/
@@ -194,7 +192,6 @@ Thumbs.db
 /docs/
 
 dataset/*.zedx
-dataset/sources/web/*.html
-dataset/sources/web/*.md
+/dataset/sources/web/
 dataset/processed/
 .omx/

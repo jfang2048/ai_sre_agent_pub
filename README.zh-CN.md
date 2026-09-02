@@ -1,6 +1,6 @@
 # AI SRE Agent
 
-![版本](https://img.shields.io/badge/version-v0.9-2ea44f?style=flat-square)
+![版本](https://img.shields.io/badge/version-v0.95-2ea44f?style=flat-square)
 ![许可证](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)
 ![运行模型](https://img.shields.io/badge/runtime-push--first-6f42c1?style=flat-square)
 
@@ -20,6 +20,26 @@ English: [`README.md`](README.md)
 - controller 侧 ingest、incident workflow、policy 和 artifact 持久化；
 - 通过 NVML / probe-core 暴露 GPU 可观测性；
 - `examples/gpu-platform-sre/` 里的 Kubernetes GPU demo。
+
+## Unix 设计契约
+
+`v0.95` 把可运维性当作接口，而不是某个仪表盘功能：
+
+- 每个命令只承担一个主要职责，并通过文件、环境变量、stdin/stdout 和进程退出码组合；
+- 机器可读结果写入 stdout，诊断信息写入 stderr；
+- collector 负责采集，controller 负责策略，发布脚本负责公开发布过滤；
+- 生成状态和可选语料留在 Git 之外，默认只发布已经审查并被 Git 跟踪的源码；
+- 对不安全或含糊的发布输入采用失败关闭，而不是猜测后写入公开产物。
+
+公开发布检查保持为普通 shell 入口，因此本地与 CI 使用同一套机制：
+
+```bash
+make public-repo-audit
+make test-publish-privacy
+make test-dataset-fetch
+```
+
+第一条命令检查当前内容、提交身份和历史路径；第二条锁定发布器的核心保证：不复制未跟踪文件，并拒绝凭据形态内容；第三条在不访问网络的情况下验证数据集获取仍是逐行、仅 HTTPS 的流式接口。
 
 ## 数据面 source policy
 

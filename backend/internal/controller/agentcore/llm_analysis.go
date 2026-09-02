@@ -789,7 +789,7 @@ func clusterLogExcerpts(snippets []string) []ContextLogCluster {
 type stubWorkflowLLMClient struct{}
 
 func (s stubWorkflowLLMClient) Provider() string { return "stub" }
-func (s stubWorkflowLLMClient) Model() string    { return "deterministic-v0.9" }
+func (s stubWorkflowLLMClient) Model() string    { return "deterministic-v0.95" }
 
 func (s stubWorkflowLLMClient) Complete(_ context.Context, _, userPrompt string) (string, error) {
 	// Parse the context bundle from the user prompt to generate deterministic output

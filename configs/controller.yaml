@@ -19,7 +19,7 @@ grpc_listen: "127.0.0.1:9090"
 log_level: "info"
 
 # Release version advertised by /api/v1/status
-version: "v0.9"
+version: "v0.95"
 
 # Deployment metadata lets one config file describe local-dev, standalone, and
 # cluster-friendly layouts without rewriting every path by hand.

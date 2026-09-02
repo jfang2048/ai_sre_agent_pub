@@ -312,7 +312,7 @@ func TestStepLLMAnalysisUsesDeterministicFallbackAfterSafetyFailure(t *testing.T
 func TestStubLLMDeterministicBehavior(t *testing.T) {
 	stub := stubWorkflowLLMClient{}
 	require.Equal(t, "stub", stub.Provider())
-	require.Equal(t, "deterministic-v0.9", stub.Model())
+	require.Equal(t, "deterministic-v0.95", stub.Model())
 
 	// Build a context bundle with signals
 	bundle := ContextBundle{

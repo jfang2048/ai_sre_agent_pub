@@ -7,6 +7,10 @@ from _bootstrap import ensure_pythonpath
 
 ensure_pythonpath()
 
+# Import the package boundary before resolving patch targets. This keeps the
+# test independent of whichever other test happened to import an LLM adapter.
+from sre_agent import llm as _llm  # noqa: E402, F401
+
 
 class TestLLMClient(unittest.TestCase):
     """OpenAI/Anthropic client wrappers and prompt builder checks."""

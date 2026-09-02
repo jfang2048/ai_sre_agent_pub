@@ -44,7 +44,7 @@ func seedTelemetryScenarioAt(store *ingest.MemoryStore, index *logindex.Index, c
 	store.UpsertCollector(&telemetryv1.CollectorInfo{
 		CollectorId: collectorID,
 		Hostname:    collectorID + "-host",
-		Version:     "v0.9-eval",
+		Version:     "v0.95-eval",
 		Os:          "linux",
 		Arch:        "amd64",
 		Labels:      labels,

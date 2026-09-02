@@ -162,3 +162,20 @@ func TestCollectLogsWithCadenceCanKeepCachedPayloadsWhenSuppressionDisabled(t *t
 	require.Equal(t, 1.0, metricValue(metrics, "collector_aux_collection_cache_hit"))
 	require.Equal(t, 0.0, metricValue(metrics, "collector_aux_payload_suppressed"))
 }
+
+func TestCloneTelemetryMetricsDoesNotShareProtoState(t *testing.T) {
+	original := []*telemetryv1.Metric{{
+		Name:   "queue_depth",
+		Value:  12,
+		Labels: []*telemetryv1.Label{{Key: "node", Value: "node-a"}},
+	}}
+
+	cloned := cloneTelemetryMetrics(original)
+	require.Len(t, cloned, 1)
+	require.NotSame(t, original[0], cloned[0])
+	require.Len(t, cloned[0].Labels, 1)
+	require.NotSame(t, original[0].Labels[0], cloned[0].Labels[0])
+
+	cloned[0].Labels[0].Value = "node-b"
+	require.Equal(t, "node-a", original[0].Labels[0].Value)
+}

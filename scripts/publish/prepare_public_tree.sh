@@ -43,8 +43,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "${CHECK_ONLY}" == "1" ]]; then
+  publish_history_audit
   publish_file_audit "${TARGET_DIR}"
   publish_secret_name_audit "${TARGET_DIR}"
+  publish_sensitive_content_audit "${TARGET_DIR}"
   echo "publish tree audit passed: ${TARGET_DIR}"
   exit 0
 fi

@@ -23,7 +23,7 @@ func TestMemoryStorePersistenceRoundTrip(t *testing.T) {
 	store.UpsertCollector(&telemetryv1.CollectorInfo{
 		CollectorId: "collector-a",
 		Hostname:    "node-a",
-		Version:     "v0.9",
+		Version:     "v0.95",
 	}, now)
 	store.StoreMetrics("collector-a", []*telemetryv1.Metric{
 		{Name: "node_cpu_usage_percent", Value: 77.7},

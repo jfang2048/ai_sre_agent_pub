@@ -1,6 +1,6 @@
 # AI SRE Agent
 
-![Version](https://img.shields.io/badge/version-v0.9-2ea44f?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.95-2ea44f?style=flat-square)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)
 ![Runtime](https://img.shields.io/badge/runtime-push--first-6f42c1?style=flat-square)
 
@@ -22,6 +22,26 @@ This README is the operator-facing source of truth. Keep the repository small: c
 - controller-side ingest, incident workflow, policy, and artifact persistence;
 - GPU observability hooks through NVML/probe-core;
 - a runnable Kubernetes GPU demo in `examples/gpu-platform-sre/`.
+
+## Unix design contract
+
+`v0.95` treats operability as an interface, not a dashboard feature:
+
+- each command has one primary job and composes through files, environment variables, stdin/stdout, and process exit codes;
+- machine-readable results go to stdout while diagnostics go to stderr;
+- collectors own collection, controllers own policy, and publish helpers own public-release filtering;
+- generated state and optional corpora stay outside Git, while reviewed source is the only default publish input;
+- unsafe or ambiguous release inputs fail closed instead of being guessed into a public artifact.
+
+The public-release checks are ordinary shell entry points, so they work locally and in CI without a separate service:
+
+```bash
+make public-repo-audit
+make test-publish-privacy
+make test-dataset-fetch
+```
+
+The first command audits current content, commit identities, and historical paths. The second locks the publisher's core guarantees: untracked files are omitted and credential-shaped content is rejected. The third verifies that dataset acquisition remains a line-oriented, HTTPS-only stream without using the network.
 
 ## GPU Platform SRE Demo
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 ARG GO_VERSION=1.25.7
 ARG DEBIAN_RELEASE=bookworm
-ARG VERSION=v0.9
+ARG VERSION=v0.95
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
 ARG REPO_URL=

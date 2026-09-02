@@ -1,5 +1,16 @@
 # Security Policy
 
+## Public repository hygiene
+
+Before publishing any branch or tag, run:
+
+```bash
+make public-repo-audit
+make test-publish-privacy
+```
+
+The public-tree publisher copies tracked files only and rejects sensitive filenames, credential-shaped content, private-key material, workstation-specific absolute paths, and forbidden historical data paths. The history audit also rejects non-`noreply` commit identities by default; set `SRE_PUBLISH_ALLOW_PUBLIC_EMAILS=1` only when exposing contributor emails is intentional and documented.
+
 ## Responsible disclosure
 
 Report vulnerabilities privately to repository maintainers with:
@@ -9,7 +20,7 @@ Report vulnerabilities privately to repository maintainers with:
 
 Do not publish details publicly until a fix is available.
 
-## Security baseline (v0.8)
+## Security baseline (v0.95)
 
 Implemented controls include:
 - signed bearer-token controller auth plus compatibility API-key mode in `backend/cmd/controller/main.go` and `backend/internal/pkg/identity/token.go`

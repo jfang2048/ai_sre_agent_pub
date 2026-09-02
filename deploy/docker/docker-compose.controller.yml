@@ -6,12 +6,12 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.controller
       args:
-        VERSION: ${SRE_VERSION:-v0.9}
+        VERSION: ${SRE_VERSION:-v0.95}
         COMMIT: ${SRE_BUILD_COMMIT:-dev}
         BUILD_DATE: ${SRE_BUILD_DATE:-unknown}
         REPO_URL: ${REPO_URL:-}
         REPO_REF: ${REPO_REF:-}
-    image: ${SRE_CONTROLLER_IMAGE:-ai-sre-agent/controller:v0.9}
+    image: ${SRE_CONTROLLER_IMAGE:-ai-sre-agent/controller:v0.95}
     restart: unless-stopped
     read_only: true
     security_opt:

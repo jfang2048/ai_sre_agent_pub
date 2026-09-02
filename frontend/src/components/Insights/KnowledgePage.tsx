@@ -51,7 +51,10 @@ export default function KnowledgePage() {
         },
     });
 
-    const hits = searchMutation.data?.hits ?? [];
+    const hits = useMemo(
+        () => searchMutation.data?.hits ?? [],
+        [searchMutation.data?.hits],
+    );
     const knowledgeTypeRows = useMemo(() => {
         const counts: Record<string, number> = {};
         hits.forEach((hit) => {

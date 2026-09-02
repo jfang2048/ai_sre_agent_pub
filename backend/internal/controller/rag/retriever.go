@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const schemaVersion = "rag-v0.9"
+const schemaVersion = "rag-v0.95"
 
 // Config controls local RAG ingestion, indexing, and retrieval behavior.
 type Config struct {
