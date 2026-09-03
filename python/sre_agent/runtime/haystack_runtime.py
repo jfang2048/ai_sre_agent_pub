@@ -43,7 +43,7 @@ if component is not None:
             self._tool = tool
             self._executor = executor
 
-        @component.output_types(output=dict, trace=StepTrace)
+        @component.output_types(output=Dict[str, Any], trace=StepTrace)
         def run(
             self,
             telemetry: TelemetryEnvelope,
@@ -76,18 +76,18 @@ if component is not None:
     class PlanStateComponent:
         """Materialize deterministic runtime state and ordered traces from tool outputs."""
 
-        @component.output_types(state=dict, traces=list)
+        @component.output_types(state=Dict[str, Any], traces=List[StepTrace])
         def run(
             self,
             plan: ExecutionPlan,
-            memory_recall_output: Optional[Dict[str, Any]] = None,
-            memory_recall_trace: Optional[StepTrace] = None,
-            metric_triage_output: Optional[Dict[str, Any]] = None,
-            metric_triage_trace: Optional[StepTrace] = None,
-            log_pattern_scan_output: Optional[Dict[str, Any]] = None,
-            log_pattern_scan_trace: Optional[StepTrace] = None,
-            context_lookup_output: Optional[Dict[str, Any]] = None,
-            context_lookup_trace: Optional[StepTrace] = None,
+            memory_recall_output: Dict[str, Any] = None,
+            memory_recall_trace: StepTrace = None,
+            metric_triage_output: Dict[str, Any] = None,
+            metric_triage_trace: StepTrace = None,
+            log_pattern_scan_output: Dict[str, Any] = None,
+            log_pattern_scan_trace: StepTrace = None,
+            context_lookup_output: Dict[str, Any] = None,
+            context_lookup_trace: StepTrace = None,
         ) -> Dict[str, Any]:
             outputs: Dict[str, Dict[str, Any]] = {
                 "memory_recall": memory_recall_output or {},
@@ -209,7 +209,10 @@ class HaystackPipelineRuntime:
                 "enabled": step is not None,
             }
 
-        result = self._pipeline.run(data=data)
+        # state_builder feeds the leaf reasoning component, so Haystack omits
+        # it from the default result. Request it explicitly because traces and
+        # accumulated tool state are part of our public runtime contract.
+        result = self._pipeline.run(data=data, include_outputs_from={"state_builder"})
 
         state_result = result.get("state_builder", {})
         decision_result = result.get("reasoning", {})

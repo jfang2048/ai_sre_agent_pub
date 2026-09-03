@@ -41,6 +41,7 @@
 - Bound optional Python and Go profiling services to loopback and registered pprof handlers on a private mux instead of the process-global HTTP mux.
 - Aligned runtime security checks with the actual Helm controller/collector schema, refreshed vulnerable Go dependencies, and made high-severity Go SAST findings a justified release gate while retaining the full advisory report.
 - Repaired pinned, checksum-verified security-tool installation in CI and updated CI/container Go builders to patched Go 1.26.8.
+- Updated the optional Haystack runtime for strict 2.31 socket typing and explicit intermediate-output retention, preserving tool traces when the framework backend is installed.
 
 ### Documentation
 
