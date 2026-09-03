@@ -1,0 +1,15 @@
+globs:
+  - "**/*.md"
+
+ignores:
+  - "**/node_modules/**"
+  - ".git/**"
+  - ".pytest_cache/**"
+  - ".tmpbuild/**"
+  # These files are retrieval fixtures; whitespace changes can alter chunking.
+  - "**/eval_data/knowledge/cases/**"
+
+config:
+  MD013: false
+  MD024:
+    siblings_only: true

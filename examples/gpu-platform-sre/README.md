@@ -4,10 +4,10 @@ This directory wraps the existing AI SRE Agent with an executable Kubernetes GPU
 
 ## Execution modes
 
-| Mode | Inputs | State changed | Success output | What it does not prove |
-| --- | --- | --- | --- | --- |
-| Dry-run / CPU-safe validation | Fresh clone, shell, optional `python3`, optional `kubectl`/`helm` | None by default | `make gpu-platform-validate` and `make gpu-platform-smoke` complete with skipped cluster checks recorded | GPU scheduling, NVML telemetry, real Prometheus alerts, or model quality |
-| Real GPU mode | Kubernetes cluster with NVIDIA GPU node, NVIDIA GPU Operator, Helm, Prometheus Operator CRDs, optional KServe CRDs | Namespaces, SRE Agent Helm release, observability CRDs, vLLM/KServe workloads, training Job, evidence folders | vLLM smoke response, GPU allocation visible, alerts/evidence captured, rollback commands validated | Production readiness or zero downtime |
+| Mode                          | Inputs                                                                                                             | State changed                                                                                                 | Success output                                                                                           | What it does not prove                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Dry-run / CPU-safe validation | Fresh clone, shell, optional `python3`, optional `kubectl`/`helm`                                                  | None by default                                                                                               | `make gpu-platform-validate` and `make gpu-platform-smoke` complete with skipped cluster checks recorded | GPU scheduling, NVML telemetry, real Prometheus alerts, or model quality |
+| Real GPU mode                 | Kubernetes cluster with NVIDIA GPU node, NVIDIA GPU Operator, Helm, Prometheus Operator CRDs, optional KServe CRDs | Namespaces, SRE Agent Helm release, observability CRDs, vLLM/KServe workloads, training Job, evidence folders | vLLM smoke response, GPU allocation visible, alerts/evidence captured, rollback commands validated       | Production readiness or zero downtime                                    |
 
 ## Fresh-clone validation
 

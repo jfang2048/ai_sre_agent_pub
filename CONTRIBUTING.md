@@ -65,6 +65,17 @@ Package-level changes should be checked directly before the full suite. UI work 
 
 Keep docs simple. Update `README.md` and, when the user-facing text changes, `README.zh-CN.md`. Keep detailed API, workflow, and security truth in code, config, and tests instead of adding new Markdown pages.
 
+For documentation-only changes, run:
+
+```bash
+npx --yes markdownlint-cli2@0.20.0 "**/*.md"
+make verify-readme-screenshots
+```
+
+Do not auto-format `eval_data/knowledge/cases/`. Those Markdown files are
+retrieval fixtures, so whitespace changes can alter chunking and evaluation
+results.
+
 ## License
 
 Contributions are accepted under GPL-3.0.

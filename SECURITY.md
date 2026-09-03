@@ -14,6 +14,7 @@ The public-tree publisher copies tracked files only and rejects sensitive filena
 ## Responsible disclosure
 
 Report vulnerabilities privately to repository maintainers with:
+
 - affected paths/components
 - reproduction steps
 - impact summary
@@ -23,11 +24,12 @@ Do not publish details publicly until a fix is available.
 ## Security baseline (v0.95)
 
 Implemented controls include:
-- signed bearer-token controller auth plus compatibility API-key mode in `backend/cmd/controller/main.go` and `backend/internal/pkg/identity/token.go`
-- TLS/mTLS for collector transport in `backend/internal/controller/ingest_transport.go` `loadIngestServerTransportCredentials()` and `backend/internal/collector/transport/client.go` `loadTLSCredentials()`
-- ingest payload size/cardinality limits in `backend/internal/collector/transport/client.go` `validateBatch()`
-- external command parsing safety checks in `backend/internal/collector/collector.go` `parseExternalMetricCommand()`
-- agent execution approval/idempotency guardrails in `backend/internal/controller/agent/incident_actions.go` and `backend/internal/controller/agentcore/workflow_tools.go`
+
+- signed bearer-token controller auth plus compatibility API-key mode in [`backend/cmd/controller/main.go`](backend/cmd/controller/main.go) and [`backend/internal/pkg/identity/token.go`](backend/internal/pkg/identity/token.go)
+- TLS/mTLS for collector transport in [`backend/internal/controller/ingest_transport.go`](backend/internal/controller/ingest_transport.go) and [`backend/internal/collector/transport/client.go`](backend/internal/collector/transport/client.go)
+- ingest payload size and cardinality limits in [`backend/internal/collector/transport/client.go`](backend/internal/collector/transport/client.go)
+- external command parsing checks in [`backend/internal/collector/collector.go`](backend/internal/collector/collector.go)
+- execution approval and idempotency guardrails in [`backend/internal/controller/agent/incident_actions.go`](backend/internal/controller/agent/incident_actions.go) and [`backend/internal/controller/agentcore/workflow_tools.go`](backend/internal/controller/agentcore/workflow_tools.go)
 
 ## Validation commands
 

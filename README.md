@@ -1,16 +1,26 @@
 # AI SRE Agent
 
-![Version](https://img.shields.io/badge/version-v0.95-2ea44f?style=flat-square)
-![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)
-![Runtime](https://img.shields.io/badge/runtime-push--first-6f42c1?style=flat-square)
+[![Version](https://img.shields.io/badge/version-v0.95-2ea44f?style=flat-square)](https://github.com/jfang2048/ai_sre_agent_pub/releases/tag/v0.95)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
+[![CI](https://github.com/jfang2048/ai_sre_agent_pub/actions/workflows/ci.yml/badge.svg?branch=v0.95)](https://github.com/jfang2048/ai_sre_agent_pub/actions/workflows/ci.yml)
+[![Runtime](https://img.shields.io/badge/runtime-push--first-6f42c1?style=flat-square)](#runtime-shape)
 
-A platform artifact for node-local evidence collection, controller-side incident governance, GPU/AI-infrastructure observability, and durable RCA evidence.
+AI SRE Agent is a push-first incident evidence platform for Linux, Kubernetes,
+GPU, and AI infrastructure. Node-local collectors capture evidence; a central
+controller governs incident analysis, action proposals, and durable RCA records.
 
-Keep raw collection close to the host, keep controller state bounded, and keep incident reasoning inspectable after the fact. The controller can run the legacy deterministic path or an adaptive closed-loop RCA path. In adaptive mode it persists the objective, evidence gaps, planner proposal, critique, tool decision, progress assessment, and stop decision for each bounded loop iteration.
+The design keeps raw collection close to the host, controller state bounded, and
+incident reasoning inspectable after the fact. The controller supports both a
+legacy deterministic path and a bounded adaptive RCA loop.
 
-The canonical controller model is now skills-first: every operational capability is represented as a governed tool/skill contract that can be scored, policy-checked, normalized, audited, and replayed. RAG is a read-only knowledge skill, not the orchestration layer; retrieval output may add evidence, but it cannot directly authorize, branch, retry, or execute production-impacting work.
+The controller is skills-first: every operational capability is exposed through
+a governed contract that can be scored, policy-checked, normalized, audited, and
+replayed. RAG is a read-only knowledge skill. Retrieval may add evidence, but it
+cannot authorize, branch, retry, or execute production-impacting work.
 
-This repository should be read as a reusable platform slice, not as a single-purpose application. The maintained artifact is the collector/controller split plus the evidence, policy, and workflow contracts around it. Local seeded-data paths exist for development and screenshot validation; they are not the product boundary.
+This repository is a reusable platform slice rather than a single-purpose
+application. Seeded local data exists for development and UI validation only; it
+is not part of the public product boundary.
 
 中文：[`README.zh-CN.md`](README.zh-CN.md)
 
@@ -22,6 +32,27 @@ This README is the operator-facing source of truth. Keep the repository small: c
 - controller-side ingest, incident workflow, policy, and artifact persistence;
 - GPU observability hooks through NVML/probe-core;
 - a runnable Kubernetes GPU demo in `examples/gpu-platform-sre/`.
+
+## Quick start
+
+The core build follows the versions pinned in CI: Go 1.26.8, Node.js 22 for the
+web UI, and Python 3.11 for the optional Python runtime. A C++20 compiler plus
+protobuf and zlib enables the primary `probe-core` binary; the build reports a
+clear fallback when those native dependencies are unavailable.
+
+```bash
+git clone https://github.com/jfang2048/ai_sre_agent_pub.git
+cd ai_sre_agent_pub
+git switch v0.95
+
+make build
+make test
+make run-both
+```
+
+The local stack serves the web UI and API at <http://127.0.0.1:8080/>. Press
+`Ctrl+C` to stop it. Run `make help` for focused build, evaluation, deployment,
+and security targets.
 
 ## Unix design contract
 
@@ -49,16 +80,16 @@ A runnable Kubernetes GPU platform SRE demo lives in [`examples/gpu-platform-sre
 
 ## Implementation anchors
 
-The maintained path is built from these code surfaces:
-
-- C++ `probe-core`: `cpp/probe_core/main.cpp` `main()`, `parseOptions()`, `collectSysinfoHost()`, `collectMem()`, `parseProcStat()`, and `gzipCompress()`
-- C++ GPU sampling: `cpp/probe_core/gpu_nvml.cpp` `CollectNVMLSamples()` plus `appendNVMLProcesses()`
-- Go collector: `backend/internal/collector/collector.go` `New()`, `buildCollectorInfo()`, and `parseExternalMetricCommand()`
-- Go durability and transport: `backend/internal/collector/spool/spool.go` `NewWithOptions()` / `writeOffset()`, and `backend/internal/collector/transport/client.go` `New()`, `validateBatch()`, `validateAck()`, `loadTLSCredentials()`
-- Go controller runtime: `backend/internal/controller/controller.go` `New()`, `backend/internal/controller/agentcore/agent.go` `NewQueryService()`, and `backend/internal/controller/agentcore/workflow_engine.go` `NewWorkflowEngine()`
-- Tool contracts and adaptive runtime: `backend/internal/controller/agentcore/tool_contracts.go`, `workflow_tool_contracts.go`, `tool_scoring.go`, `query_shaping.go`, `tool_normalization.go`, `adaptive_runtime.go`, `adaptive_planner.go`, `adaptive_critic.go`, `adaptive_verifier.go`, `adaptive_runtime_state.go`, `workflow_tools.go`, and `workflow_engine.go`
-- Durable workflow artifacts: `backend/internal/controller/agentcore/analysis_handoff.go` `buildAnalysisHandoff()`, `workflow_artifacts.go` `buildWorkflowArtifactChain()`, and `workflow_orchestrator.go` `NewBoltDurableStore()` / `NewPostgresDurableStore()`
-- Frontend stack: React 18 + Vite with `@tanstack/react-query`, `axios`, `recharts`, `lucide-react`, and `zustand` under `frontend/src/`
+| Area                     | Entry point                                                                                                                                                                                                      | Responsibility                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Host probe               | [`cpp/probe_core/main.cpp`](cpp/probe_core/main.cpp)                                                                                                                                                             | CLI parsing, host CPU and memory collection, `/proc` parsing, and compression                             |
+| GPU sampling             | [`cpp/probe_core/gpu_nvml.cpp`](cpp/probe_core/gpu_nvml.cpp)                                                                                                                                                     | NVML device and process samples                                                                           |
+| Collector                | [`backend/internal/collector/collector.go`](backend/internal/collector/collector.go)                                                                                                                             | Collector construction, identity, and external metric command parsing                                     |
+| Spool and transport      | [`spool.go`](backend/internal/collector/spool/spool.go) and [`client.go`](backend/internal/collector/transport/client.go)                                                                                        | Durable offsets, batching, acknowledgements, and TLS                                                      |
+| Controller runtime       | [`controller.go`](backend/internal/controller/controller.go), [`agent.go`](backend/internal/controller/agentcore/agent.go), and [`workflow_engine.go`](backend/internal/controller/agentcore/workflow_engine.go) | API assembly, query service, and workflow orchestration                                                   |
+| Skills and adaptive loop | [`backend/internal/controller/agentcore/`](backend/internal/controller/agentcore/)                                                                                                                               | Tool contracts, scoring, query shaping, normalization, planning, critique, verification, and replay state |
+| Durable artifacts        | [`workflow_artifacts.go`](backend/internal/controller/agentcore/workflow_artifacts.go) and [`workflow_orchestrator.go`](backend/internal/controller/agentcore/workflow_orchestrator.go)                          | Artifact chains plus BoltDB/Postgres durable stores                                                       |
+| Web UI                   | [`frontend/src/`](frontend/src/)                                                                                                                                                                                 | React 18 + Vite operator interface                                                                        |
 
 ## Data-plane source policy
 
@@ -108,10 +139,10 @@ This repo is built for the opposite constraints:
 ```mermaid
 flowchart LR
     subgraph Host[Observed host]
-      P[probe-core / eBPF / helpers]
+      Probe[probe-core / eBPF / helpers]
       C[collector]
       S[disk spool]
-      P --> C --> S
+      Probe --> C --> S
     end
 
     subgraph Controller[controller]
@@ -119,7 +150,7 @@ flowchart LR
       H[bounded hot state]
       O[observer role]
       W[runtime world state]
-      P[planner role]
+      Planner[planner role]
       C2[critic role]
       G[policy gate]
       X[executor role]
@@ -127,7 +158,7 @@ flowchart LR
       M[memory role]
       U[HTTP API / UI]
 
-      I --> H --> O --> W --> P --> C2 --> G --> X --> V --> W
+      I --> H --> O --> W --> Planner --> C2 --> G --> X --> V --> W
       W --> M --> U
       M --> U
     end
@@ -151,11 +182,11 @@ The chain lives inside the RCA evidence package and is exposed through the workf
 
 `WorkflowConfig.RuntimeMode` controls the migration path:
 
-| Mode | Behavior |
-| --- | --- |
-| `legacy_deterministic` | Preserves the legacy fixed pipeline and is the default safe posture. |
-| `hybrid_adaptive` | Runs the scene-aware deterministic pipeline, then inserts the governed adaptive loop before the analysis-to-validation handoff. |
-| `full_adaptive` | Uses the same bounded controller-governed adaptive loop with the full planner/critic/verifier surface, richer scoring, and experience-memory biasing. |
+| Mode                   | Behavior                                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legacy_deterministic` | Preserves the legacy fixed pipeline and is the default safe posture.                                                                                  |
+| `hybrid_adaptive`      | Runs the scene-aware deterministic pipeline, then inserts the governed adaptive loop before the analysis-to-validation handoff.                       |
+| `full_adaptive`        | Uses the same bounded controller-governed adaptive loop with the full planner/critic/verifier surface, richer scoring, and experience-memory biasing. |
 
 Legacy aliases are still accepted for backward compatibility:
 
@@ -178,15 +209,15 @@ Set `SRE_AGENT_WORKFLOW_RUNTIME_MODE=hybrid_adaptive` or `SRE_AGENT_WORKFLOW_RUN
 
 ## Logical agents and ownership
 
-| Role | Owns | Reads | Writes | May change live state? |
-| --- | --- | --- | --- | --- |
-| observer | current window summary and runtime state | collector snapshots, bounded history | observation + objective artifacts | no |
-| planner | next objective, candidate tool/action proposals | runtime state, evidence gaps, hypotheses | planner proposal + tool decision artifacts | no |
-| critic | hidden-assumption, safety, and no-progress checks | planner proposal, tool contract, policy posture | critique report + branch decision artifacts | no |
-| policy gate | execution eligibility | proposal artifact, controller policy, tool contract | execution-plan / execution-intent artifact | no |
-| executor | governed tool calls | policy-approved tool decision | tool-result summary / execution result | only when posture and approval allow it |
-| verifier | uncertainty, confidence, contradiction, gap, and action-effect deltas | tool result, before/after runtime state | progress assessment + verification delta | no |
-| memory | final incident record | full chain | final incident artifact, incident memory | no |
+| Role        | Owns                                                                  | Reads                                               | Writes                                      | May change live state?                  |
+| ----------- | --------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| observer    | current window summary and runtime state                              | collector snapshots, bounded history                | observation + objective artifacts           | no                                      |
+| planner     | next objective, candidate tool/action proposals                       | runtime state, evidence gaps, hypotheses            | planner proposal + tool decision artifacts  | no                                      |
+| critic      | hidden-assumption, safety, and no-progress checks                     | planner proposal, tool contract, policy posture     | critique report + branch decision artifacts | no                                      |
+| policy gate | execution eligibility                                                 | proposal artifact, controller policy, tool contract | execution-plan / execution-intent artifact  | no                                      |
+| executor    | governed tool calls                                                   | policy-approved tool decision                       | tool-result summary / execution result      | only when posture and approval allow it |
+| verifier    | uncertainty, confidence, contradiction, gap, and action-effect deltas | tool result, before/after runtime state             | progress assessment + verification delta    | no                                      |
+| memory      | final incident record                                                 | full chain                                          | final incident artifact, incident memory    | no                                      |
 
 The old `analysis_agent` and `validation_action_agent` code paths still exist. The adaptive loop adds explicit `planner`, `critic`, `executor`, and `verifier` turns inside the same controller process and writes them to `DurableRun.AdaptiveDialogue`.
 
@@ -209,7 +240,7 @@ New adaptive artifact fields are versioned and decoded with defaults so older ev
 
 The concrete schema is defined in `backend/internal/controller/agentcore/workflow_artifacts.go` and related tests.
 
-## Adaptive Control And Deterministic Boundary
+## Adaptive control and deterministic boundary
 
 Model output can propose evidence gaps, hypotheses, tool candidates, contradiction checks, query refinements, and stop-or-continue recommendations. It does not decide execution.
 
@@ -334,4 +365,8 @@ That means durability is better than it was, but the system is not yet a fully d
 ## Read next
 
 - [`examples/gpu-platform-sre/`](examples/gpu-platform-sre/) for the runnable GPU demo
+- [`deploy/`](deploy/) for local, container, and Kubernetes deployment paths
+- [`dataset/README.md`](dataset/README.md) for the public-data boundary
+- [`tests/README.md`](tests/README.md) for the verification strategy
+- [`SECURITY.md`](SECURITY.md) for disclosure and public-repository hygiene
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) for change and verification rules

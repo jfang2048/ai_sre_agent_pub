@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Documentation
+
+- Reworked the English and Chinese project overviews around the current v0.95 skills-first runtime, with a runnable quick start and linked implementation map.
+- Aligned the Chinese architecture, runtime modes, role ownership, artifact chain, operator endpoints, and inspection order with the maintained controller code.
+- Added a repository Markdown lint baseline, corrected structural formatting, and documented why retrieval fixtures are excluded from automatic reformatting.
+
 ## v0.95 - 2026-09-02
 
 ### Security

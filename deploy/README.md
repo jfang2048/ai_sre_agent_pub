@@ -19,12 +19,12 @@ Key code and libraries behind these assets:
 
 Recommended entry points:
 
-| Scenario | Start here |
-| --- | --- |
-| local single-machine validation | [`../../docker-compose.yaml`](../docker-compose.yaml) |
-| one controller host plus external collectors | [`docker/`](docker/) or [`systemd/`](systemd/) |
-| quick Kubernetes deployment | [`k8s/push-first/`](k8s/push-first/) |
-| parameterized cluster deployment | [`charts/sre-agent/`](charts/sre-agent/) |
+| Scenario                                     | Start here                                         |
+| -------------------------------------------- | -------------------------------------------------- |
+| local single-machine validation              | [`../docker-compose.yaml`](../docker-compose.yaml) |
+| one controller host plus external collectors | [`docker/`](docker/) or [`systemd/`](systemd/)     |
+| quick Kubernetes deployment                  | [`k8s/push-first/`](k8s/push-first/)               |
+| parameterized cluster deployment             | [`charts/sre-agent/`](charts/sre-agent/)           |
 
 Helm example values are now included for the two maintained cluster shapes:
 

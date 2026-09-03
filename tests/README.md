@@ -23,13 +23,13 @@ Probe-core coverage is exercised through the Go-side IPC boundary and live-binar
 
 ## How to choose a suite
 
-| Change area | Start with | Add when needed |
-| --- | --- | --- |
-| collector or probe-core | package tests under `backend/internal/collector/...` | `make test-stability` if replay, spool, or backpressure changed |
+| Change area                      | Start with                                            | Add when needed                                                                 |
+| -------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| collector or probe-core          | package tests under `backend/internal/collector/...`  | `make test-stability` if replay, spool, or backpressure changed                 |
 | controller workflow or agentcore | package tests under `backend/internal/controller/...` | integration tests if persistence, message history, or artifact handling changed |
-| UI or browser flow | targeted Playwright/Vitest tests | `make test-ui` for the full browser smoke path |
-| deployment or packaging | integration plus build checks | `make helm-smoke`, `make build-probe-core`, or image build checks |
-| analysis/runtime in Python | `tests/python/` | the broader backend suite if the workflow contract changed |
+| UI or browser flow               | targeted Playwright/Vitest tests                      | `make test-ui` for the full browser smoke path                                  |
+| deployment or packaging          | integration plus build checks                         | `make helm-smoke`, `make build-probe-core`, or image build checks               |
+| analysis/runtime in Python       | `tests/python/`                                       | the broader backend suite if the workflow contract changed                      |
 
 ## Main commands
 
