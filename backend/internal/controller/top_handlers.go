@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
+
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/gpuobs"
 )
 
@@ -397,8 +399,8 @@ func (c *Controller) aggregateTopProgramsFiltered(limit int, collectorID string)
 			mergeFloatMaps(ps.CategoryTotals, pr.CategoryTotals)
 			mergeUint64Maps(ps.CategoryFrequency, pr.CategoryFrequency)
 
-			ps.LogErrors += int(pr.LogErrors)
-			ps.LogWarnings += int(pr.LogWarnings)
+			ps.LogErrors = safeconv.AddUint64ToInt(ps.LogErrors, pr.LogErrors)
+			ps.LogWarnings = safeconv.AddUint64ToInt(ps.LogWarnings, pr.LogWarnings)
 		}
 
 		for pid, pn := range n.ProcessNetwork {
@@ -456,9 +458,9 @@ func (c *Controller) aggregateTopProgramsFiltered(limit int, collectorID string)
 				}
 				ps := ensure(n.CollectorID, host, "", prog)
 				if severity == "error" {
-					ps.LogErrors += int(lf.Count)
+					ps.LogErrors = safeconv.AddUint64ToInt(ps.LogErrors, lf.Count)
 				} else {
-					ps.LogWarnings += int(lf.Count)
+					ps.LogWarnings = safeconv.AddUint64ToInt(ps.LogWarnings, lf.Count)
 				}
 			}
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -289,21 +290,23 @@ func (s *Store) load() ([]Record, error) {
 		}
 		return records, nil
 	}
-	if _, err := os.Stat(s.rootPath); err != nil {
+	root, err := os.OpenRoot(s.rootPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	defer root.Close()
 	records := make([]Record, 0, 32)
-	err := filepath.WalkDir(s.rootPath, func(path string, d os.DirEntry, walkErr error) error {
+	err = fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
 		if d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
 			return nil
 		}
-		raw, err := os.ReadFile(path)
+		raw, err := root.ReadFile(path)
 		if err != nil {
 			return nil
 		}

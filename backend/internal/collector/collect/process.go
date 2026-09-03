@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
 )
 
@@ -73,7 +74,7 @@ func (c *ProcessCollector) Collect(now time.Time) []*telemetryv1.ProcessSample {
 	out := make([]*telemetryv1.ProcessSample, 0, len(procs))
 	for _, proc := range procs {
 		out = append(out, &telemetryv1.ProcessSample{
-			Pid:        int32(proc.pid),
+			Pid:        safeconv.IntToInt32(proc.pid),
 			Name:       proc.name,
 			CpuPercent: proc.cpuDelta,
 			RssBytes:   proc.rssBytes,
@@ -128,7 +129,7 @@ func scanProcesses(totalDelta, elapsed float64, lastCPU map[int]uint64, lastIO m
 		cpuPercent := (delta / totalDelta) * 100.0
 
 		rss := parseUint(fields[23])
-		rssBytes := rss * uint64(os.Getpagesize())
+		rssBytes := safeconv.MultiplyUint64(rss, safeconv.NonNegativeIntToUint64(os.Getpagesize()))
 
 		readBytes, writeBytes := readProcIO(pid)
 		prevIO := lastIO[pid]

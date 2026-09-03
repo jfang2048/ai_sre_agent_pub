@@ -1,5 +1,7 @@
 package ring
 
+import "sync"
+
 // Ring is a fixed-capacity circular buffer.
 //
 // It is intentionally small and allocation-free after construction:
@@ -8,6 +10,7 @@ package ring
 //
 // This is a common systems pattern used to cap memory and avoid slice shifting.
 type Ring[T any] struct {
+	mu   sync.RWMutex
 	buf  []T
 	head int // index of the oldest element
 	size int // number of live elements (<= len(buf))
@@ -33,13 +36,20 @@ func (r *Ring[T]) Len() int {
 	if r == nil {
 		return 0
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.size
 }
 
 // Oldest returns the oldest logical element currently stored.
 func (r *Ring[T]) Oldest() (T, bool) {
 	var zero T
-	if r == nil || r.size == 0 {
+	if r == nil {
+		return zero, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.size == 0 {
 		return zero, false
 	}
 	return r.buf[r.head], true
@@ -48,7 +58,12 @@ func (r *Ring[T]) Oldest() (T, bool) {
 // Newest returns the newest logical element currently stored.
 func (r *Ring[T]) Newest() (T, bool) {
 	var zero T
-	if r == nil || r.size == 0 {
+	if r == nil {
+		return zero, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.size == 0 {
 		return zero, false
 	}
 	idx := (r.head + r.size - 1) % len(r.buf)
@@ -60,6 +75,8 @@ func (r *Ring[T]) Push(v T) {
 	if r == nil || len(r.buf) == 0 {
 		return
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.size < len(r.buf) {
 		r.buf[(r.head+r.size)%len(r.buf)] = v
 		r.size++
@@ -72,27 +89,39 @@ func (r *Ring[T]) Push(v T) {
 
 // ForEachOldest calls fn for each element in logical order, from oldest to newest.
 func (r *Ring[T]) ForEachOldest(fn func(v T)) {
-	if r == nil || fn == nil || r.size == 0 {
+	if r == nil || fn == nil {
 		return
 	}
-	for i := 0; i < r.size; i++ {
-		fn(r.buf[(r.head+i)%len(r.buf)])
+	for _, value := range r.SliceOldest() {
+		fn(value)
 	}
 }
 
 // SliceOldest returns a copy of elements in logical order (oldest -> newest).
 func (r *Ring[T]) SliceOldest() []T {
-	if r == nil || r.size == 0 {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.size == 0 {
 		return nil
 	}
 	out := make([]T, 0, r.size)
-	r.ForEachOldest(func(v T) { out = append(out, v) })
+	for i := 0; i < r.size; i++ {
+		out = append(out, r.buf[(r.head+i)%len(r.buf)])
+	}
 	return out
 }
 
 // SliceLastN returns the last n elements (newest tail) in logical order.
 func (r *Ring[T]) SliceLastN(n int) []T {
-	if r == nil || r.size == 0 || n <= 0 {
+	if r == nil || n <= 0 {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.size == 0 {
 		return nil
 	}
 	if n > r.size {

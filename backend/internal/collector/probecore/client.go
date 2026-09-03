@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	probeipcv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/probeipc/v1"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -307,7 +308,7 @@ func (c *Client) readLoop(r io.Reader) error {
 			c.setLastError(fmt.Errorf("received zero-length probe-core frame"))
 			continue
 		}
-		if frameLen > uint32(c.cfg.FrameMaxBytes) {
+		if uint64(frameLen) > safeconv.NonNegativeIntToUint64(c.cfg.FrameMaxBytes) {
 			c.decodeErrors.Add(1)
 			return fmt.Errorf("probe-core frame length %d exceeds max %d", frameLen, c.cfg.FrameMaxBytes)
 		}

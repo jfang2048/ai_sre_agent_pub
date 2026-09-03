@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -113,6 +114,9 @@ func NewWithOptions(dir string, maxBytes int64, options Options) (*Spool, error)
 
 // Enqueue appends a batch to the spool while preserving the newest unread data.
 func (s *Spool) Enqueue(payload []byte) error {
+	if len(payload) > math.MaxUint32 {
+		return ErrPayloadTooLarge
+	}
 	requiredBytes := int64(headerSizeBytes + len(payload))
 	if requiredBytes > s.maxBytes {
 		return ErrPayloadTooLarge
@@ -130,7 +134,7 @@ func (s *Spool) Enqueue(payload []byte) error {
 	}
 
 	var header [headerSizeBytes]byte
-	binary.LittleEndian.PutUint32(header[:], uint32(len(payload)))
+	binary.LittleEndian.PutUint32(header[:], uint32(len(payload))) // #nosec G115 -- length is bounded by math.MaxUint32 above.
 	if _, err := s.file.Write(header[:]); err != nil {
 		return err
 	}

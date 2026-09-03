@@ -30,13 +30,14 @@ external_metrics_cmd: "echo ok; id"
 	values := `namespace:
   labels:
     pod-security.kubernetes.io/enforce: privileged
-securityContext:
-  runAsNonRoot: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    add: ["SYS_ADMIN"]
+controller:
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      add: ["SYS_ADMIN"]
 rbac:
-  clusterRules:
+  controllerClusterRules:
     - verbs: ["get", "list", "watch", "delete"]
 `
 	template := "spec:\n  template:\n    spec:\n      hostPID: true\n"
@@ -85,13 +86,14 @@ external_metrics_cmd: ""
 	values := `namespace:
   labels:
     pod-security.kubernetes.io/enforce: baseline
-securityContext:
-  runAsNonRoot: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    add: []
+controller:
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      add: []
 rbac:
-  clusterRules:
+  controllerClusterRules:
     - verbs: ["get", "list", "watch"]
 `
 	template := "spec:\n  template:\n    spec:\n      hostPID: false\n"
@@ -144,13 +146,14 @@ external_metrics_cmd: ""
 	values := `namespace:
   labels:
     pod-security.kubernetes.io/enforce: baseline
-securityContext:
-  runAsNonRoot: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    add: []
+controller:
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      add: []
 rbac:
-  clusterRules:
+  controllerClusterRules:
     - verbs: ["get", "list", "watch"]
 `
 	template := "spec:\n  template:\n    spec:\n      hostPID: false\n"

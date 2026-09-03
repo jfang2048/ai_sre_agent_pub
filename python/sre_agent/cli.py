@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the Python AI service (JSON-RPC over HTTP).",
     )
     serve_parser.add_argument("--port", type=int, default=50052)
+    serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--model", type=str, default=None)
     serve_parser.add_argument("--log-level", type=str, default="INFO")
     return parser
@@ -48,12 +49,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         log_level = getattr(args, "log_level", "INFO")
         port = getattr(args, "port", 50052)
+        host = getattr(args, "host", "127.0.0.1")
         model = getattr(args, "model", None)
         logging.basicConfig(
             level=getattr(logging, str(log_level).upper()),
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
-        serve(port, model)
+        serve(port=port, model_path=model, host=host)
         return 0
 
     parser.error(f"unknown command: {args.command}")

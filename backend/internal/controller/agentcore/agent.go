@@ -25,6 +25,7 @@ import (
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/rag"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/signalinsights"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
@@ -1135,7 +1136,7 @@ func (s *QueryService) buildPromptInput(req QueryRequest) (PromptInput, bool) {
 	}
 	if gpuEnabled {
 		s.gpuAnalysisCount.Add(1)
-		s.gpuAnalysisNanos.Add(uint64(time.Since(gpuStart)))
+		s.gpuAnalysisNanos.Add(safeconv.NonNegativeInt64ToUint64(int64(time.Since(gpuStart))))
 	}
 
 	trends := metricTrends(s.history, nodeName)

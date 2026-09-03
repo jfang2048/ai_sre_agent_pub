@@ -33,6 +33,15 @@
 - Workflow knowledge retrieval now lets strong incident-memory matches raise retrieval summary and confidence even when static knowledge-base hits are absent.
 - Joint-risk and RCA workflows now carry first-class telemetry quality, use it to cap workflow and hypothesis confidence, and surface stale or partial observability as explicit limitations and unresolved gaps.
 
+### Fixed
+
+- Removed concurrency races from the shared bounded ring and eliminated a timing-sensitive gRPC stream assertion exposed by repeated CI runs.
+- Replaced unchecked telemetry integer conversions with explicit saturating or rejecting conversions, including archive sizes, process counters, disk capacity, remediation parameters, and probe frame lengths.
+- Hardened persisted Python model loading against symlinks, non-owner files, and group/world-writable pickle files; model writes are now owner-only and atomic.
+- Bound optional Python and Go profiling services to loopback and registered pprof handlers on a private mux instead of the process-global HTTP mux.
+- Aligned runtime security checks with the actual Helm controller/collector schema, refreshed vulnerable Go dependencies, and made high-severity Go SAST findings a justified release gate while retaining the full advisory report.
+- Repaired pinned, checksum-verified security-tool installation in CI and updated CI/container Go builders to patched Go 1.26.8.
+
 ### Documentation
 
 - Added migration documentation for the skills-first taxonomy, runtime invariants, artifact schema compatibility, baseline validation, and golden incident replay checks.

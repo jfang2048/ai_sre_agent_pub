@@ -7,6 +7,7 @@ import (
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/logindex"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
 )
 
@@ -128,7 +129,10 @@ func buildFingerprintBatch(specs []LogSeriesSpec, sampleIndex int) []*telemetryv
 		if !logSpecMatches(spec, sampleIndex) {
 			continue
 		}
-		count := spec.CountStart + uint64(sampleIndex)*maxUint64(1, spec.CountStep)
+		count := safeconv.AddUint64(spec.CountStart, safeconv.MultiplyUint64(
+			safeconv.NonNegativeIntToUint64(sampleIndex),
+			maxUint64(1, spec.CountStep),
+		))
 		if count == 0 {
 			count = 1
 		}
@@ -147,7 +151,10 @@ func buildLogEvents(collectorID string, specs []LogSeriesSpec, sampleIndex int, 
 		if !logSpecMatches(spec, sampleIndex) {
 			continue
 		}
-		count := spec.CountStart + uint64(sampleIndex)*maxUint64(1, spec.CountStep)
+		count := safeconv.AddUint64(spec.CountStart, safeconv.MultiplyUint64(
+			safeconv.NonNegativeIntToUint64(sampleIndex),
+			maxUint64(1, spec.CountStep),
+		))
 		if count == 0 {
 			count = 1
 		}

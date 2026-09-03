@@ -6,6 +6,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	"sync"
 	"time"
 
@@ -257,33 +259,33 @@ func actionIntParameter(action *Action, key string) (int, bool, error) {
 	case int:
 		return value, true, nil
 	case int8:
-		return int(value), true, nil
+		return safeconv.Int64ToInt(int64(value)), true, nil
 	case int16:
-		return int(value), true, nil
+		return safeconv.Int64ToInt(int64(value)), true, nil
 	case int32:
-		return int(value), true, nil
+		return safeconv.Int64ToInt(int64(value)), true, nil
 	case int64:
-		return int(value), true, nil
+		converted, err := checkedSignedInt(value, key)
+		return converted, true, err
 	case uint:
-		return int(value), true, nil
+		converted, err := checkedUnsignedInt(uint64(value), key)
+		return converted, true, err
 	case uint8:
-		return int(value), true, nil
+		return safeconv.Uint64ToInt(uint64(value)), true, nil
 	case uint16:
-		return int(value), true, nil
+		return safeconv.Uint64ToInt(uint64(value)), true, nil
 	case uint32:
-		return int(value), true, nil
+		converted, err := checkedUnsignedInt(uint64(value), key)
+		return converted, true, err
 	case uint64:
-		return int(value), true, nil
+		converted, err := checkedUnsignedInt(value, key)
+		return converted, true, err
 	case float32:
-		if math.Trunc(float64(value)) != float64(value) {
-			return 0, true, fmt.Errorf("%s must be a whole number", key)
-		}
-		return int(value), true, nil
+		converted, err := checkedFloatInt(float64(value), key)
+		return converted, true, err
 	case float64:
-		if math.Trunc(value) != value {
-			return 0, true, fmt.Errorf("%s must be a whole number", key)
-		}
-		return int(value), true, nil
+		converted, err := checkedFloatInt(value, key)
+		return converted, true, err
 	case string:
 		parsed, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
@@ -293,6 +295,33 @@ func actionIntParameter(action *Action, key string) (int, bool, error) {
 	default:
 		return 0, true, fmt.Errorf("%s has unsupported type %T", key, raw)
 	}
+}
+
+func checkedSignedInt(value int64, key string) (int, error) {
+	if value > int64(math.MaxInt) || value < int64(math.MinInt) {
+		return 0, fmt.Errorf("%s is outside the supported integer range", key)
+	}
+	return safeconv.Int64ToInt(value), nil
+}
+
+func checkedUnsignedInt(value uint64, key string) (int, error) {
+	if value > uint64(math.MaxInt) {
+		return 0, fmt.Errorf("%s is outside the supported integer range", key)
+	}
+	return safeconv.Uint64ToInt(value), nil
+}
+
+func checkedFloatInt(value float64, key string) (int, error) {
+	if math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value {
+		return 0, fmt.Errorf("%s must be a finite whole number", key)
+	}
+	// The valid integer interval is [MinInt, MaxInt+1). Expressing the upper
+	// bound through -MinInt avoids float64 rounding MaxInt up to 2^63 on
+	// 64-bit platforms.
+	if value < float64(math.MinInt) || value >= -float64(math.MinInt) {
+		return 0, fmt.Errorf("%s is outside the supported integer range", key)
+	}
+	return int(value), nil // #nosec G115 -- finite value is bounded by the platform int limits.
 }
 
 func actionStringParameter(action *Action, key string) (string, bool, error) {

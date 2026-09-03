@@ -3,8 +3,11 @@
 import json
 import logging
 import os
+import stat
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -507,30 +510,80 @@ class IssueClassifier:
         return list(by_category.values())
 
     def _load_model(self, path: str):
-        """Load a saved model."""
+        """Load a model from an owner-controlled, non-writable file."""
         import pickle
 
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        model_path = Path(path).expanduser()
+        with self._open_trusted_model(model_path) as f:
+            # Pickle is retained for sklearn compatibility, but only after the
+            # opened descriptor has passed ownership, type, and mode checks.
+            data = pickle.load(f)  # nosec B301
             self.scaler = data.get("scaler", self.scaler)
             self.classifier = data.get("classifier", self.classifier)
             self.is_trained = data.get("is_trained", False)
-        logger.info(f"Model loaded from {path}")
+        logger.info("Model loaded from %s", model_path)
 
     def save_model(self, path: str):
-        """Save the trained model."""
+        """Atomically save the trained model with owner-only permissions."""
         import pickle
 
-        with open(path, "wb") as f:
-            pickle.dump(
-                {
-                    "scaler": self.scaler,
-                    "classifier": self.classifier,
-                    "is_trained": self.is_trained,
-                },
-                f,
-            )
-        logger.info(f"Model saved to {path}")
+        candidate = Path(path).expanduser().absolute()
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        destination = candidate.parent.resolve(strict=True) / candidate.name
+        if destination.is_symlink():
+            raise ValueError("model path must not be a symbolic link")
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{destination.name}.", dir=destination.parent
+        )
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                fd = -1
+                pickle.dump(
+                    {
+                        "scaler": self.scaler,
+                        "classifier": self.classifier,
+                        "is_trained": self.is_trained,
+                    },
+                    f,
+                )
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary_path, destination)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+        logger.info("Model saved to %s", destination)
+
+    @staticmethod
+    def _open_trusted_model(path: Path):
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(path, flags)
+        except OSError as exc:
+            if path.is_symlink():
+                raise ValueError("model path must not be a symbolic link") from exc
+            raise
+        try:
+            file_stat = os.fstat(fd)
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise ValueError("model path must be a regular file")
+            if file_stat.st_mode & 0o022:
+                raise PermissionError(
+                    "model file must not be writable by group or others"
+                )
+            if hasattr(os, "getuid") and file_stat.st_uid != os.getuid():
+                raise PermissionError("model file must be owned by the current user")
+            stream = os.fdopen(fd, "rb")
+            fd = -1
+            return stream
+        finally:
+            if fd >= 0:
+                os.close(fd)
 
 
 class ExplanationGenerator:

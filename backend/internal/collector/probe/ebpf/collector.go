@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/collections/ring"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 )
 
 const (
@@ -627,7 +628,7 @@ func readProcessResourceSnapshot(pid int) (uint64, uint64, uint64) {
 				cpuSys = v
 			}
 			if v, err := strconv.ParseUint(fields[23], 10, 64); err == nil {
-				rss = v * uint64(os.Getpagesize())
+				rss = safeconv.MultiplyUint64(v, safeconv.NonNegativeIntToUint64(os.Getpagesize()))
 			}
 		}
 	}

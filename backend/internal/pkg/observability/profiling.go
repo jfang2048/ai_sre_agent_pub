@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"time"
 
 	"go.uber.org/zap"
@@ -33,28 +33,16 @@ func NewProfiler(config ProfilerConfig, logger *zap.Logger) *Profiler {
 
 	mux := http.NewServeMux()
 
-	// pprof handlers are already registered via import
-	// We just need to add them to our mux
-	mux.HandleFunc("/debug/pprof/", func(w http.ResponseWriter, r *http.Request) {
-		// The default pprof handlers are registered on the default mux
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})
+	// Register handlers explicitly on a private mux. Importing net/http/pprof for
+	// side effects would mutate the process-global mux and make the endpoint
+	// surface implicit.
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	// Add custom endpoints
-	mux.HandleFunc("/debug/pprof/cmdline", func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})
-	mux.HandleFunc("/debug/pprof/profile", func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})
-	mux.HandleFunc("/debug/pprof/symbol", func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})
-	mux.HandleFunc("/debug/pprof/trace", func(w http.ResponseWriter, r *http.Request) {
-		http.DefaultServeMux.ServeHTTP(w, r)
-	})
-
-	addr := fmt.Sprintf(":%d", config.Port)
+	addr := fmt.Sprintf("127.0.0.1:%d", config.Port)
 	return &Profiler{
 		server: &http.Server{
 			Addr:    addr,

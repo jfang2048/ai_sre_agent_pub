@@ -229,7 +229,7 @@ func compactProcessSignals(in []analysis.ProcessSummary) []string {
 			strings.TrimSpace(item.Name),
 			strconvFormatInt(int64(item.PID)),
 			strconvFormatInt(int64(item.CPUPercent / 5)),
-			strconvFormatInt(int64(item.RSSBytes / (256 * 1024 * 1024))),
+			strconv.FormatUint(item.RSSBytes/(256*1024*1024), 10),
 		}, "|"))
 	}
 	return out
@@ -243,7 +243,7 @@ func compactLogSignals(in []analysis.LogSummary) []string {
 	for _, item := range in[:minInt(len(in), 3)] {
 		out = append(out, strings.Join([]string{
 			strings.TrimSpace(item.Fingerprint),
-			strconvFormatInt(int64(item.Count / 25)),
+			strconv.FormatUint(item.Count/25, 10),
 		}, "|"))
 	}
 	return out

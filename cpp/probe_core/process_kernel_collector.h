@@ -2,6 +2,7 @@
 #define AI_SRE_AGENT_PROBE_CORE_PROCESS_KERNEL_COLLECTOR_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,9 @@ class ProcessKernelCollector {
   explicit ProcessKernelCollector(ProcessKernelCollectorOptions options);
   ~ProcessKernelCollector();
 
+  ProcessKernelCollector(const ProcessKernelCollector&) = delete;
+  ProcessKernelCollector& operator=(const ProcessKernelCollector&) = delete;
+
   void noteEBPFActivity(int pid, const std::string& comm);
   void noteEBPFResourceSnapshot(int pid, uint64_t cpu_user_ms, uint64_t cpu_sys_ms,
                                 uint64_t rss_bytes);
@@ -56,7 +60,7 @@ class ProcessKernelCollector {
 
  private:
   struct Impl;
-  Impl* impl_;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace probe_core

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
+
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/gpuobs"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/orchestration"
@@ -2538,8 +2540,8 @@ func aiInfraReliabilityLayer(ctx aiInfraSynthesisContext) aiInfraLayerDiagnostic
 	if ctx.OrchestrationDiag != nil {
 		sloViolations = ctx.OrchestrationDiag.Metrics.SLOViolationsActive
 		failedWorkloads = ctx.OrchestrationDiag.Metrics.FailedWorkloads
-		remediationActions = int(ctx.OrchestrationDiag.Metrics.RemediationActionsTotal)
-		remediationBlocked = int(ctx.OrchestrationDiag.Metrics.RemediationBlockedTotal)
+		remediationActions = safeconv.Uint64ToInt(ctx.OrchestrationDiag.Metrics.RemediationActionsTotal)
+		remediationBlocked = safeconv.Uint64ToInt(ctx.OrchestrationDiag.Metrics.RemediationBlockedTotal)
 		runningWorkloadsSLO = ctx.OrchestrationDiag.Metrics.RunningWorkloads
 		completedWorkloads = ctx.OrchestrationDiag.Metrics.CompletedWorkloads
 		schedulingAttempts = float64(ctx.OrchestrationDiag.Metrics.SchedulingAttemptsTotal)

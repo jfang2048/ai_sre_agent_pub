@@ -10,6 +10,7 @@ import (
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/collector/spool"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/collector/transport"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	telemetryv1 "github.com/jfang2048/ai_sre_agent_pub/pkg/telemetry/v1"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
@@ -416,7 +417,7 @@ func readProcessRSSBytes() uint64 {
 	if err != nil {
 		return 0
 	}
-	return pages * uint64(os.Getpagesize())
+	return safeconv.MultiplyUint64(pages, safeconv.NonNegativeIntToUint64(os.Getpagesize()))
 }
 
 func ratioOrZero(value, limit float64) float64 {

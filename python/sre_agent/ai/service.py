@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import os
+import tempfile
 from concurrent import futures
 from typing import Any, Dict, List, Optional
 
@@ -350,7 +351,11 @@ class AIServicer:
                             "action": "cleanup_logs",
                             "command": "journalctl --vacuum-time=7d",
                         },
-                        {"order": 3, "action": "cleanup_temp", "target": "/tmp"},
+                        {
+                            "order": 3,
+                            "action": "cleanup_temp",
+                            "target": tempfile.gettempdir(),
+                        },
                     ],
                     "reasoning": "Removing old files frees disk space quickly.",
                 }
@@ -436,12 +441,17 @@ class JSONRPCHandler:
         return json.dumps(response)
 
 
-def serve(port: int = 50052, model_path: Optional[str] = None):
+def serve(
+    port: int = 50052,
+    model_path: Optional[str] = None,
+    host: str = "127.0.0.1",
+):
     """Start the AI service.
 
     Args:
         port: Port to listen on
         model_path: Path to saved model
+        host: Interface to bind; defaults to loopback
     """
     # Create AI components
     classifier, explainer = create_ai_service(model_path)
@@ -467,14 +477,19 @@ def serve(port: int = 50052, model_path: Optional[str] = None):
         def log_message(self, format, *args):
             logger.info(f"{self.address_string()} - {format % args}")
 
-    server = HTTPServer(("0.0.0.0", port), RequestHandler)
-    logger.info(f"AI Service listening on port {port}")
+    server = HTTPServer((host, port), RequestHandler)
+    logger.info("AI Service listening on %s:%d", host, port)
     server.serve_forever()
 
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="AI Analysis Service")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("SRE_AI_LISTEN_HOST", "127.0.0.1"),
+        help="Interface to bind (default: 127.0.0.1)",
+    )
     parser.add_argument("--port", type=int, default=50052, help="Port to listen on")
     parser.add_argument("--model", type=str, default=None, help="Path to saved model")
     parser.add_argument("--log-level", type=str, default="INFO", help="Log level")
@@ -486,7 +501,7 @@ def main():
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    serve(args.port, args.model)
+    serve(port=args.port, model_path=args.model, host=args.host)
 
 
 if __name__ == "__main__":

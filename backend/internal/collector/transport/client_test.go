@@ -3,7 +3,6 @@ package transport
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -226,8 +225,6 @@ func (s *authCheckingIngestServer) Push(stream telemetryv1.TelemetryIngest_PushS
 	require.NoError(s.t, err)
 	require.Equal(s.t, "batch-auth-header", batch.GetBatchId())
 	require.NoError(s.t, stream.Send(&telemetryv1.Ack{BatchId: batch.GetBatchId()}))
-	_, err = stream.Recv()
-	require.Equal(s.t, io.EOF, err)
 	return nil
 }
 

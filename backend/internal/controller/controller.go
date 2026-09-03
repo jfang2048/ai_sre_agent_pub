@@ -1977,8 +1977,8 @@ function show(data){ document.getElementById('out').textContent = typeof data ==
 }
 
 func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	info, err := os.Lstat(path) // #nosec G703 -- path is an operator-configured local UI root, and symlinks are rejected below.
+	return err == nil && info.Mode().IsRegular()
 }
 
 func spaAssetsAvailable(indexPath, webPath string) bool {

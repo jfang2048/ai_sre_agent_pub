@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	"unicode"
 	"unicode/utf8"
 
@@ -198,7 +200,7 @@ func extractArchiveUnits(archivePath, relativeArchive string, info os.FileInfo, 
 				Path:       relativeArchive + "::" + file.Name,
 				SourceType: "archive_entry",
 				Reason:     "unsafe archive entry path",
-				SizeBytes:  int64(file.UncompressedSize64),
+				SizeBytes:  safeconv.Uint64ToInt64(file.UncompressedSize64),
 			})
 			continue
 		}
@@ -208,7 +210,7 @@ func extractArchiveUnits(archivePath, relativeArchive string, info os.FileInfo, 
 				Path:       relativeArchive + "::" + entryName,
 				SourceType: "archive_entry",
 				Reason:     "archive entry type unsupported for rag ingestion",
-				SizeBytes:  int64(file.UncompressedSize64),
+				SizeBytes:  safeconv.Uint64ToInt64(file.UncompressedSize64),
 			})
 			continue
 		}

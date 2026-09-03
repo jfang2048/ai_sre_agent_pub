@@ -409,22 +409,31 @@ func checkRuntimeFilePermissions(root string) RuntimeSecurityCheck {
 	return check
 }
 
+type workloadSecurityContext struct {
+	RunAsNonRoot             *bool `yaml:"runAsNonRoot"`
+	AllowPrivilegeEscalation *bool `yaml:"allowPrivilegeEscalation"`
+	Capabilities             struct {
+		Add  []string `yaml:"add"`
+		Drop []string `yaml:"drop"`
+	} `yaml:"capabilities"`
+}
+
 type chartValuesSecurity struct {
 	Namespace struct {
 		Labels map[string]string `yaml:"labels"`
 	} `yaml:"namespace"`
-	SecurityContext struct {
-		RunAsNonRoot             bool `yaml:"runAsNonRoot"`
-		AllowPrivilegeEscalation bool `yaml:"allowPrivilegeEscalation"`
-		Capabilities             struct {
-			Add  []string `yaml:"add"`
-			Drop []string `yaml:"drop"`
-		} `yaml:"capabilities"`
-	} `yaml:"securityContext"`
+	Controller struct {
+		SecurityContext workloadSecurityContext `yaml:"securityContext"`
+	} `yaml:"controller"`
+	Collector struct {
+		PrivilegeProfile        string                  `yaml:"privilegeProfile"`
+		SecurityContext         workloadSecurityContext `yaml:"securityContext"`
+		DeepRuntimeCapabilities []string                `yaml:"deepRuntimeCapabilities"`
+	} `yaml:"collector"`
 	RBAC struct {
-		ClusterRules []struct {
+		ControllerClusterRules []struct {
 			Verbs []string `yaml:"verbs"`
-		} `yaml:"clusterRules"`
+		} `yaml:"controllerClusterRules"`
 	} `yaml:"rbac"`
 }
 
@@ -455,15 +464,16 @@ func checkHelmLeastPrivilegeDefaults(root string) RuntimeSecurityCheck {
 			"Default pod-security enforcement to baseline/restricted and elevate only where low-level probes explicitly require it.",
 		)
 	}
-	if !values.SecurityContext.RunAsNonRoot {
+	controllerSecurity := values.Controller.SecurityContext
+	if controllerSecurity.RunAsNonRoot == nil || !*controllerSecurity.RunAsNonRoot {
 		check.Status = RuntimeStatusFail
-		check.Message = "chart securityContext does not enforce runAsNonRoot"
-		check.Evidence = append(check.Evidence, "securityContext.runAsNonRoot=false")
+		check.Message = "controller securityContext does not enforce runAsNonRoot"
+		check.Evidence = append(check.Evidence, "controller.securityContext.runAsNonRoot is missing or false")
 	}
-	if values.SecurityContext.AllowPrivilegeEscalation {
+	if controllerSecurity.AllowPrivilegeEscalation == nil || *controllerSecurity.AllowPrivilegeEscalation {
 		check.Status = RuntimeStatusFail
-		check.Message = "chart securityContext allows privilege escalation"
-		check.Evidence = append(check.Evidence, "securityContext.allowPrivilegeEscalation=true")
+		check.Message = "controller securityContext does not explicitly disable privilege escalation"
+		check.Evidence = append(check.Evidence, "controller.securityContext.allowPrivilegeEscalation is missing or true")
 	}
 
 	dangerousCaps := map[string]struct{}{
@@ -473,7 +483,7 @@ func checkHelmLeastPrivilegeDefaults(root string) RuntimeSecurityCheck {
 		"PERFMON":   {},
 	}
 	foundCaps := make([]string, 0)
-	for _, capName := range values.SecurityContext.Capabilities.Add {
+	for _, capName := range controllerSecurity.Capabilities.Add {
 		trimmed := strings.TrimSpace(strings.ToUpper(capName))
 		if _, ok := dangerousCaps[trimmed]; ok {
 			foundCaps = append(foundCaps, trimmed)
@@ -483,14 +493,14 @@ func checkHelmLeastPrivilegeDefaults(root string) RuntimeSecurityCheck {
 		check.Status = RuntimeStatusWarn
 		check.Message = "chart default capabilities include privileged kernel/network scopes"
 		sort.Strings(foundCaps)
-		check.Evidence = append(check.Evidence, fmt.Sprintf("securityContext.capabilities.add=%v", foundCaps))
+		check.Evidence = append(check.Evidence, fmt.Sprintf("controller.securityContext.capabilities.add=%v", foundCaps))
 		check.Recommendations = append(check.Recommendations,
 			"Keep privileged capabilities empty by default and enable them only in dedicated hardened deployment overlays.",
 		)
 	}
 
 	mutatingVerbFound := false
-	for _, rule := range values.RBAC.ClusterRules {
+	for _, rule := range values.RBAC.ControllerClusterRules {
 		for _, verb := range rule.Verbs {
 			switch strings.ToLower(strings.TrimSpace(verb)) {
 			case "create", "update", "patch", "delete", "deletecollection":
@@ -498,7 +508,7 @@ func checkHelmLeastPrivilegeDefaults(root string) RuntimeSecurityCheck {
 					check.Status = RuntimeStatusWarn
 				}
 				check.Message = "chart default RBAC includes mutating verbs"
-				check.Evidence = append(check.Evidence, fmt.Sprintf("rbac.clusterRules verb=%q", verb))
+				check.Evidence = append(check.Evidence, fmt.Sprintf("rbac.controllerClusterRules verb=%q", verb))
 				mutatingVerbFound = true
 			}
 		}
@@ -506,6 +516,21 @@ func checkHelmLeastPrivilegeDefaults(root string) RuntimeSecurityCheck {
 	if mutatingVerbFound {
 		check.Recommendations = append(check.Recommendations,
 			"Default RBAC to read-only verbs (get/list/watch); gate mutating verbs behind an explicit override flag.",
+		)
+	}
+
+	collectorSecurity := values.Collector.SecurityContext
+	if collectorSecurity.AllowPrivilegeEscalation != nil && *collectorSecurity.AllowPrivilegeEscalation {
+		check.Status = RuntimeStatusFail
+		check.Message = "collector securityContext allows privilege escalation"
+		check.Evidence = append(check.Evidence, "collector.securityContext.allowPrivilegeEscalation=true")
+	}
+	if strings.EqualFold(strings.TrimSpace(values.Collector.PrivilegeProfile), "deep-runtime") && len(values.Collector.DeepRuntimeCapabilities) > 0 && check.Status == RuntimeStatusPass {
+		check.Status = RuntimeStatusWarn
+		check.Message = "collector deep-runtime profile requests explicit kernel capabilities"
+		check.Evidence = append(check.Evidence, fmt.Sprintf("collector.deepRuntimeCapabilities=%v", values.Collector.DeepRuntimeCapabilities))
+		check.Recommendations = append(check.Recommendations,
+			"Use the reduced-privilege collector values when deep host telemetry is not required.",
 		)
 	}
 

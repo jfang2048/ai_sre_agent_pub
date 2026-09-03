@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -9,6 +10,34 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+func TestActionIntParameterRejectsUnsafeNumericConversions(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "unsigned overflow", value: uint64(math.MaxUint64)},
+		{name: "rounded signed overflow", value: float64(math.MaxInt64)},
+		{name: "infinity", value: math.Inf(1)},
+		{name: "fraction", value: 1.5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			action := &Action{Parameters: map[string]interface{}{"replicas": tc.value}}
+			_, found, err := actionIntParameter(action, "replicas")
+			require.True(t, found)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestActionIntParameterAcceptsExactWholeNumber(t *testing.T) {
+	action := &Action{Parameters: map[string]interface{}{"replicas": float64(42)}}
+	value, found, err := actionIntParameter(action, "replicas")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, 42, value)
+}
 
 // ── SafetyRule tests ──────────────────────────────────────────────────────
 

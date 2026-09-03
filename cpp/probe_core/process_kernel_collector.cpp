@@ -330,9 +330,9 @@ std::vector<int> sortWatchPIDs(const std::unordered_map<int, WatchEntry>& watchl
 }
 
 ProcessKernelCollector::ProcessKernelCollector(ProcessKernelCollectorOptions options)
-    : impl_(new Impl(std::move(options))) {}
+    : impl_(std::make_unique<Impl>(std::move(options))) {}
 
-ProcessKernelCollector::~ProcessKernelCollector() { delete impl_; }
+ProcessKernelCollector::~ProcessKernelCollector() = default;
 
 void ProcessKernelCollector::noteEBPFActivity(int pid, const std::string& comm) {
   if (impl_ == nullptr || pid <= 0) return;

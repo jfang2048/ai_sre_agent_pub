@@ -1324,7 +1324,7 @@ func (c *Collector) withIntervalJitter(interval time.Duration, ratio float64) ti
 	if c != nil && c.jitterUnit != nil {
 		unit = c.jitterUnit()
 	} else {
-		unit = rand.Float64()
+		unit = rand.Float64() // #nosec G404 -- jitter is operational load spreading, not security-sensitive randomness.
 	}
 	if unit < 0 {
 		unit = 0

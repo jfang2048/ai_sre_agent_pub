@@ -106,8 +106,19 @@ fi
 # ---------------------------------------------------------------------------
 section "Go static security analysis (gosec)"
 if require_tool gosec "gosec"; then
-  run_check "gosec" "${OUT_DIR}/gosec.txt" \
-    gosec -quiet -exclude-dir=vendor "${ROOT_DIR}/backend/..." || true
+  # Block merge/release on actionable high-severity findings. Keep the full
+  # report as an artifact so lower-severity hardening work remains visible
+  # without making every advisory or intentional systems call a release gate.
+  run_check "gosec high-severity gate" "${OUT_DIR}/gosec.txt" \
+    gosec -quiet -severity=high -confidence=medium \
+      -nosec-require-rules -nosec-require-justification \
+      -exclude-dir=vendor "${ROOT_DIR}/backend/..." || true
+  if gosec -quiet -no-fail -exclude-dir=vendor "${ROOT_DIR}/backend/..." \
+      >"${OUT_DIR}/gosec-all.txt" 2>&1; then
+    pass "gosec full advisory report"
+  else
+    fail "gosec full advisory report generation"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

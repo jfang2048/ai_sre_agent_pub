@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 )
 
 const (
@@ -807,7 +809,7 @@ func buildMetricCorrelations(entries []Entry, maxCorrelations int) []MetricCorre
 		if len(entry.Metrics) == 0 {
 			continue
 		}
-		weight := int(maxUint64(1, entry.Count))
+		weight := safeconv.Uint64ToInt(maxUint64(1, entry.Count))
 		isError := normalizeLevel(entry.Level) == LevelError || normalizeLevel(entry.Level) == LevelFatal
 		for key, value := range entry.Metrics {
 			if math.IsNaN(value) || math.IsInf(value, 0) {
@@ -818,10 +820,10 @@ func buildMetricCorrelations(entries []Entry, maxCorrelations int) []MetricCorre
 				agg = &aggregate{}
 				metrics[key] = agg
 			}
-			agg.samples += weight
+			agg.samples = safeconv.AddInts(agg.samples, weight)
 			agg.sum += value * float64(weight)
 			if isError {
-				agg.errorSamples += weight
+				agg.errorSamples = safeconv.AddInts(agg.errorSamples, weight)
 				agg.errorSum += value * float64(weight)
 			}
 		}

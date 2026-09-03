@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 )
 
 type validationEffectInput struct {
@@ -187,8 +189,8 @@ func buildValidationEffectComparison(in validationEffectInput, beforeRisk, after
 		comparison.ServiceHealthy = compareBoolMetric(in.Before.ServiceHealth.Healthy, in.After.ServiceHealth.Healthy, true, true, "healthy service state is better")
 		comparison.ServiceLatencyMS = compareFloatMetric(in.Before.ServiceHealth.LatencyMS, in.After.ServiceHealth.LatencyMS, true, true, 1.0, "lower latency is better")
 		comparison.ServiceErrorRate = compareFloatMetric(in.Before.ServiceHealth.ErrorRate, in.After.ServiceHealth.ErrorRate, true, true, 0.001, "lower error rate is better")
-		comparison.LogErrors = compareIntMetric(int64(in.Before.LogErrors), int64(in.After.LogErrors), true, true, "fewer log errors are better")
-		comparison.LogWarnings = compareIntMetric(int64(in.Before.LogWarnings), int64(in.After.LogWarnings), true, true, "fewer log warnings are better")
+		comparison.LogErrors = compareIntMetric(safeconv.Uint64ToInt64(in.Before.LogErrors), safeconv.Uint64ToInt64(in.After.LogErrors), true, true, "fewer log errors are better")
+		comparison.LogWarnings = compareIntMetric(safeconv.Uint64ToInt64(in.Before.LogWarnings), safeconv.Uint64ToInt64(in.After.LogWarnings), true, true, "fewer log warnings are better")
 		comparison.TriggeredSignals = compareIntMetric(int64(len(in.Before.TriggeredSignals)), int64(len(in.After.TriggeredSignals)), true, true, "fewer triggered signals are better")
 		comparison.ValidationConfidence = compareFloatMetric(in.Before.ValidationConfidence, in.After.ValidationConfidence, true, false, 0.01, "higher validation confidence is better")
 		comparison.RecommendationViability = compareIntMetric(int64(in.Before.RecommendationViability), int64(in.After.RecommendationViability), true, false, "higher recommendation viability is better")
@@ -287,11 +289,11 @@ func legacyValidationDelta(comparison *ValidationEffectComparison) *ValidationSt
 		ErrorRateDelta:               comparison.ServiceErrorRate.Delta,
 		LogErrorDelta:                comparison.LogErrors.Delta,
 		LogWarningDelta:              comparison.LogWarnings.Delta,
-		TriggeredSignalDelta:         int(comparison.TriggeredSignals.Delta),
+		TriggeredSignalDelta:         safeconv.Int64ToInt(comparison.TriggeredSignals.Delta),
 		HealthImproved:               comparison.ServiceHealthy.Improved || comparison.ServiceLatencyMS.Improved || comparison.ServiceErrorRate.Improved,
 		SecurityImproved:             comparison.SecurityScore.Improved,
 		ValidationConfidenceDelta:    comparison.ValidationConfidence.Delta,
-		RecommendationViabilityDelta: int(comparison.RecommendationViability.Delta),
+		RecommendationViabilityDelta: safeconv.Int64ToInt(comparison.RecommendationViability.Delta),
 	}
 }
 

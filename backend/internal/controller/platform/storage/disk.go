@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
 	"go.uber.org/zap"
 )
 
@@ -43,16 +44,24 @@ func (dm *DiskManager) GetDiskInfo(path string) (*DiskInfo, error) {
 		return nil, fmt.Errorf("statfs failed: %w", err)
 	}
 
-	total := stat.Blocks * uint64(stat.Bsize)
-	available := stat.Bavail * uint64(stat.Bsize)
+	blockSize := safeconv.NonNegativeInt64ToUint64(stat.Bsize)
+	total := safeconv.MultiplyUint64(stat.Blocks, blockSize)
+	available := safeconv.MultiplyUint64(stat.Bavail, blockSize)
+	if available > total {
+		available = total
+	}
 	used := total - available
+	usagePercent := 0.0
+	if total > 0 {
+		usagePercent = float64(used) / float64(total) * 100
+	}
 
 	return &DiskInfo{
 		Path:         path,
 		Total:        total,
 		Used:         used,
 		Available:    available,
-		UsagePercent: float64(used) / float64(total) * 100,
+		UsagePercent: usagePercent,
 	}, nil
 }
 

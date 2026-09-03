@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG GO_VERSION=1.25.7
+ARG GO_VERSION=1.26.8
 ARG NODE_VERSION=22
 ARG DEBIAN_RELEASE=bookworm
 ARG VERSION=v0.95
@@ -32,11 +32,11 @@ FROM golang:${GO_VERSION}-${DEBIAN_RELEASE} AS go-builder
 ARG VERSION
 ARG COMMIT
 ARG BUILD_DATE
-WORKDIR /src
-COPY --from=source /work/backend/go.mod /work/backend/go.sum ./backend/
-RUN cd backend && go mod download
-COPY --from=source /work/backend/ ./backend/
-RUN CGO_ENABLED=0 GOOS=linux go -C backend build \
+WORKDIR /src/backend
+COPY --from=source /work/backend/go.mod /work/backend/go.sum ./
+RUN go mod download
+COPY --from=source /work/backend/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags "-s -w -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.Version=${VERSION} -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.Commit=${COMMIT} -X github.com/jfang2048/ai_sre_agent_pub/internal/pkg/release.BuildDate=${BUILD_DATE}" \
     -o /out/sre-controller ./cmd/controller
@@ -87,7 +87,7 @@ ENV SRE_CONTROLLER_CONFIG=/etc/ai-sre-agent/controller.yaml \
 WORKDIR /var/lib/ai-sre-agent/controller
 VOLUME ["/var/lib/ai-sre-agent/controller/data"]
 EXPOSE 8080 9090
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 CMD curl -fsS http://127.0.0.1:8080/healthz >/dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 CMD ["curl", "-fsS", "http://127.0.0.1:8080/healthz"]
 USER 10001:10001
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/run-controller.sh"]
 CMD ["--log-format", "json"]

@@ -506,7 +506,7 @@ func loadTLSCredentials(cfg TLSConfig) (credentials.TransportCredentials, error)
 	tlsCfg := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		ServerName:         cfg.ServerName,
-		InsecureSkipVerify: cfg.InsecureSkipVerify, //nolint:gosec // explicitly configured by operators for break-glass
+		InsecureSkipVerify: cfg.InsecureSkipVerify, // #nosec G402 -- explicit operator-controlled break-glass setting; disabled by default and audited.
 	}
 
 	if cfg.CAFile != "" {
