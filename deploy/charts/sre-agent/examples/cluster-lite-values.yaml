@@ -52,6 +52,9 @@ controller:
     indexPath: /var/lib/ai-sre-agent/controller/data/agent/rag/index.json
 
 collector:
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/ai-sre-agent/collector
   collectionInterval: 10s
   deploymentMode: cluster-lite
   privilegeProfile: deep-runtime

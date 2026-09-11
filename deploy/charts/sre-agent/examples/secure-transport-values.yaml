@@ -40,6 +40,9 @@ controller:
       - prod-eu1
 
 collector:
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/ai-sre-agent/collector
   privilegeProfile: deep-runtime
   transportAuth:
     enabled: true

@@ -530,8 +530,9 @@ func (s *MemoryStore) snapshotForPersistence(force bool) (map[string]*NodeSnapsh
 		cloned := make([]MetricHistorySample, 0, len(samples))
 		for _, sample := range samples {
 			cloned = append(cloned, MetricHistorySample{
-				Timestamp: sample.Timestamp,
-				Metrics:   cloneMetricMap(sample.Metrics),
+				Timestamp:  sample.Timestamp,
+				IngestedAt: sample.IngestedAt,
+				Metrics:    cloneMetricMap(sample.Metrics),
 			})
 		}
 		history[key] = cloned
@@ -559,8 +560,9 @@ func (s *MemoryStore) restoreSnapshotLocked(nodes map[string]*NodeSnapshot, hist
 			}
 			for i := start; i < len(samples); i++ {
 				series.Push(MetricHistorySample{
-					Timestamp: samples[i].Timestamp,
-					Metrics:   cloneMetricMap(samples[i].Metrics),
+					Timestamp:  samples[i].Timestamp,
+					IngestedAt: samples[i].IngestedAt,
+					Metrics:    cloneMetricMap(samples[i].Metrics),
 				})
 			}
 			s.history[key] = series
@@ -1310,6 +1312,33 @@ func (s *MemoryStore) MetricHistory(collectorID string, since time.Time, limit i
 	return out
 }
 
+// StoreHistoricalBatch records an older replay without changing the latest node
+// snapshot. Partial batches contribute only their own metrics, never newer data.
+func (s *MemoryStore) StoreHistoricalBatch(collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time) {
+	if batch == nil {
+		return
+	}
+	metrics := make(map[string]float64, len(batch.Metrics))
+	for _, metric := range batch.Metrics {
+		if metric == nil || metric.Name == "" {
+			continue
+		}
+		if shouldAggregateMetric(metric.Name) {
+			metrics[metric.Name] += metric.Value
+		} else {
+			metrics[metric.Name] = metric.Value
+		}
+	}
+	sampleAt := receivedAt
+	if batch.WallTimeUnixNano > 0 {
+		sampleAt = time.Unix(0, batch.WallTimeUnixNano).UTC()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recordMetricHistory(collectorID, sampleAt, receivedAt, metrics)
+	s.markDirtyLocked(time.Now().UTC())
+}
+
 func (s *MemoryStore) recordMetricHistory(collectorID string, sampleAt, ingestedAt time.Time, metrics map[string]float64) {
 	if collectorID == "" || len(metrics) == 0 {
 		return
@@ -1323,11 +1352,33 @@ func (s *MemoryStore) recordMetricHistory(collectorID string, sampleAt, ingested
 		h = ring.New[MetricHistorySample](s.cfg.HistorySamplesPerNode)
 		s.history[collectorID] = h
 	}
-	h.Push(MetricHistorySample{
+	// Replay retains the receipt's accepted timestamp. Do not append a second
+	// history point after a crash between materialization and its checkpoint.
+	for _, prior := range h.SliceOldest() {
+		if prior.IngestedAt.Equal(ingestedAt) && prior.Timestamp.Equal(sampleAt) {
+			return
+		}
+	}
+	sample := MetricHistorySample{
 		Timestamp:  sampleAt,
 		IngestedAt: ingestedAt,
 		Metrics:    selected,
-	})
+	}
+	if newest, ok := h.Newest(); ok && newest.IngestedAt.After(ingestedAt) {
+		// Recovery may arrive out of order. Retain the newest bounded window,
+		// rather than evicting recent data to append an older replay.
+		points := append(h.SliceOldest(), sample)
+		sort.SliceStable(points, func(i, j int) bool {
+			return points[i].IngestedAt.Before(points[j].IngestedAt)
+		})
+		next := ring.New[MetricHistorySample](h.Cap())
+		for _, point := range points[max(0, len(points)-h.Cap()):] {
+			next.Push(point)
+		}
+		s.history[collectorID] = next
+		return
+	}
+	h.Push(sample)
 }
 
 func (s *MemoryStore) ensureNode(collectorID string) *NodeSnapshot {

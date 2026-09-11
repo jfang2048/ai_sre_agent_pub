@@ -75,7 +75,7 @@ func TestTopProgramsBehaviorUIServesSPAAndSimpleFallback(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.WebPath = webPath
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()

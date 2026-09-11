@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -415,6 +417,11 @@ func (c *Controller) initIngest() error {
 	c.ingestStore = ingest.NewMemoryStoreWithConfig(c.config.Ingest.storeConfig(), c.logger)
 	c.metricHistory = c.ingestStore
 	c.ingestStore.StartPersistence()
+	inbox, err := ingest.OpenInbox(context.Background(), c.config.Ingest.Inbox, c.logger)
+	if err != nil {
+		return fmt.Errorf("open durable ingest inbox: %w", err)
+	}
+	c.ingestInbox = inbox
 	c.logIndex = logindex.NewIndex(logindex.DefaultConfig())
 	c.ingestStore.AttachLogIndex(c.logIndex)
 	tsdbCfg := timeseries.ConfigFromEnv(c.config.TSDB)
@@ -450,7 +457,8 @@ func (c *Controller) rebuildIngestServer() {
 	if c.gpuStore != nil {
 		processors = append(processors, c.gpuStore)
 	}
-	c.ingestServer = ingest.NewServer(c.ingestStore, c.logger, processors...)
+	c.ingestServer = ingest.NewServerWithInbox(c.ingestStore, c.ingestInbox, c.logger, processors...)
+	c.ingestServer.SetInboxPolicy(c.config.Ingest.Inbox)
 	c.ingestServer.SetWriteGuard(func() error {
 		return c.activeControllerWriteError("gRPC ingest writes")
 	})
@@ -466,6 +474,45 @@ func (c *Controller) startIngest() error {
 	}
 	if c.grpcServer != nil || c.grpcListener != nil {
 		return nil
+	}
+	replayCtx, cancelReplay := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelReplay()
+	if err := c.ingestServer.RestoreHotState(replayCtx); err != nil {
+		return fmt.Errorf("restore retained ingest state: %w", err)
+	}
+	if !c.grpcIngestWritesBlocked() {
+		if err := c.ingestServer.ReplayPending(replayCtx); err != nil {
+			return fmt.Errorf("replay durable ingest inbox: %w", err)
+		}
+	}
+	// An applying receipt may still have an unexpired lease from a terminated
+	// controller. Retry after startup, and whenever this replica becomes leader.
+	if c.ctx != nil {
+		c.ingestRecovery.Add(1)
+		go func() {
+			defer c.ingestRecovery.Done()
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-c.ctx.Done():
+					return
+				case <-ticker.C:
+					if c.grpcIngestWritesBlocked() {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+					err := c.ingestServer.ReplayPending(ctx)
+					if err == nil {
+						err = c.ingestServer.PruneInbox(ctx)
+					}
+					cancel()
+					if err != nil && c.ctx.Err() == nil {
+						c.logger.Warn("durable ingest recovery pending", zap.Error(err))
+					}
+				}
+			}
+		}()
 	}
 
 	if c.config.GRPCListenAddr == "" {
@@ -506,7 +553,15 @@ func (c *Controller) startIngest() error {
 
 func (c *Controller) stopIngest() {
 	if c.grpcServer != nil {
-		c.grpcServer.GracefulStop()
+		server := c.grpcServer
+		stopped := make(chan struct{})
+		go func() { server.GracefulStop(); close(stopped) }()
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+			server.Stop()
+			<-stopped
+		}
 		c.grpcServer = nil
 	}
 	if c.grpcListener != nil {

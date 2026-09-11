@@ -40,6 +40,9 @@ controller:
       - prod-eu1
 
 collector:
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/ai-sre-agent/collector
   deploymentMode: cluster-lite
   privilegeProfile: observability
   transportAuth:

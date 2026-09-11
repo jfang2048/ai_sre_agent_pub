@@ -22,6 +22,7 @@ import (
 	_ "google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -32,7 +33,6 @@ const (
 	maxLabelLength       = 256
 	maxBatchIDLength     = 256
 	maxCollectorIDLength = 128
-	recentBatchWindow    = 256
 
 	auxPayloadRefreshedMetric = "collector_aux_payload_refreshed"
 )
@@ -40,15 +40,22 @@ const (
 // Server implements TelemetryIngest.
 type Server struct {
 	telemetryv1.UnimplementedTelemetryIngestServer
-	store         Store
-	logger        *zap.Logger
-	processors    []Processor
-	writeGuard    func() error
-	authenticator func(context.Context) (*identity.Identity, error)
-	accessPolicy  AccessPolicy
-	recentBatches map[string]*recentBatchSet
-	mu            sync.RWMutex
-	stats         Stats
+	store           Store
+	logger          *zap.Logger
+	processors      []Processor
+	writeGuard      func() error
+	authenticator   func(context.Context) (*identity.Identity, error)
+	accessPolicy    AccessPolicy
+	inbox           Inbox
+	inboxLease      time.Duration
+	inboxRetention  time.Duration
+	inboxMaxRecords int
+	inboxGCInterval time.Duration
+	applyMu         sync.Mutex
+	faultInjector   func(IngestFaultPoint) error
+	lastInboxGC     time.Time
+	mu              sync.RWMutex
+	stats           Stats
 }
 
 // AccessPolicy constrains which collectors may submit telemetry to the controller.
@@ -60,30 +67,39 @@ type AccessPolicy struct {
 
 // Stats summarizes ingest behavior and quality.
 type Stats struct {
-	BatchesTotal              uint64    `json:"batches_total"`
-	DuplicatesTotal           uint64    `json:"duplicates_total"`
-	RejectedTotal             uint64    `json:"rejected_total"`
-	WriteGuardRejectionsTotal uint64    `json:"write_guard_rejections_total"`
-	AuthnRejectedTotal        uint64    `json:"authn_rejected_total"`
-	AuthzRejectedTotal        uint64    `json:"authz_rejected_total"`
-	AllowlistRejectedTotal    uint64    `json:"allowlist_rejected_total"`
-	IdentityMismatchTotal     uint64    `json:"identity_mismatch_total"`
-	MetricsTotal              uint64    `json:"metrics_total"`
-	ProcessesTotal            uint64    `json:"processes_total"`
-	LogsTotal                 uint64    `json:"logs_total"`
-	LastBatchAt               time.Time `json:"last_batch_at,omitempty"`
-	LastRejectAt              time.Time `json:"last_reject_at,omitempty"`
-	LastCollector             string    `json:"last_collector,omitempty"`
-	LastBatchID               string    `json:"last_batch_id,omitempty"`
-	LastAuthSubject           string    `json:"last_auth_subject,omitempty"`
-	LastPeerSubject           string    `json:"last_peer_subject,omitempty"`
-	LastError                 string    `json:"last_error,omitempty"`
+	BatchesTotal              uint64     `json:"batches_total"`
+	DuplicatesTotal           uint64     `json:"duplicates_total"`
+	RejectedTotal             uint64     `json:"rejected_total"`
+	WriteGuardRejectionsTotal uint64     `json:"write_guard_rejections_total"`
+	AuthnRejectedTotal        uint64     `json:"authn_rejected_total"`
+	AuthzRejectedTotal        uint64     `json:"authz_rejected_total"`
+	AllowlistRejectedTotal    uint64     `json:"allowlist_rejected_total"`
+	IdentityMismatchTotal     uint64     `json:"identity_mismatch_total"`
+	MetricsTotal              uint64     `json:"metrics_total"`
+	ProcessesTotal            uint64     `json:"processes_total"`
+	LogsTotal                 uint64     `json:"logs_total"`
+	LastBatchAt               time.Time  `json:"last_batch_at,omitempty"`
+	LastRejectAt              time.Time  `json:"last_reject_at,omitempty"`
+	LastCollector             string     `json:"last_collector,omitempty"`
+	LastBatchID               string     `json:"last_batch_id,omitempty"`
+	LastAuthSubject           string     `json:"last_auth_subject,omitempty"`
+	LastPeerSubject           string     `json:"last_peer_subject,omitempty"`
+	LastError                 string     `json:"last_error,omitempty"`
+	Inbox                     InboxStats `json:"inbox"`
 }
 
-type recentBatchSet struct {
-	order []string
-	seen  map[string]struct{}
-}
+// IngestFaultPoint identifies receive-order crash boundaries for tests.
+type IngestFaultPoint string
+
+const (
+	FaultBeforeInboxCommit IngestFaultPoint = "before_inbox_commit"
+	FaultAfterInboxCommit  IngestFaultPoint = "after_inbox_commit"
+	FaultBeforeMaterialize IngestFaultPoint = "before_materialize"
+	FaultAfterMaterialize  IngestFaultPoint = "after_materialize"
+	FaultAfterApplied      IngestFaultPoint = "after_applied_checkpoint"
+	FaultBeforeACK         IngestFaultPoint = "before_ack"
+	FaultAfterACK          IngestFaultPoint = "after_ack"
+)
 
 // Schema captures ingest validation contract exposed to operators and integration tests.
 type Schema struct {
@@ -105,14 +121,45 @@ type Processor interface {
 
 // NewServer creates a new ingest server.
 func NewServer(store Store, logger *zap.Logger, processors ...Processor) *Server {
+	cfg := DefaultInboxConfig()
+	cfg.Backend = InboxBackendMemory
+	return NewServerWithInbox(store, newMemoryInbox(cfg), logger, processors...)
+}
+
+// NewServerWithInbox creates an ingest server backed by the supplied durable inbox.
+func NewServerWithInbox(store Store, inbox Inbox, logger *zap.Logger, processors ...Processor) *Server {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	cfg := DefaultInboxConfig()
 	return &Server{
-		store:         store,
-		logger:        logger.With(zap.String("component", "ingest")),
-		processors:    processors,
-		recentBatches: make(map[string]*recentBatchSet),
+		store:           store,
+		logger:          logger.With(zap.String("component", "ingest")),
+		processors:      processors,
+		inbox:           inbox,
+		inboxLease:      cfg.Lease,
+		inboxRetention:  cfg.Retention,
+		inboxMaxRecords: cfg.MaxRecords,
+		inboxGCInterval: cfg.GCInterval,
+	}
+}
+
+// SetInboxPolicy configures lease and retention bounds used by replay/GC.
+func (s *Server) SetInboxPolicy(cfg InboxConfig) {
+	if s == nil {
+		return
+	}
+	cfg = cfg.normalized()
+	s.inboxLease = cfg.Lease
+	s.inboxRetention = cfg.Retention
+	s.inboxMaxRecords = cfg.MaxRecords
+	s.inboxGCInterval = cfg.GCInterval
+}
+
+// SetFaultInjector installs deterministic receive-order fault injection for tests.
+func (s *Server) SetFaultInjector(injector func(IngestFaultPoint) error) {
+	if s != nil {
+		s.faultInjector = injector
 	}
 }
 
@@ -152,6 +199,9 @@ func (s *Server) WriteGuardEnabled() bool {
 
 // Push receives telemetry batches over a gRPC stream.
 func (s *Server) Push(stream telemetryv1.TelemetryIngest_PushServer) error {
+	if s == nil || s.inbox == nil {
+		return status.Error(codes.Unavailable, "durable ingest inbox unavailable")
+	}
 	actor, err := s.authenticate(stream.Context())
 	if err != nil {
 		s.logger.Warn("rejecting telemetry stream on authentication failure",
@@ -199,42 +249,49 @@ func (s *Server) Push(stream telemetryv1.TelemetryIngest_PushServer) error {
 			return status.Error(codes.Unavailable, err.Error())
 		}
 
-		receivedAt := time.Now()
-		collectorID := "unknown"
-		if batch.Collector != nil {
-			collectorID = batch.Collector.CollectorId
-			s.store.UpsertCollector(batch.Collector, receivedAt)
+		receivedAt := time.Now().UTC()
+		collectorID := strings.TrimSpace(batch.GetCollector().GetCollectorId())
+		if err := s.injectFault(FaultBeforeInboxCommit); err != nil {
+			return status.Error(codes.Unavailable, err.Error())
 		}
-		if s.isDuplicateBatch(collectorID, batch.BatchId) {
-			ack := &telemetryv1.Ack{BatchId: batch.BatchId}
-			if err := stream.Send(ack); err != nil {
-				return err
+		receipt, err := receiptFromBatch(batch, receivedAt)
+		if err != nil {
+			s.recordRejected(err)
+			return status.Error(codes.Internal, err.Error())
+		}
+		stored, created, err := s.inbox.Commit(stream.Context(), receipt)
+		if err != nil {
+			s.recordRejected(err)
+			if errors.Is(err, ErrIdentityConflict) {
+				return status.Error(codes.AlreadyExists, "batch identity has different contents")
 			}
-			s.recordDuplicate(collectorID, batch.BatchId, receivedAt)
-			continue
+			return status.Error(codes.Unavailable, "durable ingest receipt failed")
 		}
-		s.store.StoreBatchMeta(collectorID, batch, receivedAt)
-		if len(batch.Metrics) > 0 {
-			s.store.StoreMetrics(collectorID, batch.Metrics, receivedAt)
+		if err := s.injectFault(FaultAfterInboxCommit); err != nil {
+			return status.Error(codes.Unavailable, err.Error())
 		}
-		if len(batch.Processes) > 0 || auxPayloadRefreshed(batch.Metrics, "process_fallback") {
-			s.store.StoreProcesses(collectorID, batch.Processes, receivedAt)
+		if err := s.applyReceipt(stream.Context(), stored); err != nil {
+			s.recordRejected(err)
+			return status.Error(codes.Unavailable, err.Error())
 		}
-		if len(batch.Logs) > 0 || auxPayloadRefreshed(batch.Metrics, "logs") {
-			s.store.StoreLogs(collectorID, batch.Logs, receivedAt)
+		if err := s.maybePruneInbox(stream.Context(), receivedAt); err != nil {
+			s.logger.Warn("ingest inbox retention failed", zap.Error(err))
 		}
-
-		for _, p := range s.processors {
-			if p != nil {
-				s.processBatchSafely(p, collectorID, batch, receivedAt)
-			}
+		if err := s.injectFault(FaultBeforeACK); err != nil {
+			return status.Error(codes.Unavailable, err.Error())
 		}
-
 		ack := &telemetryv1.Ack{BatchId: batch.BatchId}
 		if err := stream.Send(ack); err != nil {
 			return err
 		}
-		s.recordAccepted(batch, collectorID, receivedAt)
+		if err := s.injectFault(FaultAfterACK); err != nil {
+			return status.Error(codes.Unavailable, err.Error())
+		}
+		if created {
+			s.recordAccepted(batch, collectorID, receivedAt)
+		} else {
+			s.recordDuplicate(collectorID, batch.BatchId, receivedAt)
+		}
 	}
 }
 
@@ -274,9 +331,10 @@ func (s *Server) guardWrite() error {
 	return s.writeGuard()
 }
 
-func (s *Server) processBatchSafely(p Processor, collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time) {
+func (s *Server) processBatchSafely(p Processor, collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			err = fmt.Errorf("ingest processor panic: %v", r)
 			s.logger.Error("ingest processor panic recovered",
 				zap.String("collector_id", collectorID),
 				zap.String("batch_id", strings.TrimSpace(batch.GetBatchId())),
@@ -285,6 +343,227 @@ func (s *Server) processBatchSafely(p Processor, collectorID string, batch *tele
 	}()
 
 	p.ProcessBatch(collectorID, batch, receivedAt)
+	return nil
+}
+
+func (s *Server) applyReceipt(ctx context.Context, receipt Receipt) error {
+	if s == nil || s.inbox == nil {
+		return fmt.Errorf("durable ingest inbox is unavailable")
+	}
+	// Keep deterministic processors ordered within one controller. The durable
+	// claim below coordinates different controllers; each attempt has a unique
+	// fencing token so a stale attempt cannot checkpoint a reclaimed receipt.
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	owner, err := newInboxOwner()
+	if err != nil {
+		return fmt.Errorf("generate ingest claim token: %w", err)
+	}
+	for {
+		if err := s.guardWrite(); err != nil {
+			return err
+		}
+		claimedReceipt, claimed, err := s.inbox.Claim(ctx, receipt.Identity, owner, time.Now().UTC(), s.inboxLease)
+		if err != nil {
+			return fmt.Errorf("claim durable ingest receipt: %w", err)
+		}
+		if claimed {
+			finishLease := s.renewReceiptLease(ctx, receipt.Identity, owner)
+			defer finishLease()
+			if err := s.injectFault(FaultBeforeMaterialize); err != nil {
+				return err
+			}
+			batch, err := decodeReceiptBatch(claimedReceipt)
+			if err != nil {
+				_ = s.inbox.MarkFailed(ctx, receipt.Identity, owner, err)
+				return err
+			}
+			if err := s.materializeBatch(claimedReceipt.CollectorID, batch, claimedReceipt.AcceptedAt); err != nil {
+				_ = s.inbox.MarkFailed(ctx, receipt.Identity, owner, err)
+				return err
+			}
+			if err := s.injectFault(FaultAfterMaterialize); err != nil {
+				return err
+			}
+			if err := finishLease(); err != nil {
+				return fmt.Errorf("ingest lease renewal failed: %w", err)
+			}
+			if err := s.inbox.MarkApplied(ctx, receipt.Identity, owner, time.Now().UTC()); err != nil {
+				return fmt.Errorf("checkpoint applied ingest receipt: %w", err)
+			}
+			if err := s.injectFault(FaultAfterApplied); err != nil {
+				return err
+			}
+			return nil
+		}
+		if claimedReceipt.State == ReceiptApplied {
+			return nil
+		}
+
+		wait := 5 * time.Millisecond
+		if remaining := time.Until(claimedReceipt.LeaseExpiresAt); remaining > 0 && remaining < wait {
+			wait = remaining
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Server) renewReceiptLease(ctx context.Context, identity, owner string) func() error {
+	leaseCtx, cancel := context.WithCancel(ctx)
+	finished := make(chan struct{})
+	var renewalError error
+	go func() {
+		defer close(finished)
+		interval := s.inboxLease / 3
+		if interval < time.Millisecond {
+			interval = time.Millisecond
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-leaseCtx.Done():
+				return
+			case <-ticker.C:
+				if err := s.inbox.Renew(leaseCtx, identity, owner, time.Now().UTC(), s.inboxLease); err != nil {
+					if leaseCtx.Err() == nil {
+						renewalError = err
+					}
+					return
+				}
+			}
+		}
+	}()
+	return func() error { cancel(); <-finished; return renewalError }
+}
+
+func (s *Server) materializeBatch(collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time) error {
+	if err := s.materializeHotState(collectorID, batch, receivedAt); err != nil {
+		return err
+	}
+	for _, processor := range s.processors {
+		if processor == nil {
+			continue
+		}
+		if err := s.processBatchSafely(processor, collectorID, batch, receivedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) materializeHotState(collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time) error {
+	if s.store == nil {
+		return fmt.Errorf("ingest hot store is unavailable")
+	}
+	// Lease recovery can apply an older receipt after a newer one. Keep the
+	// latest view monotonic while retaining historical metrics where supported.
+	if node := s.store.Node(collectorID); node != nil && node.LastIngestAt.After(receivedAt) {
+		if history, ok := s.store.(interface {
+			StoreHistoricalBatch(string, *telemetryv1.TelemetryBatch, time.Time)
+		}); ok {
+			history.StoreHistoricalBatch(collectorID, batch, receivedAt)
+		}
+		return nil
+	}
+	if batch.GetCollector() != nil {
+		s.store.UpsertCollector(batch.GetCollector(), receivedAt)
+	}
+	s.store.StoreBatchMeta(collectorID, batch, receivedAt)
+	if len(batch.GetMetrics()) > 0 {
+		s.store.StoreMetrics(collectorID, batch.GetMetrics(), receivedAt)
+	}
+	if len(batch.GetProcesses()) > 0 || auxPayloadRefreshed(batch.GetMetrics(), "process_fallback") {
+		s.store.StoreProcesses(collectorID, batch.GetProcesses(), receivedAt)
+	}
+	if len(batch.GetLogs()) > 0 || auxPayloadRefreshed(batch.GetMetrics(), "logs") {
+		s.store.StoreLogs(collectorID, batch.GetLogs(), receivedAt)
+	}
+	return nil
+}
+
+// RestoreHotState rebuilds retained acknowledged telemetry after a process exit,
+// without re-invoking observers for already applied receipts. Call before serving.
+func (s *Server) RestoreHotState(ctx context.Context) error {
+	if s == nil || s.inbox == nil {
+		return fmt.Errorf("durable ingest inbox is unavailable")
+	}
+	after := ""
+	for {
+		receipts, err := s.inbox.Retained(ctx, after, 256)
+		if err != nil {
+			return err
+		}
+		if len(receipts) == 0 {
+			return nil
+		}
+		for _, receipt := range receipts {
+			if receipt.State == ReceiptApplied {
+				batch, err := decodeReceiptBatch(receipt)
+				if err != nil {
+					return err
+				}
+				if err := s.materializeHotState(receipt.CollectorID, batch, receipt.AcceptedAt); err != nil {
+					return err
+				}
+			}
+			after = receiptOrder(receipt)
+		}
+	}
+}
+
+// ReplayPending applies receipts committed before an earlier controller exit.
+func (s *Server) ReplayPending(ctx context.Context) error {
+	if s == nil || s.inbox == nil {
+		return fmt.Errorf("durable ingest inbox is unavailable")
+	}
+	for {
+		receipts, err := s.inbox.Pending(ctx, time.Now().UTC(), 256)
+		if err != nil {
+			return fmt.Errorf("list pending ingest receipts: %w", err)
+		}
+		if len(receipts) == 0 {
+			return nil
+		}
+		for _, receipt := range receipts {
+			if err := s.applyReceipt(ctx, receipt); err != nil {
+				return fmt.Errorf("replay ingest receipt %s: %w", receipt.Identity, err)
+			}
+		}
+	}
+}
+
+func (s *Server) maybePruneInbox(ctx context.Context, now time.Time) error {
+	s.mu.Lock()
+	if !s.lastInboxGC.IsZero() && now.Sub(s.lastInboxGC) < s.inboxGCInterval {
+		s.mu.Unlock()
+		return nil
+	}
+	s.lastInboxGC = now
+	s.mu.Unlock()
+	_, err := s.inbox.Prune(ctx, now.Add(-s.inboxRetention), s.inboxMaxRecords)
+	return err
+}
+
+// PruneInbox runs interval-limited retention even when no new data arrives.
+func (s *Server) PruneInbox(ctx context.Context) error {
+	return s.maybePruneInbox(ctx, time.Now().UTC())
+}
+
+func (s *Server) injectFault(point IngestFaultPoint) error {
+	if s == nil || s.faultInjector == nil {
+		return nil
+	}
+	if err := s.faultInjector(point); err != nil {
+		return fmt.Errorf("ingest fault at %s: %w", point, err)
+	}
+	return nil
 }
 
 func auxPayloadRefreshed(metrics []*telemetryv1.Metric, component string) bool {
@@ -321,14 +600,18 @@ func (s *Server) HealthCheck(ctx context.Context) error {
 // Stats returns ingest counters and latest batch metadata.
 func (s *Server) Stats() Stats {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.stats
+	stats := s.stats
+	s.mu.RUnlock()
+	if s.inbox != nil {
+		stats.Inbox = s.inbox.Stats(context.Background())
+	}
+	return stats
 }
 
 // Schema returns ingest payload limits and validation contract.
 func (s *Server) Schema() Schema {
 	return Schema{
-		Version:              "v1",
+		Version:              "v2",
 		MaxMetricsPerBatch:   maxMetricsPerBatch,
 		MaxProcessesPerBatch: maxProcessesPerBatch,
 		MaxLogsPerBatch:      maxLogsPerBatch,
@@ -650,43 +933,10 @@ func (s *Server) recordWriteGuardRejected(err error) {
 	}
 }
 
-func (s *Server) isDuplicateBatch(collectorID, batchID string) bool {
-	collectorID = strings.TrimSpace(collectorID)
-	batchID = strings.TrimSpace(batchID)
-	if collectorID == "" || batchID == "" {
-		return false
-	}
-	if s.store != nil {
-		if node := s.store.Node(collectorID); node != nil && strings.TrimSpace(node.LastBatchID) == batchID {
-			return true
-		}
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	entry := s.recentBatches[collectorID]
-	if entry == nil {
-		entry = &recentBatchSet{
-			order: make([]string, 0, recentBatchWindow),
-			seen:  make(map[string]struct{}, recentBatchWindow),
-		}
-		s.recentBatches[collectorID] = entry
-	}
-	if _, ok := entry.seen[batchID]; ok {
-		return true
-	}
-	entry.seen[batchID] = struct{}{}
-	entry.order = append(entry.order, batchID)
-	if len(entry.order) > recentBatchWindow {
-		evicted := entry.order[0]
-		entry.order = entry.order[1:]
-		delete(entry.seen, evicted)
-	}
-	return false
-}
-
 func validateBatch(batch *telemetryv1.TelemetryBatch) error {
+	if batch != nil && proto.Size(batch) > maxInboxPayloadBytes {
+		return fmt.Errorf("batch payload exceeds %d bytes", maxInboxPayloadBytes)
+	}
 	if batch == nil {
 		return fmt.Errorf("batch cannot be nil")
 	}
@@ -695,6 +945,13 @@ func validateBatch(batch *telemetryv1.TelemetryBatch) error {
 	}
 	if len(batch.BatchId) > maxBatchIDLength {
 		return fmt.Errorf("batch_id too long")
+	}
+	producerEpoch := strings.TrimSpace(batch.GetProducerEpoch())
+	if len(producerEpoch) > 64 {
+		return fmt.Errorf("producer_epoch too long")
+	}
+	if (producerEpoch == "") != (batch.GetProducerSequence() == 0) {
+		return fmt.Errorf("producer_epoch and producer_sequence must be provided together")
 	}
 	if batch.Collector == nil {
 		return fmt.Errorf("collector is required")

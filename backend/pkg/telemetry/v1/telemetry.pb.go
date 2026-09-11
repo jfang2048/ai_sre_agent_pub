@@ -386,6 +386,8 @@ type TelemetryBatch struct {
 	Processes             []*ProcessSample       `protobuf:"bytes,5,rep,name=processes,proto3" json:"processes,omitempty"`
 	Logs                  []*LogFingerprint      `protobuf:"bytes,6,rep,name=logs,proto3" json:"logs,omitempty"`
 	BatchId               string                 `protobuf:"bytes,7,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	ProducerEpoch         string                 `protobuf:"bytes,8,opt,name=producer_epoch,json=producerEpoch,proto3" json:"producer_epoch,omitempty"`
+	ProducerSequence      uint64                 `protobuf:"varint,9,opt,name=producer_sequence,json=producerSequence,proto3" json:"producer_sequence,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -469,6 +471,20 @@ func (x *TelemetryBatch) GetBatchId() string {
 	return ""
 }
 
+func (x *TelemetryBatch) GetProducerEpoch() string {
+	if x != nil {
+		return x.ProducerEpoch
+	}
+	return ""
+}
+
+func (x *TelemetryBatch) GetProducerSequence() uint64 {
+	if x != nil {
+		return x.ProducerSequence
+	}
+	return 0
+}
+
 type Ack struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BatchId       string                 `protobuf:"bytes,1,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
@@ -546,7 +562,7 @@ const file_telemetry_v1_telemetry_proto_rawDesc = "" +
 	"\vfingerprint\x18\x01 \x01(\tR\vfingerprint\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x04R\x05count\x12\x18\n" +
 	"\aexample\x18\x03 \x01(\tR\aexample\x12.\n" +
-	"\x13timestamp_unix_nano\x18\x04 \x01(\x03R\x11timestampUnixNano\"\xeb\x02\n" +
+	"\x13timestamp_unix_nano\x18\x04 \x01(\x03R\x11timestampUnixNano\"\xbf\x03\n" +
 	"\x0eTelemetryBatch\x129\n" +
 	"\tcollector\x18\x01 \x01(\v2\x1b.telemetry.v1.CollectorInfoR\tcollector\x12-\n" +
 	"\x13wall_time_unix_nano\x18\x02 \x01(\x03R\x10wallTimeUnixNano\x127\n" +
@@ -554,7 +570,9 @@ const file_telemetry_v1_telemetry_proto_rawDesc = "" +
 	"\ametrics\x18\x04 \x03(\v2\x14.telemetry.v1.MetricR\ametrics\x129\n" +
 	"\tprocesses\x18\x05 \x03(\v2\x1b.telemetry.v1.ProcessSampleR\tprocesses\x120\n" +
 	"\x04logs\x18\x06 \x03(\v2\x1c.telemetry.v1.LogFingerprintR\x04logs\x12\x19\n" +
-	"\bbatch_id\x18\a \x01(\tR\abatchId\" \n" +
+	"\bbatch_id\x18\a \x01(\tR\abatchId\x12%\n" +
+	"\x0eproducer_epoch\x18\b \x01(\tR\rproducerEpoch\x12+\n" +
+	"\x11producer_sequence\x18\t \x01(\x04R\x10producerSequence\" \n" +
 	"\x03Ack\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId2N\n" +
 	"\x0fTelemetryIngest\x12;\n" +

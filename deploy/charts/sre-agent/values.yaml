@@ -149,6 +149,20 @@ controller:
     allowedCollectorIDs: []
     allowedClusterNames: []
     allowedPeerSubjects: []
+  ingestInbox:
+    # bbolt is durable on the controller data volume. Use postgres for shared
+    # multi-writer ownership; its DSN is read only from the referenced Secret.
+    backend: bbolt
+    path: /var/lib/ai-sre-agent/controller/data/ingest/inbox.db
+    retention: 24h
+    gcInterval: 5m
+    maxRecords: 100000
+    maxBytes: 268435456
+    lease: 30s
+    singleWriter: false
+    postgres:
+      dsnSecretName: ""
+      dsnSecretKey: dsn
   env:
     ingestPersistEnabled: "1"
     ragEnabled: "1"
@@ -256,6 +270,16 @@ collector:
   level: "5"
   metricsPort: 9464
   logPaths: /var/log/syslog,/var/log/messages,/var/log/kern.log
+  persistence:
+    # emptyDir is for local development only. Cluster-like values files use a
+    # node-local hostPath so an acknowledged controller outage cannot erase the
+    # collector's unsent WAL during a Pod restart.
+    type: emptyDir
+    hostPath: /var/lib/ai-sre-agent/collector
+    hostPathType: DirectoryOrCreate
+    emptyDir:
+      sizeLimit: 2Gi
+    allowDataLossInCluster: false
   configInline: ""
   transportAuth:
     # The chart uses a shared collector service token by default. Mint it with

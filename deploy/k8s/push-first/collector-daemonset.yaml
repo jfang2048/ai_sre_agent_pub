@@ -142,4 +142,6 @@ spec:
             path: /var/log
             type: DirectoryOrCreate
         - name: collector-data
-          emptyDir: {}
+          hostPath:
+            path: /var/lib/ai-sre-agent/collector
+            type: DirectoryOrCreate

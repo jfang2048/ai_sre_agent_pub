@@ -159,6 +159,8 @@ type Controller struct {
 	k8sManager           *k8sview.Manager
 	inventoryManager     *inventory.Manager
 	ingestStore          *ingest.MemoryStore
+	ingestInbox          ingest.Inbox
+	ingestRecovery       sync.WaitGroup
 	metricHistory        ingest.MetricHistoryProvider
 	ingestServer         *ingest.Server
 	timeseriesService    *timeseries.Service
@@ -193,6 +195,7 @@ type Controller struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	running bool
+	closed  bool
 
 	leaderMu     sync.Mutex
 	leaderCtx    context.Context
@@ -228,6 +231,12 @@ func New(cfg Config, logger *zap.Logger) (*Controller, error) {
 		nodeHistory: make(map[string]*ring.Ring[HistorySample]),
 		agentRuns:   make(map[string]*apiAgentRunState),
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = c.Stop()
+		}
+	}()
 
 	resolvedAuth, err := ResolveAuthConfig(cfg.Auth, c.logger)
 	if err != nil {
@@ -490,12 +499,17 @@ func New(cfg Config, logger *zap.Logger) (*Controller, error) {
 		return nil, err
 	}
 
+	initialized = true
 	return c, nil
 }
 
 // Start starts the controller
 func (c *Controller) Start(ctx context.Context) error {
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return fmt.Errorf("controller is closed")
+	}
 	if c.running {
 		c.mu.Unlock()
 		return fmt.Errorf("controller already running")
@@ -592,9 +606,10 @@ func (c *Controller) Stop() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if !c.running {
+	if c.closed {
 		return nil
 	}
+	c.closed = true
 
 	c.logger.Info("stopping controller")
 
@@ -609,9 +624,15 @@ func (c *Controller) Stop() error {
 		}
 	}
 	c.stopIngest()
+	c.ingestRecovery.Wait()
 	if c.ingestStore != nil {
 		if err := c.ingestStore.Close(); err != nil {
 			c.logger.Warn("failed to close ingest store persistence", zap.Error(err))
+		}
+	}
+	if c.ingestInbox != nil {
+		if err := c.ingestInbox.Close(); err != nil {
+			c.logger.Warn("failed to close durable ingest inbox", zap.Error(err))
 		}
 	}
 	if c.timeseriesService != nil {
@@ -1745,6 +1766,21 @@ func (c *Controller) handlePrometheusMetrics(w http.ResponseWriter, r *http.Requ
 		fmt.Fprintf(bw, "# HELP sre_ingest_batches_total Total telemetry batches accepted by ingest\n")
 		fmt.Fprintf(bw, "# TYPE sre_ingest_batches_total counter\n")
 		fmt.Fprintf(bw, "sre_ingest_batches_total %d\n", stats.BatchesTotal)
+		for _, metric := range []struct {
+			name, kind string
+			value      any
+		}{
+			{"records", "gauge", stats.Inbox.Records},
+			{"pending", "gauge", stats.Inbox.Pending},
+			{"applied", "gauge", stats.Inbox.Applied},
+			{"payload_bytes", "gauge", stats.Inbox.PayloadBytes},
+			{"max_bytes", "gauge", stats.Inbox.MaxBytes},
+			{"duplicates_total", "counter", stats.Inbox.Duplicates},
+			{"replayed_total", "counter", stats.Inbox.Replayed},
+			{"pruned_total", "counter", stats.Inbox.Pruned},
+		} {
+			fmt.Fprintf(bw, "# TYPE sre_ingest_inbox_%s %s\nsre_ingest_inbox_%s %d\n", metric.name, metric.kind, metric.name, metric.value)
+		}
 
 		fmt.Fprintf(bw, "# HELP sre_ingest_rejected_total Total telemetry batches rejected by validation\n")
 		fmt.Fprintf(bw, "# TYPE sre_ingest_rejected_total counter\n")

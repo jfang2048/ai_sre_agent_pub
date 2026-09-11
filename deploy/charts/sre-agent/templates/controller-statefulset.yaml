@@ -168,6 +168,13 @@ spec:
             {{- end }}
             - name: SRE_INGEST_PERSIST_ENABLED
               value: {{ .Values.controller.env.ingestPersistEnabled | quote }}
+            {{- if eq .Values.controller.ingestInbox.backend "postgres" }}
+            - name: SRE_INGEST_INBOX_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.ingestInbox.postgres.dsnSecretName }}
+                  key: {{ .Values.controller.ingestInbox.postgres.dsnSecretKey | quote }}
+            {{- end }}
             - name: SRE_AGENT_RAG_ENABLED
               value: {{ .Values.controller.env.ragEnabled | quote }}
             - name: SRE_AGENT_RAG_REBUILD_POLICY

@@ -53,6 +53,9 @@ func ApplyDeploymentDefaults(cfg Config) Config {
 		if pathMatchesDefault(cfg.Ingest.Persistence.Path, "./data/controller/ingest/store.db") {
 			cfg.Ingest.Persistence.Path = filepath.Join(deployment.DataRoot, "controller", "data", "ingest", "store.db")
 		}
+		if pathMatchesDefault(cfg.Ingest.Inbox.Path, "./data/controller/ingest/inbox.db") {
+			cfg.Ingest.Inbox.Path = filepath.Join(deployment.DataRoot, "controller", "data", "ingest", "inbox.db")
+		}
 		if pathMatchesDefault(cfg.Agent.PersistDir, "./data/agent") {
 			cfg.Agent.PersistDir = filepath.Join(deployment.DataRoot, "controller", "data", "agent")
 		}

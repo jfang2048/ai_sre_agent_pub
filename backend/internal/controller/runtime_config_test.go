@@ -50,7 +50,7 @@ func TestControllerApplyRuntimeConfig(t *testing.T) {
 	cfg.Nodes = []NodeConfig{{Name: "node-a", Address: "10.0.0.10:9090"}}
 	cfg.Agent.PolicyFile = initialPlaybooks
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	next := cfg
@@ -86,7 +86,7 @@ func TestControllerApplyRuntimeConfig(t *testing.T) {
 }
 
 func TestControllerConfigReloadHandler(t *testing.T) {
-	ctrl, err := New(DefaultConfig(), zap.NewNop())
+	ctrl, err := newTestController(t, DefaultConfig(), zap.NewNop())
 	require.NoError(t, err)
 	ctrl.SetRuntimeConfigReloader(func(ctx context.Context, source string) (RuntimeConfigReloadReport, error) {
 		return RuntimeConfigReloadReport{

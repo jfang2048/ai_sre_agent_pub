@@ -703,13 +703,14 @@ func TestPushRecoversFromProcessorPanic(t *testing.T) {
 
 	require.NoError(t, stream.Send(batch))
 	ack, err := stream.Recv()
-	require.NoError(t, err)
-	require.Equal(t, "batch-panic-safe", ack.BatchId)
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	require.Nil(t, ack)
 	require.NoError(t, stream.CloseSend())
 
 	stats := server.Stats()
-	require.Equal(t, uint64(1), stats.BatchesTotal)
-	require.Equal(t, uint64(0), stats.RejectedTotal)
+	require.Equal(t, uint64(0), stats.BatchesTotal)
+	require.Equal(t, uint64(1), stats.RejectedTotal)
+	require.Equal(t, int64(1), stats.Inbox.Pending)
 }
 
 func TestPushCarriesForwardSuppressedAuxPayloadsAndClearsOnExplicitRefresh(t *testing.T) {

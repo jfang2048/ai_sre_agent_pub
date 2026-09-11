@@ -25,6 +25,7 @@ type Config struct {
 	MirrorSend                          bool              `yaml:"mirror_send" json:"mirror_send"`
 	SpoolDir                            string            `yaml:"spool_dir" json:"spool_dir"`
 	SpoolMaxBytes                       int64             `yaml:"spool_max_bytes" json:"spool_max_bytes"`
+	SpoolMaxRecordBytes                 int64             `yaml:"spool_max_record_bytes" json:"spool_max_record_bytes"`
 	SpoolSyncInterval                   time.Duration     `yaml:"spool_sync_interval" json:"spool_sync_interval"`
 	SpoolOffsetSyncInterval             time.Duration     `yaml:"spool_offset_sync_interval" json:"spool_offset_sync_interval"`
 	TopK                                int               `yaml:"topk" json:"topk"`
@@ -60,6 +61,7 @@ const (
 	defaultProbeCoreInterval       = 1 * time.Second
 	defaultSpoolDir                = "./data/collector/spool"
 	defaultSpoolMax                = int64(128 * 1024 * 1024)
+	defaultSpoolMaxRecordBytes     = int64(4 * 1024 * 1024)
 	defaultSpoolSyncInterval       = 1 * time.Second
 	defaultSpoolOffsetSyncInterval = 1 * time.Second
 	defaultTopK                    = 10
@@ -187,6 +189,7 @@ func DefaultConfig() Config {
 		ControllerEndpoints:                 []string{"localhost:9090"},
 		SpoolDir:                            defaultSpoolDir,
 		SpoolMaxBytes:                       defaultSpoolMax,
+		SpoolMaxRecordBytes:                 defaultSpoolMaxRecordBytes,
 		SpoolSyncInterval:                   defaultSpoolSyncInterval,
 		SpoolOffsetSyncInterval:             defaultSpoolOffsetSyncInterval,
 		TopK:                                defaultTopK,
@@ -354,6 +357,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.SpoolMaxBytes <= 0 {
 		return fmt.Errorf("spool_max_bytes must be > 0")
+	}
+	if cfg.SpoolMaxRecordBytes < 0 {
+		return fmt.Errorf("spool_max_record_bytes must be >= 0")
 	}
 	if cfg.SpoolSyncInterval < 0 {
 		return fmt.Errorf("spool_sync_interval must be >= 0")
@@ -600,6 +606,13 @@ func applyEnvOverrides(cfg Config) (Config, error) {
 			return cfg, fmt.Errorf("parse SRE_COLLECTOR_SPOOL_MAX_BYTES: %w", err)
 		}
 		cfg.SpoolMaxBytes = parsed
+	}
+	if raw := os.Getenv("SRE_COLLECTOR_SPOOL_MAX_RECORD_BYTES"); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return cfg, fmt.Errorf("parse SRE_COLLECTOR_SPOOL_MAX_RECORD_BYTES: %w", err)
+		}
+		cfg.SpoolMaxRecordBytes = parsed
 	}
 	if raw := os.Getenv("SRE_COLLECTOR_SPOOL_SYNC_INTERVAL"); raw != "" {
 		parsed, err := time.ParseDuration(raw)

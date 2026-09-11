@@ -328,6 +328,10 @@ dry-run 或 approval-gated，除非运维人员显式调整执行姿态。
 当前设计通过保留状态、暴露不确定性，并在不安全时停留在 proposal-only 模式来
 处理这些情况，不会掩盖失败。
 
+遥测 ACK 现在位于 bbolt/PostgreSQL 持久收件记录及应用检查点之后。Spool v2
+加入 CRC32C 校验、原子游标更新及可恢复迁移。保留期、下游观察器重放边界、
+存储配置和重启测试见[遥测持久化说明](deploy/telemetry-durability.md)。
+
 ## 可观测性与运维接口
 
 事故期间常用的接口：

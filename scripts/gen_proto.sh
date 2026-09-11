@@ -54,6 +54,7 @@ for proto_file in "$PROTO_API_DIR"/*.proto; do
     if [ -f "$proto_file" ]; then
         echo -e "${GREEN}Generating: $(basename "$proto_file")${NC}"
         protoc \
+            --proto_path="$PROTO_API_DIR" \
             --proto_path="$TELEMETRY_PROTO_DIR" \
             --go_out="$OUTPUT_DIR" \
             --go_opt=paths=source_relative \
@@ -76,8 +77,10 @@ if [ -f "$OUTPUT_DIR/metrics.pb.go" ] || [ -f "$OUTPUT_DIR/metrics_grpc.pb.go" ]
     [ -f "$OUTPUT_DIR/metrics_grpc.pb.go" ] && mv "$OUTPUT_DIR/metrics_grpc.pb.go" "$OUTPUT_DIR/metrics/metrics_grpc.pb.go"
 fi
 
-# Generate telemetry v1 protos
-find "$TELEMETRY_PROTO_DIR" -name "*.proto" | while read -r proto_file; do
+# Generate non-API transport protos. API protos are generated above into their
+# established package layout; scanning the whole tree here creates duplicate,
+# untracked bindings under backend/pkg/api and backend/pkg/proto/api.
+find "$TELEMETRY_PROTO_DIR/telemetry" "$TELEMETRY_PROTO_DIR/probeipc" -name "*.proto" | sort | while read -r proto_file; do
     echo -e "${GREEN}Generating: ${proto_file#$TELEMETRY_PROTO_DIR/}${NC}"
     protoc \
         --proto_path="$TELEMETRY_PROTO_DIR" \

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	agentcore "github.com/jfang2048/ai_sre_agent_pub/internal/controller/agentcore"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -48,7 +49,7 @@ func TestControllerRejectsDisabledAuthOutsideLocalDev(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
 	cfg.Auth.Enabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.Nil(t, ctrl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "controller auth is disabled")
@@ -57,19 +58,19 @@ func TestControllerRejectsDisabledAuthOutsideLocalDev(t *testing.T) {
 
 func TestControllerRejectsProductionLikeMemoryOnlyIngest(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
-	cfg.Ingest.Persistence.Enabled = false
+	cfg.Ingest.Inbox.Backend = ingest.InboxBackendMemory
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.Nil(t, ctrl)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "ingest persistence is disabled")
+	require.Contains(t, err.Error(), "durable ingest inbox is disabled")
 }
 
 func TestControllerRejectsWorkflowDurabilityFallbackOutsideLocalDev(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
 	t.Setenv("SRE_AGENT_WORKFLOW_STORE_PATH", t.TempDir())
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.Nil(t, ctrl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "workflow durable store")
@@ -80,7 +81,7 @@ func TestControllerRejectsClusterLiteLocalWorkflowStoreWithoutSharedBackend(t *t
 	cfg := productionLikeControllerConfig(t)
 	cfg.Deployment.Mode = "cluster-lite"
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.Nil(t, ctrl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "workflow durable state is controller-local")
@@ -90,7 +91,7 @@ func TestControllerRejectsDisabledIngestAuthOutsideLocalDev(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
 	cfg.Auth.IngestAuthEnabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.Nil(t, ctrl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "gRPC ingest authentication is disabled")
@@ -98,11 +99,11 @@ func TestControllerRejectsDisabledIngestAuthOutsideLocalDev(t *testing.T) {
 
 func TestControllerAllowsExplicitInsecureOverrideAndReportsDegradedPosture(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
-	cfg.Ingest.Persistence.Enabled = false
+	cfg.Ingest.Inbox.Backend = ingest.InboxBackendMemory
 	cfg.Deployment.Mode = "cluster-lite"
 	cfg.Deployment.InsecureOverride = true
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 	t.Cleanup(func() { closeControllerForTest(t, ctrl) })
 
@@ -127,7 +128,7 @@ func TestControllerAllowsExplicitInsecureOverrideAndReportsDegradedPosture(t *te
 		reasons = append(reasons, raw.(string))
 	}
 	require.NotEmpty(t, reasons)
-	require.Contains(t, strings.Join(reasons, " | "), "ingest persistence is disabled")
+	require.Contains(t, strings.Join(reasons, " | "), "durable ingest inbox is disabled")
 
 	apiBlock, ok := payload["api"].(map[string]any)
 	require.True(t, ok)
@@ -145,7 +146,7 @@ func TestControllerAllowsExplicitInsecureOverrideAndReportsDegradedPosture(t *te
 	ingestBlock, ok := durabilityBlock["ingest"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, false, ingestBlock["persistence_configured"])
-	require.Equal(t, "memory_only", ingestBlock["backend"])
+	require.Equal(t, "memory", ingestBlock["backend"])
 
 	workflowBlock, ok := durabilityBlock["workflow"].(map[string]any)
 	require.True(t, ok)
@@ -264,7 +265,7 @@ func TestBuildControllerDeploymentPostureAcceptsSharedArtifactPayloadBackend(t *
 func TestControllerCORSProductionLikeSameOriginOnly(t *testing.T) {
 	cfg := productionLikeControllerConfig(t)
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 	t.Cleanup(func() { closeControllerForTest(t, ctrl) })
 

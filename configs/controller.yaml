@@ -138,6 +138,17 @@ ingest:
   node_retention: "24h"
   history_samples_per_node: 1440
   max_nodes: 5000
+  # The inbox is the synchronous ownership boundary for ACKs. PostgreSQL is
+  # required for multi-writer distributed controllers; the DSN is env-only.
+  inbox:
+    backend: "bbolt" # bbolt | postgres; memory is explicit local testing only
+    path: "./data/controller/ingest/inbox.db"
+    retention: "24h"
+    gc_interval: "5m"
+    max_records: 100000
+    max_bytes: 268435456
+    lease: "30s"
+    single_writer: false
   persistence:
     enabled: false
     path: "./data/controller/ingest/store.db"

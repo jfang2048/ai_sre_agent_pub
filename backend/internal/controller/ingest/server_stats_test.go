@@ -58,8 +58,8 @@ func TestServerStatsAndSchema(t *testing.T) {
 	}
 
 	schema := server.Schema()
-	if schema.Version != "v1" {
-		t.Fatalf("Schema().Version = %q, want v1", schema.Version)
+	if schema.Version != "v2" {
+		t.Fatalf("Schema().Version = %q, want v2", schema.Version)
 	}
 	if schema.MaxMetricsPerBatch != maxMetricsPerBatch {
 		t.Fatalf("Schema().MaxMetricsPerBatch = %d, want %d", schema.MaxMetricsPerBatch, maxMetricsPerBatch)

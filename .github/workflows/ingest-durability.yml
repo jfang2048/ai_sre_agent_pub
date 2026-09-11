@@ -1,0 +1,38 @@
+name: ingest durability
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'v*']
+
+permissions:
+  contents: read
+
+jobs:
+  durable-receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: backend/go.sum
+      - name: Spool and controller restart matrix
+        run: make test-spool-crash test-ingest-restart
+      - name: Real PostgreSQL concurrency and capacity
+        env:
+          SRE_TEST_POSTGRES_DSN: postgres://postgres@localhost:5432/postgres?sslmode=disable
+        run: make test-ingest-postgres

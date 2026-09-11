@@ -45,6 +45,9 @@ controller:
     size: 20Gi
 
 collector:
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/ai-sre-agent/collector
   deploymentMode: cluster-lite
   transportAuth:
     enabled: true

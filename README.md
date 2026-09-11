@@ -289,6 +289,11 @@ Things that can and do go wrong:
 
 The current design handles those cases by preserving state, surfacing uncertainty, and preferring proposal-only over unsafe execution.
 
+Telemetry ACKs now follow a durable bbolt/PostgreSQL receipt and applied
+checkpoint. Spool v2 adds CRC32C records and crash-safe cursor/migration handling.
+See [telemetry durability](deploy/telemetry-durability.md) for retention limits,
+observer replay boundaries, storage requirements and restart tests.
+
 ## Observability and operator surfaces
 
 Useful endpoints during an incident:

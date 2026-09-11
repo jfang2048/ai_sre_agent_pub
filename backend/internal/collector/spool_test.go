@@ -33,7 +33,7 @@ func TestSpoolEnqueueNextCommit(t *testing.T) {
 }
 
 func TestSpoolRejectsOversizedPayloadAndKeepsNextPayload(t *testing.T) {
-	sp, err := spool.New(t.TempDir(), 16)
+	sp, err := spool.New(t.TempDir(), 24)
 	require.NoError(t, err)
 
 	require.ErrorIs(t, sp.Enqueue([]byte("01234567890123456789")), spool.ErrPayloadTooLarge)

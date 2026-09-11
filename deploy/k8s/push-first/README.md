@@ -4,7 +4,7 @@ This directory is the raw `cluster-lite` Kubernetes path for `v0.95`.
 
 ## What It Deploys
 
-- one central `sre-controller` `Deployment`
+- one central `sre-controller` `Deployment` with a 5 GiB PVC
 - one `sre-collector` `DaemonSet`
 - controller and collector ConfigMaps
 - optional controller static-targets ConfigMap
@@ -12,10 +12,10 @@ This directory is the raw `cluster-lite` Kubernetes path for `v0.95`.
 
 This is the quickest maintained cluster path in the repo. It is intentionally simpler than the HA Helm path.
 
-It is also intentionally honest. The shipped ConfigMap keeps `deployment.insecure_override: true` because controller data still sits on `emptyDir`. That override is covering both local workflow durability and local artifact payloads. Controller HTTP auth and gRPC ingest auth are turned on in the raw manifests, the workflow store stays on local BoltDB, artifact metadata follows that local store, artifact payloads stay on filesystem, ingest transport stays plaintext, and the collector stays on the `deep-runtime` privilege profile. Supply the token secrets before rollout, then move to the Helm examples when this cluster needs shared workflow metadata, shared artifact metadata, S3-backed artifact payloads, or TLS.
+The shipped ConfigMap keeps `deployment.insecure_override: true` because workflow and artifact state remain controller-local and ingest transport is plaintext. Controller HTTP auth and gRPC ingest auth are turned on, the workflow store stays on local BoltDB, artifact metadata follows that local store, artifact payloads stay on filesystem, and the collector uses the `deep-runtime` privilege profile. Supply the token secrets before rollout, then use the Helm examples when this cluster needs shared workflow metadata, shared artifact metadata, S3-backed payloads, or TLS.
 The shipped ConfigMap also enables a stricter action-only rate limit than the general API budget so mutation routes stay bounded even in cluster-lite mode.
 It also assumes one active controller instance for gRPC ingest ownership. If you scale controllers behind the same Service without adding leader-aware routing, collectors will hit followers and receive gRPC `Unavailable` before any hot-state mutation.
-Controller workflow metadata, artifact metadata, artifact payloads, and the local RAG index stay on `emptyDir` in this raw path. Use the Helm chart when you need PVC-backed controller data, shared workflow metadata, S3-backed artifact payloads, or guarded transport.
+Controller ingest receipts, workflow metadata, artifacts and the local RAG index use the `sre-controller-data` PVC. A default StorageClass (or a prebound claim) is required. Collector spools use `/var/lib/ai-sre-agent/collector` on each node. See [telemetry durability](../../telemetry-durability.md) for node-loss limits, migration and retention.
 
 ## Why This Changed
 
@@ -116,7 +116,7 @@ curl -fsS http://127.0.0.1:8080/api/v1/status | jq '.auth'
 - collector still expects host-observer privileges for best fidelity
 - if eBPF or probe-core is constrained, collector can degrade rather than crash
 - controller can still serve deterministic RCA paths when RAG or LLM is unavailable
-- raw `cluster-lite` keeps auth on, but it still relies on a wildcard collector service token and controller-local `emptyDir`
+- raw `cluster-lite` keeps auth on, but it still relies on a wildcard collector service token and controller-local PVC storage
 
 ## When To Use Helm Instead
 

@@ -122,7 +122,7 @@ func TestControllerTokenAuthProtectedRoutesAndStatus(t *testing.T) {
 	cfg.Auth.TokenSecretEnv = "TEST_STATUS_TOKEN_SECRET"
 	t.Setenv("TEST_STATUS_TOKEN_SECRET", "controller-secret")
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
@@ -242,7 +242,7 @@ func TestControllerMixedModeCompatibilityAPIKeys(t *testing.T) {
 	t.Setenv("TEST_MIXED_READ_KEY", "read-secret")
 	t.Setenv("TEST_MIXED_ACTION_KEY", "action-secret")
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()

@@ -6,6 +6,10 @@
 {{- $mountKernelDebug := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountKernelDebug" .) "true") -}}
 {{- $mountBPFFS := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountBPFFS" .) "true") -}}
 {{- $mountKernelModules := and .Values.collector.hostObserver.enabled (eq (include "sre-agent.collectorMountKernelModules" .) "true") -}}
+{{- $deploymentMode := include "sre-agent.collectorDeploymentMode" . -}}
+{{- if and (or (eq $deploymentMode "cluster-lite") (eq $deploymentMode "distributed")) (eq .Values.collector.persistence.type "emptyDir") (not .Values.collector.persistence.allowDataLossInCluster) -}}
+{{- fail "collector.persistence.type=emptyDir is rejected in cluster-lite/distributed mode; use hostPath or explicitly set collector.persistence.allowDataLossInCluster=true" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -227,5 +231,11 @@ spec:
                 path: tls.key
         {{- end }}
         - name: collector-data
-          emptyDir: {}
+          {{- if eq .Values.collector.persistence.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.collector.persistence.hostPath | quote }}
+            type: {{ .Values.collector.persistence.hostPathType | quote }}
+          {{- else }}
+          emptyDir: {{ .Values.collector.persistence.emptyDir | toJson }}
+          {{- end }}
 {{- end }}

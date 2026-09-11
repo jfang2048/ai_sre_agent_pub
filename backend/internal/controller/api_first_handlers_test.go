@@ -18,7 +18,7 @@ func newAPIFirstTestController(t *testing.T) *Controller {
 	t.Helper()
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

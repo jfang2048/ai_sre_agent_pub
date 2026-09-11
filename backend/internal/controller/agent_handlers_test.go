@@ -20,7 +20,7 @@ func TestAgentQueryAndExecuteHandlers(t *testing.T) {
 	cfg.Agent.LLMEnabled = false
 	cfg.GPU.Enabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, ctrl.agentService)
 	require.NotNil(t, ctrl.ingestStore)
@@ -73,7 +73,7 @@ func TestAgentExecuteHandlerReturnsNotFoundForUnknownAction(t *testing.T) {
 	cfg.Agent.PolicyFile = ""
 	cfg.Agent.LLMEnabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
@@ -99,7 +99,7 @@ func TestAgentExecuteRequiresApprovalTokenWhenMutating(t *testing.T) {
 	cfg.Agent.LLMEnabled = true
 	cfg.GPU.Enabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, ctrl.ingestStore)
 
@@ -149,7 +149,7 @@ func TestAgentStatusIncludesQueryServiceRuntimeMode(t *testing.T) {
 	cfg.Agent.PolicyFile = ""
 	cfg.Agent.LLMEnabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()

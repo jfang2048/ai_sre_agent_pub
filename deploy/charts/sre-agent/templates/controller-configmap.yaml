@@ -4,6 +4,9 @@
 {{- if and .Values.controller.enabled (eq .Values.controller.workflowStore.backend "postgres") (not .Values.controller.workflowStore.postgres.dsnSecretName) }}
 {{- fail "controller.workflowStore.backend=postgres requires controller.workflowStore.postgres.dsnSecretName" }}
 {{- end }}
+{{- if and .Values.controller.enabled (eq .Values.controller.ingestInbox.backend "postgres") (not .Values.controller.ingestInbox.postgres.dsnSecretName) }}
+{{- fail "controller.ingestInbox.backend=postgres requires controller.ingestInbox.postgres.dsnSecretName" }}
+{{- end }}
 {{- if and .Values.controller.enabled .Values.controller.ingestTransport.tls.enabled (not .Values.controller.ingestTransport.tls.certSecretName) }}
 {{- fail "controller.ingestTransport.tls.enabled requires controller.ingestTransport.tls.certSecretName" }}
 {{- end }}
@@ -17,6 +20,12 @@
 {{- fail "collector.transportAuth.tokenSecretName is required when controller.auth.ingestAuthEnabled is true" }}
 {{- end }}
 {{- if .Values.controller.enabled }}
+{{- $mode := include "sre-agent.controllerDeploymentMode" . -}}
+{{- if and (eq $mode "distributed") (ne .Values.controller.ingestInbox.backend "postgres") -}}
+{{- if not (and .Values.controller.ingestInbox.singleWriter (eq (int .Values.controller.replicas) 1) (eq .Values.controller.dataVolume.type "pvc") (eq .Values.controller.ingestInbox.backend "bbolt")) -}}
+{{- fail "distributed ingest requires PostgreSQL, or explicit singleWriter=true with one replica and a PVC-backed bbolt inbox" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -70,6 +79,15 @@ data:
       heartbeat_ttl: "90s"
       targets_file: "/etc/ai-sre-agent/controller_targets.yaml"
     ingest:
+      inbox:
+        backend: {{ .Values.controller.ingestInbox.backend | quote }}
+        path: {{ .Values.controller.ingestInbox.path | quote }}
+        retention: {{ .Values.controller.ingestInbox.retention | quote }}
+        gc_interval: {{ .Values.controller.ingestInbox.gcInterval | quote }}
+        max_records: {{ .Values.controller.ingestInbox.maxRecords }}
+        max_bytes: {{ .Values.controller.ingestInbox.maxBytes }}
+        lease: {{ .Values.controller.ingestInbox.lease | quote }}
+        single_writer: {{ .Values.controller.ingestInbox.singleWriter }}
       transport:
         allow_plaintext: {{ .Values.controller.ingestTransport.allowPlaintext }}
         tls:

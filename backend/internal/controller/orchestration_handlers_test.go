@@ -19,7 +19,7 @@ func TestOrchestrationHandlersSubmitReconcileAndRoute(t *testing.T) {
 	cfg.Orchestration.SafetyMarginRatio = 0
 	cfg.Orchestration.PeakPressureThreshold = 0.95
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

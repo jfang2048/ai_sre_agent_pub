@@ -2,6 +2,8 @@ package collector
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,7 +103,8 @@ type Collector struct {
 	profileRuntime  *runtimeProfileRuntime
 	level           int
 
-	batchSeq        int64
+	batchSeq        uint64
+	producerEpoch   string
 	currentInterval time.Duration
 	failureStreak   int
 	jitterUnit      func() float64
@@ -136,8 +139,27 @@ var (
 	errExternalMetricCmd  = errors.New("external metric command is invalid")
 )
 
+type newOptions struct {
+	producerEpoch func() (string, error)
+}
+
+// NewOption customizes collector construction without expanding runtime config.
+type NewOption func(*newOptions)
+
+// WithProducerEpochGenerator injects producer epoch generation for deterministic tests.
+func WithProducerEpochGenerator(generator func() (string, error)) NewOption {
+	return func(options *newOptions) {
+		options.producerEpoch = generator
+	}
+}
+
 // New creates a new push-first collector.
 func New(cfg Config, logger *zap.Logger) (*Collector, error) {
+	return NewWithOptions(cfg, logger)
+}
+
+// NewWithOptions creates a collector with injectable process identity generation.
+func NewWithOptions(cfg Config, logger *zap.Logger, opts ...NewOption) (*Collector, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -146,6 +168,26 @@ func New(cfg Config, logger *zap.Logger) (*Collector, error) {
 	}
 
 	cfg = withRuntimeIdentity(cfg)
+	options := newOptions{producerEpoch: generateProducerEpoch}
+	for _, option := range opts {
+		if option != nil {
+			option(&options)
+		}
+	}
+	if options.producerEpoch == nil {
+		return nil, fmt.Errorf("producer epoch generator is required")
+	}
+	producerEpoch, err := options.producerEpoch()
+	if err != nil {
+		return nil, fmt.Errorf("generate producer epoch: %w", err)
+	}
+	producerEpoch = strings.TrimSpace(producerEpoch)
+	if producerEpoch == "" {
+		return nil, fmt.Errorf("generated producer epoch is empty")
+	}
+	if len(producerEpoch) > 64 {
+		return nil, fmt.Errorf("generated producer epoch exceeds 64 bytes")
+	}
 	runtimeMode := detectCollectorRuntimeInspection(cfg)
 	hardware := newHardwareCache(logger)
 	hardwareProfile := hardware.RefreshIfNeeded(time.Now(), cfg.Hardware)
@@ -221,6 +263,7 @@ func New(cfg Config, logger *zap.Logger) (*Collector, error) {
 	spooler, err := spool.NewWithOptions(cfg.SpoolDir, cfg.SpoolMaxBytes, spool.Options{
 		DataSyncInterval:   cfg.SpoolSyncInterval,
 		OffsetSyncInterval: cfg.SpoolOffsetSyncInterval,
+		MaxPayloadBytes:    cfg.SpoolMaxRecordBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create spool: %w", err)
@@ -251,6 +294,7 @@ func New(cfg Config, logger *zap.Logger) (*Collector, error) {
 		level:           collectionLevel,
 		currentInterval: cfg.CollectionInterval,
 		promMetrics:     newRuntimePromMetrics(),
+		producerEpoch:   producerEpoch,
 	}
 	appendCollectorInfoRuntimeLabels(collector.info, runtimeMode)
 	if cfg.Hardware.Enabled {
@@ -646,8 +690,7 @@ func (c *Collector) collectBatch(ctx context.Context) (*telemetryv1.TelemetryBat
 
 	c.mu.Lock()
 	c.maybeExpireRuntimeProfileLocked(now)
-	c.batchSeq++
-	batchID := fmt.Sprintf("%s-%d", c.cfg.CollectorID, c.batchSeq)
+	batchID, producerEpoch, sequence := c.nextBatchIdentityLocked()
 	info := cloneCollectorInfo(c.info)
 	c.mu.Unlock()
 	appendCollectorInfoRuntimeProfileLabels(info, profileStatus)
@@ -660,8 +703,26 @@ func (c *Collector) collectBatch(ctx context.Context) (*telemetryv1.TelemetryBat
 		Processes:             processPayload,
 		Logs:                  logs,
 		BatchId:               batchID,
+		ProducerEpoch:         producerEpoch,
+		ProducerSequence:      sequence,
 	}
 	return batch, snapshot, nil
+}
+
+func (c *Collector) nextBatchIdentityLocked() (batchID, producerEpoch string, sequence uint64) {
+	c.batchSeq++
+	sequence = c.batchSeq
+	producerEpoch = c.producerEpoch
+	batchID = fmt.Sprintf("%s-%s-%d", c.cfg.CollectorID, producerEpoch, sequence)
+	return batchID, producerEpoch, sequence
+}
+
+func generateProducerEpoch() (string, error) {
+	var epoch [16]byte
+	if _, err := cryptorand.Read(epoch[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(epoch[:]), nil
 }
 
 func convertProbeMetricBatch(metricBatch *probe.MetricBatch) []*telemetryv1.Metric {
@@ -824,6 +885,22 @@ func (c *Collector) appendSpoolMetrics(now time.Time, snapshot spool.Snapshot, m
 			Value:             1,
 			TimestampUnixNano: now.UnixNano(),
 			Labels:            buildLabels(map[string]string{"reason": sanitizeLabelToken(snapshot.LastRecoveryReason, maxLabelValueRunes)}),
+		})
+	}
+	for _, counter := range []struct {
+		name  string
+		value uint64
+	}{
+		{"checksum_failures", snapshot.ChecksumFailures},
+		{"torn_tail_recoveries", snapshot.TornTailRecoveries},
+		{"migrations", snapshot.Migrations},
+		{"fsync_failures", snapshot.FsyncFailures},
+		{"quarantined_records", snapshot.QuarantinedRecords},
+		{"discarded_records", snapshot.DiscardedRecords},
+	} {
+		*metrics = append(*metrics, &telemetryv1.Metric{
+			Name:  "collector_spool_" + counter.name + "_total",
+			Value: float64(counter.value), TimestampUnixNano: now.UnixNano(),
 		})
 	}
 	return backlog

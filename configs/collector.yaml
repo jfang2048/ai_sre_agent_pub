@@ -59,6 +59,9 @@ topk: 10
 
 spool_dir: "./data/collector/spool"
 spool_max_bytes: 134217728
+# Spool v2 fsyncs each enqueue and acknowledged cursor; sync intervals below
+# remain accepted for v1 configuration compatibility and no longer delay sync.
+spool_max_record_bytes: 4194304
 spool_sync_interval: "1s"
 spool_offset_sync_interval: "1s"
 

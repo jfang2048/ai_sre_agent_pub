@@ -4,7 +4,7 @@ package api.proto;
 
 option go_package = "github.com/jfang2048/ai_sre_agent_pub/pkg/proto;proto";
 
-import "api/v1/common.proto";
+import "common.proto";
 
 // Prediction represents an AI-generated prediction
 message Prediction {

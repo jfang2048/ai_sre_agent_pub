@@ -43,6 +43,13 @@ func TestMemoryStorePersistenceRoundTrip(t *testing.T) {
 	require.Equal(t, "node-a", node.Hostname)
 	require.Equal(t, 77.7, node.Metrics["node_cpu_usage_percent"])
 	require.Equal(t, "batch-a", node.LastBatchID)
+	history := reloaded.MetricHistory("collector-a", time.Time{}, 100)
+	require.Len(t, history, 1)
+	require.True(t, now.Equal(history[0].IngestedAt), "receipt time must survive hot snapshot persistence")
+	reloaded.StoreMetrics("collector-a", []*telemetryv1.Metric{
+		{Name: "node_cpu_usage_percent", Value: 77.7},
+	}, now)
+	require.Len(t, reloaded.MetricHistory("collector-a", time.Time{}, 100), 1, "replay must not duplicate persisted history")
 }
 
 func TestMemoryStoreSetRetentionPrunesHistory(t *testing.T) {

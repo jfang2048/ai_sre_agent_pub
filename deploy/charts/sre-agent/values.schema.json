@@ -65,6 +65,26 @@
             }
           }
         },
+        "ingestInbox": {
+          "type": "object",
+          "properties": {
+            "backend": { "type": "string", "enum": ["bbolt", "postgres", "memory"] },
+            "path": { "type": "string", "minLength": 1 },
+            "retention": { "type": "string" },
+            "gcInterval": { "type": "string" },
+            "maxRecords": { "type": "integer", "minimum": 1 },
+            "maxBytes": { "type": "integer", "minimum": 1 },
+            "lease": { "type": "string" },
+            "singleWriter": { "type": "boolean" },
+            "postgres": {
+              "type": "object",
+              "properties": {
+                "dsnSecretName": { "type": "string" },
+                "dsnSecretKey": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
         "workflowStore": {
           "type": "object",
           "additionalProperties": true,
@@ -306,6 +326,21 @@
               }
             }
           ]
+        },
+        "persistence": {
+          "type": "object",
+          "required": ["type", "hostPath", "hostPathType", "emptyDir", "allowDataLossInCluster"],
+          "properties": {
+            "type": { "type": "string", "enum": ["emptyDir", "hostPath"] },
+            "hostPath": { "type": "string", "pattern": "^/[^.].+" },
+            "hostPathType": { "type": "string", "enum": ["Directory", "DirectoryOrCreate"] },
+            "emptyDir": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "sizeLimit": { "type": "string" } }
+            },
+            "allowDataLossInCluster": { "type": "boolean" }
+          }
         },
         "transportAuth": {
           "type": "object",

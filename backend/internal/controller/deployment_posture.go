@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	agentcore "github.com/jfang2048/ai_sre_agent_pub/internal/controller/agentcore"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"go.uber.org/zap"
 )
 
@@ -12,6 +14,8 @@ type controllerIngestDurabilityStatus struct {
 	PersistenceConfigured bool   `json:"persistence_configured"`
 	PersistenceEnabled    bool   `json:"persistence_enabled"`
 	Backend               string `json:"backend"`
+	Shared                bool   `json:"shared"`
+	SingleWriter          bool   `json:"single_writer"`
 	LocalFirst            bool   `json:"local_first"`
 	FallbackActive        bool   `json:"fallback_active"`
 	Path                  string `json:"path,omitempty"`
@@ -50,24 +54,25 @@ func (c *Controller) workflowDurabilityStatus() agentcore.WorkflowDurabilityStat
 
 func (c *Controller) ingestDurabilityStatus() controllerIngestDurabilityStatus {
 	status := controllerIngestDurabilityStatus{
-		PersistenceConfigured: c != nil && c.config.Ingest.Persistence.Enabled,
+		PersistenceConfigured: c != nil && strings.TrimSpace(c.config.Ingest.Inbox.Backend) != ingest.InboxBackendMemory,
 		PersistenceEnabled:    false,
-		Backend:               "memory_only",
+		Backend:               "unavailable",
+		SingleWriter:          c != nil && c.config.Ingest.Inbox.SingleWriter,
 		LocalFirst:            true,
 	}
 	if c == nil {
 		return status
 	}
-	if c.ingestStore == nil {
+	if c.ingestInbox == nil {
 		return status
 	}
-	stats := c.ingestStore.Stats()
-	status.PersistenceEnabled = stats.Persistence.Enabled
-	status.Path = nonEmptyString(stats.Persistence.Path, c.config.Ingest.Persistence.Path)
-	status.LastError = nonEmptyString(strings.TrimSpace(stats.Persistence.LastSyncError), strings.TrimSpace(stats.LastPersistError))
-	if stats.Persistence.Enabled {
-		status.Backend = "embedded_bbolt"
-	}
+	stats := c.ingestInbox.Stats(context.Background())
+	status.PersistenceEnabled = stats.Enabled && stats.Backend != ingest.InboxBackendMemory
+	status.Path = nonEmptyString(stats.Path, c.config.Ingest.Inbox.Path)
+	status.LastError = strings.TrimSpace(stats.LastError)
+	status.Backend = stats.Backend
+	status.Shared = stats.Shared
+	status.LocalFirst = !stats.Shared
 	status.FallbackActive = status.PersistenceConfigured && !status.PersistenceEnabled
 	return status
 }
@@ -135,7 +140,10 @@ func buildControllerDeploymentPosture(cfg Config, auth ResolvedAuthConfig, deplo
 		posture.Reasons = append(posture.Reasons, "controller API is using local-dev CORS defaults")
 	}
 	if !posture.Ingest.PersistenceConfigured {
-		posture.Reasons = append(posture.Reasons, "ingest persistence is disabled; collector hot state will be lost on controller restart")
+		posture.Reasons = append(posture.Reasons, "durable ingest inbox is disabled; the controller cannot make crash-safe ACKs")
+	}
+	if posture.Mode == "distributed" && !posture.Ingest.Shared && !posture.Ingest.SingleWriter {
+		posture.Reasons = append(posture.Reasons, "distributed ingest requires a shared PostgreSQL inbox or an explicit single-writer topology")
 	}
 	if posture.IngestTransport.PlaintextActive {
 		switch posture.Mode {

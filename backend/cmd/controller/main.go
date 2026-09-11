@@ -500,6 +500,43 @@ func buildConfig(logger *zap.Logger) (controller.Config, error) {
 			cfg.Ingest.Persistence.MaxDBSizeBytes = v
 		}
 	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_BACKEND")); env != "" {
+		cfg.Ingest.Inbox.Backend = env
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_PATH")); env != "" {
+		cfg.Ingest.Inbox.Path = env
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_POSTGRES_DSN")); env != "" {
+		cfg.Ingest.Inbox.PostgresDSN = env
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_RETENTION")); env != "" {
+		if value, err := time.ParseDuration(env); err == nil {
+			cfg.Ingest.Inbox.Retention = value
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_GC_INTERVAL")); env != "" {
+		if value, err := time.ParseDuration(env); err == nil {
+			cfg.Ingest.Inbox.GCInterval = value
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_MAX_BYTES")); env != "" {
+		if value, err := strconv.ParseInt(env, 10, 64); err == nil && value > 0 {
+			cfg.Ingest.Inbox.MaxBytes = value
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_MAX_RECORDS")); env != "" {
+		if value, err := strconv.Atoi(env); err == nil {
+			cfg.Ingest.Inbox.MaxRecords = value
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_LEASE")); env != "" {
+		if value, err := time.ParseDuration(env); err == nil {
+			cfg.Ingest.Inbox.Lease = value
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("SRE_INGEST_INBOX_SINGLE_WRITER")); env != "" {
+		cfg.Ingest.Inbox.SingleWriter = strings.EqualFold(env, "1") || strings.EqualFold(env, "true")
+	}
 	if env := os.Getenv("SRE_INGEST_ALLOW_PLAINTEXT"); env != "" {
 		cfg.Ingest.Transport.AllowPlaintext = strings.EqualFold(env, "1") || strings.EqualFold(env, "true")
 	}

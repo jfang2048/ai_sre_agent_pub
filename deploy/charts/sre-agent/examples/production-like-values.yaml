@@ -4,6 +4,12 @@ global:
   dataRoot: /var/lib/ai-sre-agent
 
 controller:
+  ingestInbox:
+    backend: postgres
+    singleWriter: false
+    postgres:
+      dsnSecretName: sre-controller-workflow-postgres
+      dsnSecretKey: dsn
   replicas: 3
   externalURL: https://ai-sre-agent.example.com
   deployment:
@@ -70,6 +76,9 @@ controller:
     indexPath: /var/lib/ai-sre-agent/controller/data/agent/rag/index.json
 
 collector:
+  persistence:
+    type: hostPath
+    hostPath: /var/lib/ai-sre-agent/collector
   deploymentMode: distributed
   collectionInterval: 10s
   privilegeProfile: deep-runtime

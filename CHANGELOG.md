@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Telemetry reliability
+
+- Added injectable producer epochs and monotonic sequences, preserving opaque batch IDs for older collectors.
+- Added spool v2 CRC32C records, synchronous enqueue, atomic durable cursors, recoverable v1 migration and corruption counters.
+- Added bounded bbolt/PostgreSQL inboxes, durable receipt/checkpoint-before-ACK ordering, concurrent deduplication, renewable leases and restart replay.
+- Added collector hostPath configuration and explicit rejection of ephemeral storage in Helm cluster modes; raw cluster manifests use durable controller storage.
+- Added a 10,000-batch restart test, immediate post-ACK process termination test, real PostgreSQL tests and a required database CI job.
+- Fixed the shared process collector race and documented observer replay/retention boundaries without claiming transactional external side effects.
+
 ### Documentation
 
 - Reworked the English and Chinese project overviews around the current v0.95 skills-first runtime, with a runnable quick start and linked implementation map.

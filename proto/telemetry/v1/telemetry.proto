@@ -49,6 +49,8 @@ message TelemetryBatch {
   repeated ProcessSample processes = 5;
   repeated LogFingerprint logs = 6;
   string batch_id = 7;
+  string producer_epoch = 8;
+  uint64 producer_sequence = 9;
 }
 
 message Ack {

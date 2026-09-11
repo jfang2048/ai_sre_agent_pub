@@ -26,7 +26,7 @@ func TestProbeControllerWorkflowE2E(t *testing.T) {
 	cfg.ScrapeTimeout = 2 * time.Second
 	cfg.Nodes = nil
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -161,7 +161,7 @@ func TestProbeControllerStandbyRejectsIngestWritesE2E(t *testing.T) {
 	cfg.HA.Mode = "standby"
 	cfg.HA.AllowFollowerRead = true
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -253,7 +253,7 @@ func TestProbeControllerTopProgramsFlowE2E(t *testing.T) {
 	cfg.ScrapeTimeout = 2 * time.Second
 	cfg.Nodes = nil
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -352,7 +352,7 @@ func TestControllerIngestRecoversAfterInvalidStreamE2E(t *testing.T) {
 	cfg.ScrapeTimeout = 2 * time.Second
 	cfg.Nodes = nil
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -430,7 +430,7 @@ func TestControllerSustainedIngestStatsAndSummaryE2E(t *testing.T) {
 	cfg.ScrapeTimeout = 2 * time.Second
 	cfg.Nodes = nil
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

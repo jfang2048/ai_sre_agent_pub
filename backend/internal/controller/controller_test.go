@@ -23,7 +23,7 @@ func TestNewController(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNewControllerAuthEnabledWithoutTokenSecretFails(t *testing.T) {
 	cfg.Auth.TokenSecretEnv = "TEST_SRE_AGENT_CONTROLLER_TOKEN_SECRET"
 	t.Setenv("TEST_SRE_AGENT_CONTROLLER_TOKEN_SECRET", "")
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err == nil {
 		t.Fatal("New() should fail when auth is enabled and token secret env is empty")
 	}
@@ -58,7 +58,7 @@ func TestNewControllerAuthEnabledWithTokenSecretSucceeds(t *testing.T) {
 	cfg.Auth.TokenSecretEnv = "TEST_SRE_AGENT_CONTROLLER_TOKEN_SECRET"
 	t.Setenv("TEST_SRE_AGENT_CONTROLLER_TOKEN_SECRET", "controller-secret")
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestNewControllerAuthDisabledOutsideLocalDevRequiresOverride(t *testing.T) 
 	cfg := DefaultConfig()
 	cfg.Deployment.Mode = "cluster-lite"
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err == nil {
 		t.Fatal("New() should fail when auth is disabled outside local-dev without override")
 	}
@@ -90,7 +90,7 @@ func TestNewControllerAuthDisabledOutsideLocalDevWithOverrideSucceeds(t *testing
 	cfg.Deployment.Mode = "cluster-lite"
 	cfg.Auth.AllowInsecureDisable = true
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestNodeConfig(t *testing.T) {
 func TestControllerAddNode(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -180,7 +180,7 @@ func TestControllerRemoveNode(t *testing.T) {
 	cfg.Nodes = []NodeConfig{
 		{Name: "test-node", Address: "localhost:9100"},
 	}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -200,7 +200,7 @@ func TestControllerRemoveNode(t *testing.T) {
 func TestControllerHandleHealth(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -240,7 +240,7 @@ func TestControllerHandleReadyFollowerWithoutReadAccessReturnsUnavailable(t *tes
 	cfg.HA.Mode = "standby"
 	cfg.HA.AllowFollowerRead = false
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -263,7 +263,7 @@ func TestControllerHandleStatus(t *testing.T) {
 	cfg.Nodes = []NodeConfig{
 		{Name: "node-1", Address: "localhost:9100"},
 	}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -407,7 +407,7 @@ func TestControllerHandleHAStatus(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.HA.Enabled = true
 	cfg.HA.Mode = "standby"
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -466,7 +466,7 @@ func TestControllerStandbyRejectsNodeMutations(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.HA.Enabled = true
 	cfg.HA.Mode = "standby"
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -489,7 +489,7 @@ func TestControllerStandbyCentralWriteGuardRejectsActionScope(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.HA.Enabled = true
 	cfg.HA.Mode = "standby"
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -520,7 +520,7 @@ func TestControllerHandleNodes(t *testing.T) {
 		{Name: "node-1", Address: "localhost:9100"},
 		{Name: "node-2", Address: "localhost:9101"},
 	}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -549,7 +549,7 @@ func TestControllerHandleNodes(t *testing.T) {
 func TestControllerHandleNodesPost(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -586,7 +586,7 @@ func TestControllerHandleNodeByID(t *testing.T) {
 	cfg.Nodes = []NodeConfig{
 		{Name: "test-node", Address: "localhost:9100"},
 	}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -628,7 +628,7 @@ func TestControllerHandlePrometheusMetrics(t *testing.T) {
 	cfg.Nodes = []NodeConfig{
 		{Name: "test-node", Address: "localhost:9100"},
 	}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -664,7 +664,7 @@ func TestControllerHTTPMutationAudit(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
 	cfg.API.AuditMutations = true
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -708,7 +708,7 @@ func TestControllerHTTPRateLimit(t *testing.T) {
 	cfg.API.RateLimitEnabled = true
 	cfg.API.RateLimitRPS = 1
 	cfg.API.RateLimitBurst = 1
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -738,7 +738,7 @@ func TestControllerHTTPActionRateLimitOnlyBlocksActionScope(t *testing.T) {
 	cfg.API.ActionRateLimitRPS = 1
 	cfg.API.ActionRateLimitBurst = 1
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -826,7 +826,7 @@ func TestControllerHandlePrometheusMetricsIncludesWorkflowObservability(t *testi
 func TestControllerCORS(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -885,7 +885,7 @@ func TestControllerStartStop(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ListenAddr = ":0" // Use random available port
 	cfg.Nodes = []NodeConfig{}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -915,7 +915,7 @@ func TestControllerDoubleStart(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ListenAddr = ":0"
 	cfg.Nodes = []NodeConfig{}
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -990,7 +990,7 @@ func TestMockAgentScrape(t *testing.T) {
 		{Name: "mock-node", Address: addr},
 	}
 
-	ctrl, err := New(cfg, logger)
+	ctrl, err := newTestController(t, cfg, logger)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -1101,7 +1101,7 @@ func BenchmarkControllerHandleNodes(b *testing.B) {
 		})
 	}
 
-	ctrl, _ := New(cfg, logger)
+	ctrl, _ := newTestController(b, cfg, logger)
 	mux := http.NewServeMux()
 	ctrl.registerHandlers(mux)
 
@@ -1117,7 +1117,7 @@ func BenchmarkControllerHandleNodes(b *testing.B) {
 func BenchmarkControllerHandleStatus(b *testing.B) {
 	logger, _ := zap.NewProduction()
 	cfg := DefaultConfig()
-	ctrl, _ := New(cfg, logger)
+	ctrl, _ := newTestController(b, cfg, logger)
 	mux := http.NewServeMux()
 	ctrl.registerHandlers(mux)
 

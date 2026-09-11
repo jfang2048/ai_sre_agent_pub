@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/safeconv"
@@ -24,6 +25,7 @@ type processSample struct {
 
 // ProcessCollector collects top-K process samples.
 type ProcessCollector struct {
+	mu        sync.Mutex
 	topK      int
 	lastTotal uint64
 	lastCPU   map[int]uint64
@@ -51,6 +53,9 @@ func NewProcessCollector(topK int) *ProcessCollector {
 
 // Collect returns top-K processes by CPU usage.
 func (c *ProcessCollector) Collect(now time.Time) []*telemetryv1.ProcessSample {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	totalCPU := readTotalCPU()
 	totalDelta := float64(totalCPU - c.lastTotal)
 	if totalDelta <= 0 {

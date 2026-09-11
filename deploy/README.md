@@ -10,6 +10,10 @@
 The controller image carries the UI and controller defaults.
 The collector image is the node-local data-plane component.
 
+Read [telemetry durability](telemetry-durability.md) before changing spool storage,
+controller inbox backend or retention. Cluster examples preserve collector data
+with a node-local hostPath and controller data with a PVC or shared PostgreSQL.
+
 Key code and libraries behind these assets:
 
 - controller bootstrap: `backend/cmd/controller/main.go` with `cobra`, `viper`, `zap`, and `grpc`

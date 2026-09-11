@@ -23,6 +23,17 @@ spec:
       port: 9090
       targetPort: grpc
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sre-controller-data
+  namespace: sre-agent
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -159,7 +170,5 @@ spec:
               - key: controller_targets.yaml
                 path: controller_targets.yaml
         - name: controller-data
-          # Raw cluster-lite keeps controller durability on emptyDir for fast
-          # bring-up. Use the Helm chart with PVC-backed controller data for
-          # longer-lived controller state.
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: sre-controller-data

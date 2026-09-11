@@ -12,6 +12,7 @@ type IngestConfig struct {
 	HistorySamplesPerNode int                      `yaml:"history_samples_per_node"`
 	MaxNodes              int                      `yaml:"max_nodes"`
 	Persistence           ingest.PersistenceConfig `yaml:"persistence"`
+	Inbox                 ingest.InboxConfig       `yaml:"inbox"`
 	Transport             IngestTransportConfig    `yaml:"transport"`
 }
 
@@ -39,6 +40,7 @@ func DefaultIngestConfig() IngestConfig {
 		HistorySamplesPerNode: cfg.HistorySamplesPerNode,
 		MaxNodes:              cfg.MaxNodes,
 		Persistence:           cfg.Persistence,
+		Inbox:                 ingest.DefaultInboxConfig(),
 		Transport: IngestTransportConfig{
 			AllowPlaintext: true,
 		},

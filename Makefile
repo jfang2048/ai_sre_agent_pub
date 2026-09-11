@@ -440,6 +440,16 @@ helm-package:
 	fi
 
 ## helm-smoke: Lint and template the Helm chart
+.PHONY: test-spool-crash test-ingest-restart test-ingest-postgres
+test-spool-crash:
+	go -C backend test ./internal/collector/spool -count=1
+
+test-ingest-restart:
+	go -C backend test ./internal/controller/ingest -run 'TestIngestCrash|TestIngestTenThousand|TestIngestProcessTermination|TestInboxConcurrent' -count=1 -v
+
+test-ingest-postgres:
+	bash scripts/test-ingest-postgres.sh
+
 helm-smoke:
 	@if command -v helm >/dev/null 2>&1; then \
 		./scripts/validate-manifests.sh --skip-kustomize >/dev/null; \

@@ -15,7 +15,7 @@ func TestInventoryHandlersHeartbeatAndLookup(t *testing.T) {
 	cfg.Nodes = []NodeConfig{
 		{Name: "probe-static", Address: "10.0.0.1:9100"},
 	}
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestK8sHandlersEnabledWithoutClusterTargets(t *testing.T) {
 	cfg.Kubernetes.Enabled = true
 	cfg.Kubernetes.Clusters = nil
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestK8sHandlersDisabledReturnStructuredPayloads(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Kubernetes.Enabled = false
 
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -191,7 +191,7 @@ func TestK8sHandlersDisabledReturnStructuredPayloads(t *testing.T) {
 
 func TestIngestSchemaStatusEndpoints(t *testing.T) {
 	cfg := DefaultConfig()
-	ctrl, err := New(cfg, zap.NewNop())
+	ctrl, err := newTestController(t, cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
