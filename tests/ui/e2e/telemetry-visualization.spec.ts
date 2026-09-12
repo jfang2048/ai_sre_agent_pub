@@ -16,7 +16,7 @@ const series = [
     points: points.map(point => ({ ...point, value: point.value + 18 })) },
 ];
 
-async function fixture(page: Page, theme: 'light' | 'dark') {
+async function fixture(page: Page, theme: 'light' | 'dark', sampleMode: 'regular' | 'single' | 'empty' = 'regular') {
   await page.addInitScript((theme) => {
     localStorage.setItem('dashboard-store', JSON.stringify({ version: 4, state: { theme } }));
   }, theme);
@@ -24,9 +24,13 @@ async function fixture(page: Page, theme: 'light' | 'dark') {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
     if (path.endsWith('/timeseries')) {
+      const observations = sampleMode === 'single' ? points.slice(0, 1) : sampleMode === 'empty' ? [] : points;
+      const visibleSeries = series.map(item => ({ ...item,
+        points: sampleMode === 'single' ? item.points.slice(0, 1) : sampleMode === 'empty' ? [] : item.points,
+      }));
       body = { collector_id: '', hostname: '', window: '30m', generated_at: points[2].timestamp,
-        latest_at: points[2].timestamp, sample_count: points.length, series,
-        numeric_summary: { cpu_usage_percent: 40, memory_used_percent: 58,
+        latest_at: observations.at(-1)?.timestamp, sample_count: observations.length, series: visibleSeries,
+        numeric_summary: sampleMode === 'empty' ? {} : { cpu_usage_percent: sampleMode === 'single' ? 20 : 40, memory_used_percent: sampleMode === 'single' ? 38 : 58,
           memory_used_bytes: 8 * 1024 ** 3, memory_total_bytes: 16 * 1024 ** 3,
           network_rx_bytes_per_second: 2048, network_tx_bytes_per_second: 1024,
           disk_read_bytes_per_second: 4096, disk_write_bytes_per_second: 2048, procs_running: 12 },
@@ -91,4 +95,21 @@ test('irregular samples retain elapsed-time spacing and a readable tooltip', asy
   await expect(page.locator('.recharts-tooltip-wrapper').first()).toBeVisible();
   await expect(page.locator('.recharts-tooltip-wrapper').first()).toContainText('12:01:00');
   await page.getByRole('img', { name: /CPU Usage over time/ }).locator('..').screenshot({ path: 'test-results/screenshots/trend-time-spacing.png' });
+});
+
+test('a single observation is visible without implying a trend', async ({ page }) => {
+  await fixture(page, 'light', 'single');
+  await page.goto('/');
+  const cpu = page.getByRole('region', { name: 'CPU Usage', exact: true });
+  await expect(cpu.getByText('Single observation · trend unavailable')).toBeVisible();
+  await expect(cpu.locator('.recharts-area-dot')).toBeVisible();
+  await expect(cpu.getByText('rising', { exact: true })).toHaveCount(0);
+});
+
+test('empty metric curves are explicitly unavailable, not a healthy flat line', async ({ page }) => {
+  await fixture(page, 'dark', 'empty');
+  await page.goto('/?page=trends');
+  await expect(page.getByText('No valid observations for this metric.').first()).toBeVisible();
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(0);
+  await expect(page.getByText('No detected anomalies in available data.')).toHaveCount(0);
 });

@@ -216,7 +216,7 @@ export default function MetricOverviewPanel() {
                                             : unavailableValueLabel(telemetryQuality)}
                                     </div>
                                     <div className="text-xs text-muted-foreground">{card.subtitle}</div>
-                                    {card.series?.trend && (
+                                    {observations.length > 1 && card.series?.trend && (
                                         <div className="mt-2 text-xs text-muted-foreground">
                                             {card.series.trend}
                                         </div>
@@ -231,9 +231,9 @@ export default function MetricOverviewPanel() {
                             )}
                             <figure className="mt-auto" aria-label={`${card.label} history: ${observations.length} observations`}>
                             <div className="h-20" aria-hidden="true">
-                                {observations.length > 1 ? (
+                                {observations.length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                                        <AreaChart data={points} margin={{ top: 6, right: 4, left: 4, bottom: 4 }}>
                                             <defs>
                                                 <linearGradient id={`overview-${card.key}`} x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="0%" stopColor={card.color} stopOpacity={0.18} />
@@ -251,10 +251,11 @@ export default function MetricOverviewPanel() {
                                             <Area
                                                 type="linear"
                                                 dataKey="value"
+                                                name={card.label}
                                                 stroke={card.color}
                                                 strokeWidth={2}
                                                 fill={`url(#overview-${card.key})`}
-                                                dot={false}
+                                                dot={observations.length === 1 ? { r: 3, fill: card.color, strokeWidth: 0 } : false}
                                                 isAnimationActive={false}
                                                 connectNulls={false}
                                             />
@@ -264,6 +265,12 @@ export default function MetricOverviewPanel() {
                                     <div className="h-full flex items-center text-xs text-muted-foreground">Awaiting trend samples...</div>
                                 )}
                             </div>
+                            {observations.length === 1 && (
+                                <figcaption className="text-xs text-muted-foreground space-y-1">
+                                    <div>{formatChartTime(observations[0].timestamp)}</div>
+                                    <div>Single observation · trend unavailable</div>
+                                </figcaption>
+                            )}
                             {observations.length > 1 && (
                                 <figcaption className="space-y-1 text-xs text-muted-foreground tabular-nums">
                                     <div className="flex justify-between gap-2"><span>{formatChartTime(observations[0].timestamp)}</span><span>{formatChartTime(observations[observations.length - 1].timestamp)}</span></div>

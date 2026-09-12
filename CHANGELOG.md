@@ -8,6 +8,7 @@
 - Removed reassuring trend conclusions when observations are loading, unavailable, or stale; trend direction no longer implies health.
 - Added accessible, scrollable navigation and a narrow-screen dashboard layout that preserves saved desktop positions.
 - Added a repository design brief and deterministic browser checks using synthetic telemetry only.
+- Render single observations as points, qualify sparse/empty curves, and label tooltips with the metric name.
 
 ### Telemetry reliability
 

@@ -602,6 +602,9 @@ function MetricCurveCard({
 }) {
     const color = SERIES_COLORS[series.key] ?? 'hsl(var(--chart-cpu))';
     const chartData = prepareChartPoints(series.points);
+    const observationCount = chartData.filter(point => point.value !== null).length;
+    const change = observationCount > 1 && Number.isFinite(series.change_pct)
+        ? `${series.change_pct >= 0 ? '+' : ''}${series.change_pct.toFixed(1)}%` : '—';
 
     return (
         <div className={`rounded-xl border bg-card p-3 md:p-4 shadow-sm ${highlighted ? 'border-cyan-400/60' : 'border-border'}`}>
@@ -617,8 +620,8 @@ function MetricCurveCard({
                                 {formatTierLabel(series.tier)}
                             </span>
                         )}
-                        {series.trend && (
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${trendBadgeClass(series.trend)}`}>
+                        {observationCount > 1 && series.trend && (
+                            <span className="rounded-full border border-border text-muted-foreground px-2 py-0.5 text-[10px] uppercase tracking-wide">
                                 {series.trend}
                             </span>
                         )}
@@ -628,7 +631,7 @@ function MetricCurveCard({
                     <div>Min {formatMetricByUnit(series.min, series.unit)}</div>
                     <div>Max {formatMetricByUnit(series.max, series.unit)}</div>
                     <div className="text-muted-foreground tabular-nums">
-                        Δ {series.change_pct >= 0 ? '+' : ''}{series.change_pct.toFixed(1)}%
+                        Δ {change}
                     </div>
                     <button
                         type="button"
@@ -644,7 +647,10 @@ function MetricCurveCard({
                     {series.operational_hint}
                 </div>
             )}
-            <div className="h-48" role="img" aria-label={`${series.display} over time; ${chartData.filter(point => point.value !== null).length} observations; latest ${formatMetricByUnit(series.latest, series.unit)}`}>
+            <div className="h-48" role="img" aria-label={`${series.display} over time; ${observationCount} observations; latest ${observationCount > 0 ? formatMetricByUnit(series.latest, series.unit) : 'unavailable'}`}>
+                {observationCount === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No valid observations for this metric.</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                         <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
@@ -674,9 +680,10 @@ function MetricCurveCard({
                         <Line
                             type="linear"
                             dataKey="value"
+                            name={series.display}
                             stroke={color}
                             strokeWidth={2}
-                            dot={false}
+                            dot={observationCount === 1 ? { r: 3, fill: color, strokeWidth: 0 } : false}
                             isAnimationActive={false}
                             connectNulls={false}
                         />
@@ -690,7 +697,9 @@ function MetricCurveCard({
                         />
                     </LineChart>
                 </ResponsiveContainer>
+                )}
             </div>
+            {observationCount === 1 && <p className="text-xs text-muted-foreground">Single observation · trend unavailable</p>}
         </div>
     );
 }
@@ -761,13 +770,6 @@ function formatTierLabel(tier: string): string {
         default:
             return tier;
     }
-}
-
-function trendBadgeClass(trend?: string): string {
-    if (!trend) {
-        return 'border border-border text-muted-foreground';
-    }
-    return 'border border-border text-muted-foreground';
 }
 
 function operationalInsightClass(severity: string): string {
