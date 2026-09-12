@@ -20,6 +20,7 @@ export default defineConfig({
   ],
 
   use: {
+    channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     baseURL: process.env.BASE_URL || 'http://127.0.0.1:8080',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

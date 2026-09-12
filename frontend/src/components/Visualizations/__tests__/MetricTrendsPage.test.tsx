@@ -19,6 +19,7 @@ vi.mock('../ResourceProcessBreakdownPanel', () => ({
 const fetchFleetNodesMock = vi.mocked(fetchFleetNodes);
 const fetchFleetTimeseriesMock = vi.mocked(fetchFleetTimeseries);
 const fetchFleetNodeMock = vi.mocked(fetchFleetNode);
+let trendsFixture: Awaited<ReturnType<typeof fetchFleetTimeseries>>;
 
 describe('MetricTrendsPage data flow', () => {
     beforeEach(() => {
@@ -31,7 +32,7 @@ describe('MetricTrendsPage data flow', () => {
             count: 2,
             timestamp: '2026-02-21T00:10:00Z',
         });
-        fetchFleetTimeseriesMock.mockResolvedValue({
+        trendsFixture = {
             collector_id: 'collector-b',
             hostname: 'node-b',
             window: '1h',
@@ -91,7 +92,8 @@ describe('MetricTrendsPage data flow', () => {
                     { timestamp: '2026-02-21T00:10:00Z', value: 54.3 },
                 ],
             }],
-        });
+        };
+        fetchFleetTimeseriesMock.mockResolvedValue(trendsFixture);
         fetchFleetNodeMock.mockResolvedValue({
             collector_id: 'collector-b',
             hostname: 'node-b',
@@ -158,5 +160,80 @@ describe('MetricTrendsPage data flow', () => {
         expect(await screen.findByText(/Telemetry stale/i)).toBeInTheDocument();
         expect(screen.getAllByText('Stale').length).toBeGreaterThan(0);
         expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    });
+
+    it('does not offer reassuring conclusions while trends are loading', () => {
+        fetchFleetTimeseriesMock.mockReturnValue(new Promise(() => {}));
+
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(screen.getByText('Loading trend curves...')).toBeInTheDocument();
+        expect(screen.queryByText(/Trend data is available|No anomalies detected/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/Loading observations before interpretation/i)).toBeInTheDocument();
+    });
+
+    it('does not offer reassuring conclusions when trends fail to load', async () => {
+        fetchFleetTimeseriesMock.mockRejectedValue(new Error('offline'));
+
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(await screen.findByText('Unable to load time-series data.')).toBeInTheDocument();
+        expect(screen.queryByText(/Trend data is available|No anomalies detected/i)).not.toBeInTheDocument();
+        expect(screen.getByText(/Interpretation unavailable because telemetry could not be loaded/i)).toBeInTheDocument();
+    });
+
+    it('shows an explicit empty state instead of a healthy interpretation', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            ...trendsFixture,
+            sample_count: 0,
+            numeric_summary: {},
+            series: [],
+            operational_insights: [],
+        });
+
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(await screen.findByText('No observations in the selected window.')).toBeInTheDocument();
+        expect(screen.queryByText(/Trend data is available|No anomalies detected/i)).not.toBeInTheDocument();
+    });
+
+    it.each(['stale', 'degraded', 'delayed', 'unavailable'])('qualifies %s telemetry even when samples remain', async (state) => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            ...trendsFixture,
+            telemetry_quality: { ...trendsFixture.telemetry_quality, state },
+            operational_insights: [],
+        });
+
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(await screen.findByText(new RegExp(`Telemetry is ${state}; available observations do not establish current health`, 'i'))).toBeInTheDocument();
+        expect(screen.queryByText(/No detected anomalies|No anomalies detected|Trend data is available/i)).not.toBeInTheDocument();
+    });
+
+    it('preserves zero while excluding invalid values from summaries and anomaly findings', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            ...trendsFixture,
+            numeric_summary: { cpu_usage_percent: 0, memory_used_percent: Infinity },
+            series: [{
+                ...trendsFixture.series[0],
+                points: [
+                    { timestamp: 'invalid', value: 999, is_anomaly: true },
+                    { timestamp: '2026-02-21T00:00:00Z', value: NaN, is_anomaly: true },
+                ],
+            }],
+        });
+
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(await screen.findByText('0.0%')).toBeInTheDocument();
+        expect(screen.queryByText(/Infinity|NaN|999\.0%/)).not.toBeInTheDocument();
+        expect(screen.getByText('No observations in the selected window.')).toBeInTheDocument();
+    });
+
+    it('uses neutral styling for rising pressure and positive change', async () => {
+        renderWithClient(<MetricTrendsPage />);
+
+        expect(await screen.findByText('sustained rise')).not.toHaveClass('text-emerald-200');
+        expect(screen.getByText('Δ +3.0%')).not.toHaveClass('text-emerald-300');
     });
 });

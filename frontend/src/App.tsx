@@ -217,44 +217,47 @@ function App() {
 
     return (
         <QueryClientProvider client={queryClient}>
-            <div className={`flex h-screen bg-background text-foreground ${theme}`}>
-                <aside className="w-16 border-r border-border flex flex-col items-center py-4 gap-6 bg-card z-50">
-                    <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold shadow-glow">
+            <div className={`flex h-screen h-[100dvh] bg-background text-foreground ${theme}`}>
+                <aside aria-label="Console navigation" className="w-14 md:w-16 shrink-0 min-h-0 border-r border-border flex flex-col items-center py-3 gap-3 bg-card z-50">
+                    <div className="w-10 h-10 shrink-0 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold">
                         CP
                     </div>
-                    <nav className="flex flex-col gap-4">
+                    <nav aria-label="Primary navigation" className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-1 px-1 py-1">
                         {primaryNavigationItems.map(({ page, title, icon: Icon }) => (
                             <button
                                 key={page}
                                 type="button"
                                 onClick={() => setActivePage(page)}
                                 title={title}
-                                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                                aria-label={title}
+                                aria-current={activePage === page ? 'page' : undefined}
+                                className={`w-10 h-11 shrink-0 rounded-lg flex items-center justify-center transition-colors ${
                                     activePage === page
                                         ? 'bg-accent text-accent-foreground'
                                         : 'text-muted-foreground hover:bg-muted/50'
                                 }`}
                             >
-                                <Icon size={20} />
+                                <Icon size={20} aria-hidden="true" />
                             </button>
                         ))}
-                        <button className="w-10 h-10 rounded-lg text-muted-foreground hover:bg-muted/50 flex items-center justify-center transition-colors">
+                        <button type="button" disabled aria-label="Notifications unavailable" className="w-10 h-11 shrink-0 rounded-lg text-muted-foreground opacity-50 flex items-center justify-center">
                             <Bell size={20} />
                         </button>
                     </nav>
-                    <div className="mt-auto flex flex-col gap-4">
+                    <div className="shrink-0 flex flex-col gap-1 border-t border-border pt-2">
                         <button
                             onClick={toggleTheme}
                             type="button"
-                            className="w-10 h-10 rounded-lg text-muted-foreground hover:bg-muted/50 flex items-center justify-center transition-colors"
+                            className="w-10 h-11 rounded-lg text-muted-foreground hover:bg-muted/50 flex items-center justify-center transition-colors"
                             title="Toggle Theme"
+                            aria-label="Toggle Theme"
                         >
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
                         <button
                             type="button"
                             onClick={() => setSettingsOpen(true)}
-                            className="w-10 h-10 rounded-lg text-muted-foreground hover:bg-muted/50 flex items-center justify-center transition-colors"
+                            className="w-10 h-11 rounded-lg text-muted-foreground hover:bg-muted/50 flex items-center justify-center transition-colors"
                             title="Open Settings"
                         >
                             <Settings size={20} />
@@ -262,20 +265,17 @@ function App() {
                     </div>
                 </aside>
 
-                <main className="flex-1 flex flex-col overflow-hidden relative">
-                    <header className="h-16 border-b border-border flex items-center justify-between px-6 bg-background sticky top-0 z-40">
-                        <h1 className="text-xl font-bold text-foreground">
+                <main className="min-w-0 flex-1 flex flex-col overflow-hidden relative">
+                    <header className="shrink-0 min-h-16 border-b border-border flex flex-wrap items-center gap-3 px-3 py-3 md:px-6 bg-background z-40">
+                        <h1 className="text-lg md:text-xl font-semibold text-foreground">
                             {pageTitle}
                         </h1>
-                        <div className="flex-1 max-w-2xl mx-8">
+                        <div className="w-full min-w-0 md:flex-1 md:w-auto max-w-2xl md:ml-auto">
                             <NLQuery onSubmitQuery={handOffAgentQuery} />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="w-8 h-8 rounded-full bg-primary border border-border" />
                         </div>
                     </header>
 
-                    <div className="flex-1 overflow-auto bg-background p-6 relative">
+                    <div className="min-h-0 flex-1 overflow-auto bg-background p-2 md:p-6 relative">
                         {renderActivePage()}
                     </div>
                 </main>

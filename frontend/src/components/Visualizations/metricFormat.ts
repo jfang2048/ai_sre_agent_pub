@@ -1,19 +1,19 @@
 export function formatPercent(value?: number, digits = 1): string {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
         return '—';
     }
     return `${value.toFixed(digits)}%`;
 }
 
 export function formatCount(value?: number): string {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
         return '—';
     }
     return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 export function formatBytes(value?: number): string {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
         return '—';
     }
     if (value <= 0) {
@@ -31,6 +31,7 @@ export function formatRate(value?: number): string {
 }
 
 export function formatMetricByUnit(value: number, unit: string): string {
+    if (!Number.isFinite(value)) return '—';
     switch (unit) {
         case 'percent':
             return formatPercent(value);

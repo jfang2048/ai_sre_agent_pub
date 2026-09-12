@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useDashboardStore } from '@/store/dashboardStore';
 import AIInsightsPanel from '@/components/Insights/AIInsights';
 import ServiceGraph from '@/components/ServiceGraph';
-import { GripHorizontal, Maximize2 } from 'lucide-react';
+import { GripHorizontal } from 'lucide-react';
 import TopProgramsPanel from '@/components/Insights/TopPrograms';
 import MetricOverviewPanel from '@/components/Visualizations/MetricOverviewPanel';
 import K8sDrilldown from '@/components/Insights/K8sDrilldown';
@@ -17,6 +17,14 @@ const ReactGridLayout = WidthProvider(RGL);
 
 const DashboardGrid = () => {
     const { layout, widgets, setLayout } = useDashboardStore();
+    const [compact, setCompact] = useState(() => window.matchMedia?.('(max-width: 767px)').matches ?? false);
+    useEffect(() => {
+        const query = window.matchMedia?.('(max-width: 767px)');
+        if (!query) return;
+        const update = () => setCompact(query.matches);
+        query.addEventListener('change', update);
+        return () => query.removeEventListener('change', update);
+    }, []);
 
     const renderWidget = (id: string) => {
         switch (id) {
@@ -45,9 +53,23 @@ const DashboardGrid = () => {
         }
     };
 
+    const panels = widgets.map(w => (
+        <div key={w} className={`bg-card rounded-lg overflow-hidden border border-border flex flex-col shadow-sm ${compact && w !== 'overview-metrics' ? 'h-[36rem]' : ''}`}>
+            <div className={`drag-handle shrink-0 h-8 flex items-center gap-2 px-3 border-b border-border/50 ${compact ? '' : 'cursor-move'}`}>
+                {!compact && <GripHorizontal aria-hidden="true" className="w-3 h-3 text-muted-foreground" />}
+                <span className="text-xs font-medium text-muted-foreground capitalize">{w.replaceAll('-', ' ')}</span>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden relative">{renderWidget(w)}</div>
+        </div>
+    ));
+
+    // Narrow layouts are read-only, so resizing the window cannot overwrite a
+    // user's saved desktop positions with a one-column layout.
+    if (compact) return <div className="space-y-4">{panels}</div>;
+
     return (
         <ReactGridLayout
-            className="layout select-none"
+            className="layout"
             layout={layout}
             cols={12}
             rowHeight={100}
@@ -56,20 +78,7 @@ const DashboardGrid = () => {
             draggableHandle=".drag-handle"
             margin={[16, 16]}
         >
-            {widgets.map(w => (
-                <div key={w} className="bg-card rounded-lg overflow-hidden border border-border flex flex-col shadow-lg transition-shadow hover:shadow-xl hover:border-primary/50 group">
-                    <div className="drag-handle bg-gradient-to-r from-muted/10 to-transparent h-6 cursor-move flex items-center justify-between px-3 border-b border-border/50">
-                        <div className="flex items-center gap-2">
-                            <GripHorizontal className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{w.replace('-', ' ')}</span>
-                        </div>
-                        <Maximize2 className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground cursor-pointer transition-opacity" />
-                    </div>
-                    <div className="flex-1 overflow-hidden relative">
-                        {renderWidget(w)}
-                    </div>
-                </div>
-            ))}
+            {panels}
         </ReactGridLayout>
     );
 };

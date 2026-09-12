@@ -196,4 +196,18 @@ describe('MetricOverviewPanel data flow', () => {
 
         expect(await screen.findByText('Metric overview unavailable')).toBeInTheDocument();
     });
+
+    it('keeps valid zero but does not turn non-finite readings into healthy zero', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            collector_id: 'fixture-collector', hostname: 'fixture-node', window: '30m',
+            generated_at: '2026-09-01T12:00:00Z', sample_count: 1,
+            numeric_summary: { cpu_usage_percent: 0, memory_used_percent: NaN, procs_running: Infinity },
+            telemetry_quality: { state: 'fresh' }, series: [],
+        });
+        renderWithClient(<MetricOverviewPanel />);
+        expect(await screen.findByText('0.0%')).toBeInTheDocument();
+        expect(screen.queryByText('NaN%')).not.toBeInTheDocument();
+        expect(screen.queryByText('Infinity')).not.toBeInTheDocument();
+        expect(screen.getAllByText('No data')).toHaveLength(6);
+    });
 });

@@ -33,6 +33,14 @@
     --ring: 221 83% 53%;
 
     --radius: 0.5rem;
+    --chart-cpu: 192 91% 36%;
+    --chart-memory: 162 80% 30%;
+    --chart-network-rx: 217 78% 45%;
+    --chart-network-tx: 255 65% 48%;
+    --chart-disk-read: 25 90% 38%;
+    --chart-disk-write: 346 74% 43%;
+    --chart-processes: 330 65% 43%;
+    --chart-gpu: 86 75% 30%;
   }
 
   .dark {
@@ -63,6 +71,14 @@
     --border: 217 33% 25%;
     --input: 217 33% 25%;
     --ring: 224 76% 48%;
+    --chart-cpu: 188 86% 58%;
+    --chart-memory: 158 64% 55%;
+    --chart-network-rx: 213 94% 68%;
+    --chart-network-tx: 255 92% 76%;
+    --chart-disk-read: 27 96% 61%;
+    --chart-disk-write: 350 95% 73%;
+    --chart-processes: 330 85% 72%;
+    --chart-gpu: 84 80% 65%;
   }
 }
 
@@ -75,6 +91,15 @@
     @apply bg-background text-foreground align-middle;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-grid-item { transition: none; }
 }
 
 /* Custom Scrollbar for dashboards */

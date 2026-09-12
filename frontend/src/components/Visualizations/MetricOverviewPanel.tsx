@@ -12,6 +12,7 @@ import { Cpu, HardDrive, Activity, ArrowDownToLine, ArrowUpToLine } from 'lucide
 import { fetchControllerStatus } from '@/api/controlPlane';
 import { fetchFleetTimeseries, FleetOperationalInsight, TelemetryQuality, TrendSeries } from '@/api/trends';
 import { formatBytes, formatMetricByUnit, formatPercent, formatRate } from './metricFormat';
+import { formatChartTime, prepareChartPoints } from './metricChart';
 
 type OverviewCard = {
     key: string;
@@ -26,7 +27,7 @@ type OverviewCard = {
 };
 
 export default function MetricOverviewPanel() {
-    const { data, isLoading, isError } = useQuery({
+    const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['fleet-timeseries', 'overview', '30m'],
         queryFn: () => fetchFleetTimeseries({ window: '30m', limit: 180 }),
         refetchInterval: 5000,
@@ -59,79 +60,79 @@ export default function MetricOverviewPanel() {
             {
                 key: 'cpu_usage_percent',
                 label: 'CPU Usage',
-                color: '#22d3ee',
+                color: 'hsl(var(--chart-cpu))',
                 unit: 'percent',
                 value: cpuUsage.value,
                 available: cpuUsage.available,
-                subtitle: load1.available ? `Load1 ${Number(load1.value).toFixed(2)}` : unavailableSubtitle(quality),
+                subtitle: load1.available ? `Load1 ${Number(load1.value).toFixed(2)}` : cpuUsage.available ? 'Load average unavailable' : unavailableSubtitle(quality),
                 icon: Cpu,
                 series: series.get('cpu_usage_percent'),
             },
             {
                 key: 'memory_used_percent',
                 label: 'Memory Usage',
-                color: '#34d399',
+                color: 'hsl(var(--chart-memory))',
                 unit: 'percent',
                 value: memoryUsedPercent.value,
                 available: memoryUsedPercent.available,
                 subtitle: memoryUsedBytes.available && memoryTotalBytes.available
                     ? `${formatBytes(memoryUsedBytes.value)} / ${formatBytes(memoryTotalBytes.value)}`
-                    : unavailableSubtitle(quality),
+                    : memoryUsedPercent.available ? 'Memory size unavailable' : unavailableSubtitle(quality),
                 icon: HardDrive,
                 series: series.get('memory_used_percent'),
             },
             {
                 key: 'network_rx_bytes_per_second',
                 label: 'Network RX',
-                color: '#60a5fa',
+                color: 'hsl(var(--chart-network-rx))',
                 unit: 'bytes_per_second',
                 value: networkRX.value,
                 available: networkRX.available,
-                subtitle: networkTX.available ? `TX ${formatRate(networkTX.value)}` : unavailableSubtitle(quality),
+                subtitle: networkTX.available ? `TX ${formatRate(networkTX.value)}` : networkRX.available ? 'Transmit rate unavailable' : unavailableSubtitle(quality),
                 icon: ArrowDownToLine,
                 series: series.get('network_rx_bytes_per_second'),
             },
             {
                 key: 'network_tx_bytes_per_second',
                 label: 'Network TX',
-                color: '#a78bfa',
+                color: 'hsl(var(--chart-network-tx))',
                 unit: 'bytes_per_second',
                 value: networkTX.value,
                 available: networkTX.available,
-                subtitle: networkTotal.available ? `Total ${formatRate(networkTotal.value)}` : unavailableSubtitle(quality),
+                subtitle: networkTotal.available ? `Total ${formatRate(networkTotal.value)}` : networkTX.available ? 'Combined rate unavailable' : unavailableSubtitle(quality),
                 icon: ArrowUpToLine,
                 series: series.get('network_tx_bytes_per_second'),
             },
             {
                 key: 'disk_read_bytes_per_second',
                 label: 'Disk Read',
-                color: '#f97316',
+                color: 'hsl(var(--chart-disk-read))',
                 unit: 'bytes_per_second',
                 value: diskRead.value,
                 available: diskRead.available,
-                subtitle: diskWrite.available ? `Write ${formatRate(diskWrite.value)}` : unavailableSubtitle(quality),
+                subtitle: diskWrite.available ? `Write ${formatRate(diskWrite.value)}` : diskRead.available ? 'Write rate unavailable' : unavailableSubtitle(quality),
                 icon: ArrowDownToLine,
                 series: series.get('disk_read_bytes_per_second'),
             },
             {
                 key: 'disk_write_bytes_per_second',
                 label: 'Disk Write',
-                color: '#fb7185',
+                color: 'hsl(var(--chart-disk-write))',
                 unit: 'bytes_per_second',
                 value: diskWrite.value,
                 available: diskWrite.available,
-                subtitle: diskRead.available ? `Read ${formatRate(diskRead.value)}` : unavailableSubtitle(quality),
+                subtitle: diskRead.available ? `Read ${formatRate(diskRead.value)}` : diskWrite.available ? 'Read rate unavailable' : unavailableSubtitle(quality),
                 icon: ArrowUpToLine,
                 series: series.get('disk_write_bytes_per_second'),
             },
             {
                 key: 'procs_running',
                 label: 'Running Processes',
-                color: '#fb7185',
+                color: 'hsl(var(--chart-processes))',
                 unit: 'count',
                 value: procsRunning.value,
                 available: procsRunning.available,
-                subtitle: procsBlocked.available ? `Blocked ${Number(procsBlocked.value).toFixed(0)}` : unavailableSubtitle(quality),
+                subtitle: procsBlocked.available ? `Blocked ${Number(procsBlocked.value).toFixed(0)}` : procsRunning.available ? 'Blocked count unavailable' : unavailableSubtitle(quality),
                 icon: Activity,
                 series: series.get('procs_running'),
             },
@@ -145,7 +146,7 @@ export default function MetricOverviewPanel() {
 
     if (isLoading) {
         return (
-            <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
+            <div role="status" className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
                 Loading live metrics...
             </div>
         );
@@ -153,14 +154,27 @@ export default function MetricOverviewPanel() {
 
     if (isError || !data) {
         return (
-            <div className="h-full w-full flex items-center justify-center text-sm text-rose-300">
-                Metric overview unavailable
+            <div role="alert" className="h-full w-full flex flex-col gap-3 items-center justify-center text-sm text-foreground">
+                <span>Metric overview unavailable</span>
+                <button type="button" onClick={() => void refetch()} className="rounded-md border border-border px-3 py-2 hover:bg-muted">Retry metrics</button>
             </div>
         );
     }
 
     return (
-        <div className="h-full w-full p-2 overflow-auto space-y-3">
+        <div className="h-full w-full p-3 md:p-4 overflow-auto space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 className="text-base font-semibold">Resource overview</h2>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        {data.hostname || data.collector_id || 'Fleet'} · Last {data.window || '30m'} · {data.sample_count} samples
+                    </p>
+                </div>
+                <div className="text-xs text-muted-foreground text-right">
+                    <div className="capitalize text-foreground">{telemetryQuality?.state || 'Unknown'} observations</div>
+                    <div className="mt-1">Last observation {data.latest_at ? formatChartTime(new Date(data.latest_at).getTime()) : '—'}</div>
+                </div>
+            </div>
             {telemetryQuality && telemetryQuality.state !== 'fresh' && (
                 <TelemetryQualityBanner quality={telemetryQuality} />
             )}
@@ -185,62 +199,64 @@ export default function MetricOverviewPanel() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {cards.map((card) => {
                     const Icon = card.icon;
-                    const points = (card.series?.points ?? []).map((point) => ({
-                        t: new Date(point.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        value: point.value,
-                    }));
+                    const points = prepareChartPoints(card.series?.points ?? []);
+                    const observations = points.filter(point => point.value !== null);
+                    const values = observations.map(point => point.value as number);
 
                     return (
-                        <div key={card.key} className="rounded-lg border border-border bg-background/85 p-3 flex flex-col gap-2">
+                        <section key={card.key} aria-label={card.label} className="min-w-0 rounded-lg border border-border bg-background/60 p-4 flex flex-col gap-2">
                             <div className="flex items-start justify-between">
                                 <div>
-                                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{card.label}</div>
-                                    <div className="text-xl font-semibold text-foreground">
+                                    <h3 className="text-xs font-medium text-muted-foreground">{card.label}</h3>
+                                    <div className="text-2xl font-semibold tabular-nums text-foreground mt-1">
                                         {card.available
                                             ? card.unit === 'percent'
                                                 ? formatPercent(card.value)
                                                 : formatMetricByUnit(card.value, card.unit)
                                             : unavailableValueLabel(telemetryQuality)}
                                     </div>
-                                    <div className="text-[11px] text-muted-foreground">{card.subtitle}</div>
+                                    <div className="text-xs text-muted-foreground">{card.subtitle}</div>
                                     {card.series?.trend && (
-                                        <div className="mt-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-200">
+                                        <div className="mt-2 text-xs text-muted-foreground">
                                             {card.series.trend}
                                         </div>
                                     )}
                                 </div>
-                                <div className="p-2 rounded-md border border-border" style={{ color: card.color }}>
+                                <div aria-hidden="true" className="p-2 rounded-md bg-muted/50" style={{ color: card.color }}>
                                     <Icon className="w-4 h-4" />
                                 </div>
                             </div>
                             {card.series?.operational_hint && (
-                                <div className="text-[11px] text-muted-foreground min-h-[2rem]">{card.series.operational_hint}</div>
+                                <div className="text-xs text-muted-foreground">{card.series.operational_hint}</div>
                             )}
-                            <div className="h-16">
-                                {points.length > 1 ? (
+                            <figure className="mt-auto" aria-label={`${card.label} history: ${observations.length} observations`}>
+                            <div className="h-20" aria-hidden="true">
+                                {observations.length > 1 ? (
                                     <ResponsiveContainer width="100%" height="100%">
                                         <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                                             <defs>
                                                 <linearGradient id={`overview-${card.key}`} x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor={card.color} stopOpacity={0.55} />
+                                                    <stop offset="0%" stopColor={card.color} stopOpacity={0.18} />
                                                     <stop offset="95%" stopColor={card.color} stopOpacity={0.02} />
                                                 </linearGradient>
                                             </defs>
-                                            <XAxis dataKey="t" hide />
-                                            <YAxis hide />
+                                            <XAxis dataKey="timestamp" type="number" domain={['dataMin', 'dataMax']} hide />
+                                            <YAxis domain={card.unit === 'percent' ? [0, (max: number) => Math.max(100, max)] : [0, 'auto']} hide />
                                             <Tooltip
                                                 formatter={(value: number) => formatMetricByUnit(value, card.unit)}
-                                                labelStyle={{ color: '#e5e7eb' }}
-                                                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155' }}
+                                                labelFormatter={value => formatChartTime(Number(value))}
+                                                labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                                                contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
                                             />
                                             <Area
-                                                type="monotone"
+                                                type="linear"
                                                 dataKey="value"
                                                 stroke={card.color}
                                                 strokeWidth={2}
                                                 fill={`url(#overview-${card.key})`}
                                                 dot={false}
                                                 isAnimationActive={false}
+                                                connectNulls={false}
                                             />
                                         </AreaChart>
                                     </ResponsiveContainer>
@@ -248,7 +264,14 @@ export default function MetricOverviewPanel() {
                                     <div className="h-full flex items-center text-xs text-muted-foreground">Awaiting trend samples...</div>
                                 )}
                             </div>
-                        </div>
+                            {observations.length > 1 && (
+                                <figcaption className="space-y-1 text-xs text-muted-foreground tabular-nums">
+                                    <div className="flex justify-between gap-2"><span>{formatChartTime(observations[0].timestamp)}</span><span>{formatChartTime(observations[observations.length - 1].timestamp)}</span></div>
+                                    <div>Range {formatMetricByUnit(Math.min(...values), card.unit)} – {formatMetricByUnit(Math.max(...values), card.unit)}</div>
+                                </figcaption>
+                            )}
+                            </figure>
+                        </section>
                     );
                 })}
             </div>
@@ -258,7 +281,7 @@ export default function MetricOverviewPanel() {
 
 function summaryValue(summary: Record<string, number>, ...keys: string[]) {
     for (const key of keys) {
-        if (Object.prototype.hasOwnProperty.call(summary, key)) {
+        if (Object.prototype.hasOwnProperty.call(summary, key) && Number.isFinite(summary[key])) {
             return { available: true, value: summary[key] };
         }
     }

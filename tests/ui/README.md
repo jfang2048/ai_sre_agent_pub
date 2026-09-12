@@ -67,6 +67,26 @@ flowchart TD
     B --> E["test-results/artifacts"]
 ```
 
+## Isolated telemetry visualization checks
+
+The telemetry visualization suite intercepts API requests with synthetic
+observations. It does not require a controller or collect real host data. It
+checks actual SVG paths, irregular sample spacing, tooltips, both themes, and
+narrow-screen navigation. These are UI checks, not real telemetry-delivery tests.
+
+```bash
+# Start Vite in one terminal.
+npm -C frontend run dev -- --host 127.0.0.1
+
+# Run in another terminal. Use the installed Chrome if bundled Chromium is unavailable.
+PLAYWRIGHT_CHANNEL=chrome BASE_URL=http://127.0.0.1:5173 \
+  npm -C tests/ui test -- telemetry-visualization.spec.ts
+```
+
+Omit `PLAYWRIGHT_CHANNEL` to use Playwright's installed Chromium. Synthetic
+screenshots remain under ignored `test-results/screenshots/`; do not replace
+them with screenshots containing private operational data.
+
 ## Artifacts
 
 Playwright outputs under `tests/ui/test-results/` (including HTML reports and artifacts when enabled).

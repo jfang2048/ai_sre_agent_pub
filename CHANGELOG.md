@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Visualization
+
+- Added elapsed-time metric charts, readable theme-aware colors, observation ranges, and explicit non-finite/missing-data states.
+- Removed reassuring trend conclusions when observations are loading, unavailable, or stale; trend direction no longer implies health.
+- Added accessible, scrollable navigation and a narrow-screen dashboard layout that preserves saved desktop positions.
+- Added a repository design brief and deterministic browser checks using synthetic telemetry only.
+
 ### Telemetry reliability
 
 - Added injectable producer epochs and monotonic sequences, preserving opaque batch IDs for older collectors.

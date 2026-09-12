@@ -29,6 +29,7 @@ import {
     TrendSeries,
 } from '@/api/trends';
 import { formatBytes, formatCount, formatMetricByUnit, formatPercent, formatRate } from './metricFormat';
+import { formatChartTime, prepareChartPoints } from './metricChart';
 import ResourceProcessBreakdownPanel, { ResourceCategory } from './ResourceProcessBreakdownPanel';
 import type { TrendsNavigationIntent } from './trendsIntent';
 import {
@@ -44,37 +45,37 @@ const WINDOW_OPTIONS = [
 ];
 
 const SERIES_COLORS: Record<string, string> = {
-    cpu_usage_percent: '#22d3ee',
-    memory_used_percent: '#34d399',
-    load1: '#f59e0b',
-    network_rx_bytes_per_second: '#60a5fa',
-    network_tx_bytes_per_second: '#818cf8',
-    disk_read_bytes_per_second: '#f97316',
-    disk_write_bytes_per_second: '#fb7185',
-    disk_total_iops_per_second: '#e879f9',
-    disk_utilization_peak_percent: '#ef4444',
-    disk_queue_depth_total: '#facc15',
-    disk_avg_request_latency_ms: '#f87171',
-    disk_request_latency_p50_ms: '#fb7185',
-    disk_request_latency_p90_ms: '#ef4444',
-    disk_request_latency_p99_ms: '#b91c1c',
-    filesystem_space_pressure_percent: '#fb7185',
-    filesystem_inode_pressure_percent: '#e11d48',
-    pagecache_dirty_bytes: '#f59e0b',
-    pagecache_writeback_bytes: '#a855f7',
-    vm_pgpgin_per_second: '#38bdf8',
-    vm_pgpgout_per_second: '#60a5fa',
-    vm_dirtied_pages_per_second: '#f97316',
-    vm_written_pages_per_second: '#fb7185',
-    io_pressure_some_avg10: '#ef4444',
-    io_pressure_full_avg10: '#dc2626',
-    procs_running: '#f43f5e',
-    procs_blocked: '#ef4444',
-    fd_usage_percent: '#eab308',
-    gpu_utilization_percent: '#a3e635',
-    gpu_process_total: '#84cc16',
-    gpu_memory_used_mib: '#84cc16',
-    security_findings_total: '#fb7185',
+    cpu_usage_percent: 'hsl(var(--chart-cpu))',
+    memory_used_percent: 'hsl(var(--chart-memory))',
+    load1: 'hsl(var(--chart-cpu))',
+    network_rx_bytes_per_second: 'hsl(var(--chart-network-rx))',
+    network_tx_bytes_per_second: 'hsl(var(--chart-network-tx))',
+    disk_read_bytes_per_second: 'hsl(var(--chart-disk-read))',
+    disk_write_bytes_per_second: 'hsl(var(--chart-disk-write))',
+    disk_total_iops_per_second: 'hsl(var(--chart-disk-read))',
+    disk_utilization_peak_percent: 'hsl(var(--chart-disk-read))',
+    disk_queue_depth_total: 'hsl(var(--chart-disk-read))',
+    disk_avg_request_latency_ms: 'hsl(var(--chart-disk-read))',
+    disk_request_latency_p50_ms: 'hsl(var(--chart-disk-read))',
+    disk_request_latency_p90_ms: 'hsl(var(--chart-disk-read))',
+    disk_request_latency_p99_ms: 'hsl(var(--chart-disk-read))',
+    filesystem_space_pressure_percent: 'hsl(var(--chart-disk-write))',
+    filesystem_inode_pressure_percent: 'hsl(var(--chart-disk-write))',
+    pagecache_dirty_bytes: 'hsl(var(--chart-memory))',
+    pagecache_writeback_bytes: 'hsl(var(--chart-memory))',
+    vm_pgpgin_per_second: 'hsl(var(--chart-memory))',
+    vm_pgpgout_per_second: 'hsl(var(--chart-memory))',
+    vm_dirtied_pages_per_second: 'hsl(var(--chart-memory))',
+    vm_written_pages_per_second: 'hsl(var(--chart-memory))',
+    io_pressure_some_avg10: 'hsl(var(--chart-disk-read))',
+    io_pressure_full_avg10: 'hsl(var(--chart-disk-write))',
+    procs_running: 'hsl(var(--chart-processes))',
+    procs_blocked: 'hsl(var(--chart-processes))',
+    fd_usage_percent: 'hsl(var(--chart-processes))',
+    gpu_utilization_percent: 'hsl(var(--chart-gpu))',
+    gpu_process_total: 'hsl(var(--chart-gpu))',
+    gpu_memory_used_mib: 'hsl(var(--chart-gpu))',
+    security_findings_total: 'hsl(var(--chart-processes))',
 };
 
 type AnomalyRow = {
@@ -101,7 +102,7 @@ function sortNodesByFreshness(nodes: FleetNode[]): FleetNode[] {
 }
 
 function summaryValue(summary: Record<string, number>, key: string) {
-    if (Object.prototype.hasOwnProperty.call(summary, key)) {
+    if (Object.prototype.hasOwnProperty.call(summary, key) && Number.isFinite(summary[key])) {
         return { available: true, value: summary[key] };
     }
     return { available: false, value: 0 };
@@ -198,6 +199,17 @@ export default function MetricTrendsPage({
     const summary = trends?.numeric_summary ?? {};
     const telemetryQuality = trends?.telemetry_quality;
     const operationalInsights = trends?.operational_insights ?? [];
+    const hasObservations = (trends?.sample_count ?? 0) > 0 && (trends?.series ?? [])
+        .some(series => prepareChartPoints(series.points).some(point => point.value !== null));
+    const interpretationNotice = trendsQuery.isLoading
+        ? 'Loading observations before interpretation.'
+        : trendsQuery.isError || !trends
+            ? 'Interpretation unavailable because telemetry could not be loaded.'
+            : !hasObservations
+                ? 'No observations in the selected window.'
+                : telemetryQuality?.state !== 'fresh'
+                    ? `Telemetry is ${telemetryQuality?.state || 'unknown'}; available observations do not establish current health.`
+                    : '';
     const storageDevices = useMemo(
         () => rankDevices(Object.values(nodeQuery.data?.storage_devices ?? {})),
         [nodeQuery.data?.storage_devices],
@@ -218,7 +230,7 @@ export default function MetricTrendsPage({
         const rows: AnomalyRow[] = [];
         trends.series.forEach((series) => {
             series.points.forEach((point) => {
-                if (point.is_anomaly) {
+                if (point.is_anomaly && Number.isFinite(point.value) && Number.isFinite(new Date(point.timestamp).getTime())) {
                     rows.push({
                         seriesKey: series.key,
                         series: series.display,
@@ -390,11 +402,12 @@ export default function MetricTrendsPage({
                     <div>
                         <div className="text-lg font-semibold">Metric Trends</div>
                         <div className="text-sm text-muted-foreground">
-                            ECG-style temporal curves with anomaly markers. Exact numeric cards stay visible for precise readings.
+                            Resource observations over elapsed time, with anomaly markers and exact readings.
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <select
+                            aria-label="Collector scope"
                             value={collectorId}
                             onChange={(event) => setCollectorId(event.target.value)}
                             className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground"
@@ -407,6 +420,7 @@ export default function MetricTrendsPage({
                             ))}
                         </select>
                         <select
+                            aria-label="Time window"
                             value={windowSize}
                             onChange={(event) => setWindowSize(event.target.value)}
                             className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground"
@@ -472,9 +486,11 @@ export default function MetricTrendsPage({
                     <AlertTriangle className="w-4 h-4 text-amber-300" />
                     Operational Interpretation
                 </div>
+                {interpretationNotice && <p role="status" className="mb-3 text-sm text-muted-foreground">{interpretationNotice}</p>}
                 {operationalInsights.length === 0 ? (
+                    !interpretationNotice &&
                     <div className="text-sm text-muted-foreground">
-                        Trend data is available, but no multi-signal operational risk patterns are active in the selected window.
+                        No multi-signal operational risk patterns detected in the available observations.
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -491,7 +507,7 @@ export default function MetricTrendsPage({
                     Latest Detected Spikes / Anomalies
                 </div>
                 {anomalies.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No anomalies detected in the selected window.</div>
+                    <div className="text-sm text-muted-foreground">{interpretationNotice ? 'Anomaly assessment unavailable for current health.' : 'No detected anomalies in available data.'}</div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                         {anomalies.map((row) => (
@@ -584,15 +600,8 @@ function MetricCurveCard({
     onDrillDown: () => void;
     highlighted?: boolean;
 }) {
-    const color = SERIES_COLORS[series.key] ?? '#22d3ee';
-
-    const chartData = series.points.map((point) => ({
-        ts: point.timestamp,
-        t: new Date(point.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        value: point.value,
-        anomalyValue: point.is_anomaly ? point.value : null,
-        zScore: point.z_score,
-    }));
+    const color = SERIES_COLORS[series.key] ?? 'hsl(var(--chart-cpu))';
+    const chartData = prepareChartPoints(series.points);
 
     return (
         <div className={`rounded-xl border bg-card p-3 md:p-4 shadow-sm ${highlighted ? 'border-cyan-400/60' : 'border-border'}`}>
@@ -618,7 +627,7 @@ function MetricCurveCard({
                 <div className="text-right text-xs text-muted-foreground flex flex-col items-end gap-1">
                     <div>Min {formatMetricByUnit(series.min, series.unit)}</div>
                     <div>Max {formatMetricByUnit(series.max, series.unit)}</div>
-                    <div className={series.change_pct >= 0 ? 'text-emerald-300' : 'text-amber-300'}>
+                    <div className="text-muted-foreground tabular-nums">
                         Δ {series.change_pct >= 0 ? '+' : ''}{series.change_pct.toFixed(1)}%
                     </div>
                     <button
@@ -631,44 +640,45 @@ function MetricCurveCard({
                 </div>
             </div>
             {series.operational_hint && (
-                <div className="mb-3 rounded-md border border-border/70 bg-background/40 px-3 py-2 text-xs text-slate-300">
+                <div className="mb-3 rounded-md border border-border/70 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
                     {series.operational_hint}
                 </div>
             )}
-            <div className="h-48">
+            <div className="h-48" role="img" aria-label={`${series.display} over time; ${chartData.filter(point => point.value !== null).length} observations; latest ${formatMetricByUnit(series.latest, series.unit)}`}>
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="2 4" stroke="#334155" opacity={0.35} />
+                        <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
                         <XAxis
-                            dataKey="t"
+                            dataKey="timestamp"
+                            type="number"
+                            domain={['dataMin', 'dataMax']}
+                            tickFormatter={formatChartTime}
                             minTickGap={26}
-                            tick={{ fill: '#94a3b8', fontSize: 11 }}
-                            axisLine={{ stroke: '#334155' }}
-                            tickLine={{ stroke: '#334155' }}
+                            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                            axisLine={{ stroke: 'hsl(var(--border))' }}
+                            tickLine={false}
                         />
                         <YAxis
                             tickFormatter={(value: number) => shortUnit(value, series.unit)}
-                            tick={{ fill: '#94a3b8', fontSize: 11 }}
-                            axisLine={{ stroke: '#334155' }}
-                            tickLine={{ stroke: '#334155' }}
+                            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                            axisLine={false}
+                            tickLine={false}
                             width={72}
                         />
                         <Tooltip
-                            labelFormatter={(label, payload) => {
-                                const ts = payload?.[0]?.payload?.ts as string | undefined;
-                                return ts ? new Date(ts).toLocaleString() : String(label);
-                            }}
+                            labelFormatter={label => `${new Date(Number(label)).toLocaleDateString()} ${formatChartTime(Number(label))}`}
                             formatter={(value: number) => formatMetricByUnit(value, series.unit)}
-                            contentStyle={{ backgroundColor: '#0b1120', border: '1px solid #334155' }}
-                            labelStyle={{ color: '#e2e8f0' }}
+                            contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
+                            labelStyle={{ color: 'hsl(var(--popover-foreground))' }}
                         />
                         <Line
-                            type="monotone"
+                            type="linear"
                             dataKey="value"
                             stroke={color}
                             strokeWidth={2}
                             dot={false}
                             isAnimationActive={false}
+                            connectNulls={false}
                         />
                         <Line
                             type="linear"
@@ -756,15 +766,6 @@ function formatTierLabel(tier: string): string {
 function trendBadgeClass(trend?: string): string {
     if (!trend) {
         return 'border border-border text-muted-foreground';
-    }
-    if (trend.includes('rise')) {
-        return 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
-    }
-    if (trend.includes('drop') || trend.includes('fall')) {
-        return 'border border-amber-500/30 bg-amber-500/10 text-amber-200';
-    }
-    if (trend.includes('oscillating') || trend.includes('bursty')) {
-        return 'border border-rose-500/30 bg-rose-500/10 text-rose-200';
     }
     return 'border border-border text-muted-foreground';
 }
