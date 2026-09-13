@@ -9,6 +9,9 @@
 - Added accessible, scrollable navigation and a narrow-screen dashboard layout that preserves saved desktop positions.
 - Added a repository design brief and deterministic browser checks using synthetic telemetry only.
 - Render single observations as points, qualify sparse/empty curves, and label tooltips with the metric name.
+- Added keyboard- and touch-accessible observation tables with unrounded values, explicit units/timezone, and textual anomaly/missing-value states.
+- Made detailed chart headers wrap, adapted time-axis density to card width, and kept observation rows unmounted until expanded.
+- Kept isolated observations visible on either side of missing-value gaps.
 
 ### Telemetry reliability
 

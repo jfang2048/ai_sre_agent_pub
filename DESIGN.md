@@ -2,14 +2,14 @@
 
 ## Source of truth
 
-Status: Active. Updated: 2026-09-11.
+Status: Active. Updated: 2026-09-12.
 
 This contract covers the existing React console, with this iteration focused on
 the platform overview, metric trends, and shared navigation. Evidence reviewed:
 [App](frontend/src/App.tsx), [dashboard layout](frontend/src/components/Dashboard/Grid.tsx),
 [theme tokens](frontend/src/index.css), [overview](frontend/src/components/Visualizations/MetricOverviewPanel.tsx),
 [trends](frontend/src/components/Visualizations/MetricTrendsPage.tsx), their unit
-tests, and [browser tests](tests/ui/e2e/visual.spec.ts). No previous design brief
+tests, and [telemetry browser tests](tests/ui/e2e/telemetry-visualization.spec.ts). No previous design brief
 or approved reference image was found. Existing screenshots are documentation,
 not a pixel-matching target.
 
@@ -62,7 +62,12 @@ subtle. Use existing Lucide icons. No generated imagery is needed.
 Reuse MetricOverviewPanel, MetricCurveCard, the existing grid, and native controls.
 Chart preparation/formatting may be shared where it expresses the same contract.
 Show compact ranges and sample context beside mini-charts. Tooltips use existing
-popover/foreground/border tokens. No additional dependencies.
+popover/foreground/border tokens. Detailed curves offer a native observation
+disclosure with a semantic table: local observation time, unrounded numeric value,
+and a textual observed/anomaly/missing status. State the source unit and timezone;
+sort rows by elapsed time using the same prepared points as the curve. Preserve
+zero and gaps, and omit invalid timestamps. Mark observations around missing-value
+gaps so isolated readings remain visible. No additional dependencies.
 
 ## Accessibility
 
@@ -70,6 +75,8 @@ Target WCAG 2.2 AA; this is a target, not certification. Name navigation and
 controls, expose the current page, retain visible keyboard focus, and provide
 text summaries for charts. Do not make hover essential. Announce loading/errors
 without announcing every polling update. Honor reduced motion.
+Observation disclosures work with keyboard and touch. Give their bounded scrolling
+regions accessible names and keyboard focus; mark table headers explicitly.
 
 ## Responsive behavior
 
@@ -77,6 +84,9 @@ Support desktop and narrow screens down to 360px. Shared chrome wraps rather
 than pushing content outside the viewport. Navigation scrolls independently when
 its items exceed the available height. Dashboard cards reflow to one column on
 narrow screens; desktop drag/resize preferences remain unchanged.
+Detailed chart headers wrap and time-axis tick density adapts to the card width.
+Observation tables wrap within the card instead of widening the page. Keep process
+drilldown and disclosure targets at least 44px high.
 
 ## Interaction states
 
@@ -96,7 +106,9 @@ to an unqualified healthy-state claim.
 React, TypeScript, Tailwind, Recharts, and React Query remain the supported stack.
 Keep API contracts unchanged. Regression tests cover numeric validity and query
 states; real-browser tests cover actual SVG rendering, themes, tooltips, and
-narrow-layout overflow. Unit chart mocks are not visual proof. Screenshots and
+narrow-layout overflow, including keyboard and touch observation inspection.
+Mount observation rows only while expanded; use the existing bounded timeseries
+query rather than introducing another data source. Unit chart mocks are not visual proof. Screenshots and
 fixtures must use synthetic data; never publish real host telemetry or local
 identifiers. Generated build output is not part of source commits.
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, beforeEach } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import MetricTrendsPage from '../MetricTrendsPage';
 import { fetchFleetNode, fetchFleetNodes, fetchFleetTimeseries } from '@/api/trends';
 import { renderWithClient } from '@/test/utils';
@@ -235,5 +235,56 @@ describe('MetricTrendsPage data flow', () => {
 
         expect(await screen.findByText('sustained rise')).not.toHaveClass('text-emerald-200');
         expect(screen.getByText('Δ +3.0%')).not.toHaveClass('text-emerald-300');
+    });
+
+    it('exposes ordered, unrounded observations on demand, including zero, anomalies, and gaps', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            ...trendsFixture,
+            series: [{
+                ...trendsFixture.series[0],
+                points: [
+                    { timestamp: '2026-02-21T00:10:00Z', value: 54.321987 },
+                    { timestamp: 'invalid', value: 999 },
+                    { timestamp: '2026-02-21T00:00:00Z', value: 0, is_anomaly: true },
+                    { timestamp: '2026-02-21T00:05:00Z', value: NaN, is_anomaly: true },
+                ],
+            }],
+        });
+        renderWithClient(<MetricTrendsPage />);
+
+        const card = await screen.findByRole('region', { name: 'CPU Usage trend' });
+        expect(within(card).queryByRole('table', { hidden: true })).not.toBeInTheDocument();
+        const disclosure = within(card).getByText('Inspect observations').closest('details')!;
+        disclosure.open = true;
+        fireEvent(disclosure, new Event('toggle'));
+
+        const table = await within(card).findByRole('table', { name: 'CPU Usage observations' });
+        expect(within(card).getByText(/Source unit: percent/)).toBeInTheDocument();
+        const rows = within(table).getAllByRole('row').slice(1);
+        expect(rows).toHaveLength(3);
+        expect(within(rows[0]).getByRole('cell', { name: '0' })).toBeInTheDocument();
+        expect(within(rows[0]).getByRole('cell', { name: 'Anomaly' })).toBeInTheDocument();
+        expect(within(rows[1]).getByRole('cell', { name: 'Unavailable' })).toBeInTheDocument();
+        expect(within(rows[1]).getByRole('cell', { name: 'Missing value' })).toBeInTheDocument();
+        expect(within(rows[2]).getByRole('cell', { name: '54.321987' })).toBeInTheDocument();
+        expect(within(rows[2]).getByRole('cell', { name: 'Observed' })).toBeInTheDocument();
+        expect(rows[0].querySelector('time')).toHaveAttribute('datetime', '2026-02-21T00:00:00.000Z');
+        expect(within(table).queryByText(/NaN|999/)).not.toBeInTheDocument();
+
+        disclosure.open = false;
+        fireEvent(disclosure, new Event('toggle'));
+        await waitFor(() => expect(within(card).queryByRole('table', { hidden: true })).not.toBeInTheDocument());
+    });
+
+    it('does not offer observation inspection when there are no valid timestamps', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            ...trendsFixture,
+            series: [{ ...trendsFixture.series[0], points: [{ timestamp: 'invalid', value: 20 }] }],
+        });
+        renderWithClient(<MetricTrendsPage />);
+
+        const card = await screen.findByRole('region', { name: 'CPU Usage trend' });
+        expect(within(card).getByText('No valid observations for this metric.')).toBeInTheDocument();
+        expect(within(card).queryByText('Inspect observations')).not.toBeInTheDocument();
     });
 });

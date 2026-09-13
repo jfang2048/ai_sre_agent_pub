@@ -600,19 +600,22 @@ function MetricCurveCard({
     onDrillDown: () => void;
     highlighted?: boolean;
 }) {
+    const [observationsOpen, setObservationsOpen] = useState(false);
+    const [compactChart, setCompactChart] = useState(false);
     const color = SERIES_COLORS[series.key] ?? 'hsl(var(--chart-cpu))';
-    const chartData = prepareChartPoints(series.points);
+    const chartData = useMemo(() => prepareChartPoints(series.points), [series.points]);
     const observationCount = chartData.filter(point => point.value !== null).length;
+    const showObservationDots = observationCount === 1 || chartData.some(point => point.value === null);
     const change = observationCount > 1 && Number.isFinite(series.change_pct)
         ? `${series.change_pct >= 0 ? '+' : ''}${series.change_pct.toFixed(1)}%` : '—';
 
     return (
-        <div className={`rounded-xl border bg-card p-3 md:p-4 shadow-sm ${highlighted ? 'border-cyan-400/60' : 'border-border'}`}>
-            <div className="flex items-center justify-between mb-2">
-                <div>
+        <section aria-label={`${series.display} trend`} className={`min-w-0 rounded-xl border bg-card p-3 md:p-4 shadow-sm ${highlighted ? 'border-cyan-400/60' : 'border-border'}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+                <div className="min-w-0 flex-1 basis-40 break-words">
                     <div className="text-sm font-semibold">{series.display}</div>
                     <div className="text-xs text-muted-foreground">
-                        Latest {formatMetricByUnit(series.latest, series.unit)} · Spikes {series.spike_count}
+                        Latest {observationCount > 0 ? formatMetricByUnit(series.latest, series.unit) : '—'} · Spikes {series.spike_count}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                         {series.tier && (
@@ -627,16 +630,16 @@ function MetricCurveCard({
                         )}
                     </div>
                 </div>
-                <div className="text-right text-xs text-muted-foreground flex flex-col items-end gap-1">
-                    <div>Min {formatMetricByUnit(series.min, series.unit)}</div>
-                    <div>Max {formatMetricByUnit(series.max, series.unit)}</div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:flex-col sm:items-end sm:text-right">
+                    <div>Min {observationCount > 0 ? formatMetricByUnit(series.min, series.unit) : '—'}</div>
+                    <div>Max {observationCount > 0 ? formatMetricByUnit(series.max, series.unit) : '—'}</div>
                     <div className="text-muted-foreground tabular-nums">
                         Δ {change}
                     </div>
                     <button
                         type="button"
                         onClick={onDrillDown}
-                        className="text-[11px] px-2 py-1 rounded border border-primary/30 text-primary hover:bg-primary/10"
+                        className="min-h-11 px-3 py-2 rounded border border-primary/30 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         Show processes
                     </button>
@@ -651,7 +654,7 @@ function MetricCurveCard({
                 {observationCount === 0 ? (
                     <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No valid observations for this metric.</div>
                 ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" onResize={width => setCompactChart(width < 440)}>
                     <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                         <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
                         <XAxis
@@ -659,6 +662,8 @@ function MetricCurveCard({
                             type="number"
                             domain={['dataMin', 'dataMax']}
                             tickFormatter={formatChartTime}
+                            tickCount={compactChart ? 3 : 5}
+                            interval="preserveStartEnd"
                             minTickGap={26}
                             tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                             axisLine={{ stroke: 'hsl(var(--border))' }}
@@ -669,7 +674,7 @@ function MetricCurveCard({
                             tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                             axisLine={false}
                             tickLine={false}
-                            width={72}
+                            width={compactChart ? 56 : 72}
                         />
                         <Tooltip
                             labelFormatter={label => `${new Date(Number(label)).toLocaleDateString()} ${formatChartTime(Number(label))}`}
@@ -683,7 +688,7 @@ function MetricCurveCard({
                             name={series.display}
                             stroke={color}
                             strokeWidth={2}
-                            dot={observationCount === 1 ? { r: 3, fill: color, strokeWidth: 0 } : false}
+                            dot={showObservationDots ? { r: 3, fill: color, strokeWidth: 0 } : false}
                             isAnimationActive={false}
                             connectNulls={false}
                         />
@@ -700,7 +705,47 @@ function MetricCurveCard({
                 )}
             </div>
             {observationCount === 1 && <p className="text-xs text-muted-foreground">Single observation · trend unavailable</p>}
-        </div>
+            {chartData.length > 0 && (
+                <details open={observationsOpen} className="mt-3 border-t border-border" onToggle={event => setObservationsOpen(event.currentTarget.open)}>
+                    <summary className="min-h-11 cursor-pointer rounded py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        Inspect observations
+                    </summary>
+                    {observationsOpen && (
+                        <>
+                            <p className="mb-2 text-xs text-muted-foreground break-words">
+                                Source unit: {series.unit.replace(/_/g, ' ')} · Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                            </p>
+                            <div className="max-h-64 overflow-auto rounded border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={0} role="region" aria-label={`${series.display} observation rows`}>
+                                <table className="w-full table-fixed text-left text-xs tabular-nums">
+                                    <caption className="p-2 text-left font-medium">{series.display} observations</caption>
+                                    <thead className="sticky top-0 bg-muted text-muted-foreground">
+                                        <tr>
+                                            <th scope="col" className="w-1/3 px-1 py-2 font-medium">Observed (local time)</th>
+                                            <th scope="col" className="px-1 py-2 font-medium">Value</th>
+                                            <th scope="col" className="px-1 py-2 font-medium">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {chartData.map((point, index) => (
+                                            <tr key={`${point.timestamp}-${index}`} className="border-t border-border align-top">
+                                                <td className="px-1 py-2 break-words">
+                                                    <time dateTime={new Date(point.timestamp).toISOString()}>
+                                                        <span className="block">{new Date(point.timestamp).toLocaleDateString()}</span>
+                                                        <span className="block text-muted-foreground">{formatChartTime(point.timestamp)}</span>
+                                                    </time>
+                                                </td>
+                                                <td className="px-1 py-2 break-words">{point.value === null ? 'Unavailable' : String(point.value)}</td>
+                                                <td className="px-1 py-2 break-words">{point.value === null ? 'Missing value' : point.anomalyValue !== null ? 'Anomaly' : 'Observed'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+                </details>
+            )}
+        </section>
     );
 }
 
