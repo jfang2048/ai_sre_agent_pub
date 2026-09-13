@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-Status: Active. Updated: 2026-09-12.
+Status: Active. Updated: 2026-09-13.
 
 This contract covers the existing React console, with this iteration focused on
 the platform overview, metric trends, and shared navigation. Evidence reviewed:
@@ -67,7 +67,10 @@ disclosure with a semantic table: local observation time, unrounded numeric valu
 and a textual observed/anomaly/missing status. State the source unit and timezone;
 sort rows by elapsed time using the same prepared points as the curve. Preserve
 zero and gaps, and omit invalid timestamps. Mark observations around missing-value
-gaps so isolated readings remain visible. No additional dependencies.
+gaps in both overview and detailed charts so isolated readings remain visible.
+When compact history has gaps, show valid-observation and missing-value counts
+separately beside the curve. Do not infer missing samples from elapsed time alone.
+No additional dependencies.
 
 ## Accessibility
 
@@ -108,8 +111,8 @@ Keep API contracts unchanged. Regression tests cover numeric validity and query
 states; real-browser tests cover actual SVG rendering, themes, tooltips, and
 narrow-layout overflow, including keyboard and touch observation inspection.
 Mount observation rows only while expanded; use the existing bounded timeseries
-query rather than introducing another data source. Unit chart mocks are not visual proof. Screenshots and
-fixtures must use synthetic data; never publish real host telemetry or local
+query rather than introducing another data source. Unit chart mocks are not visual
+proof. Screenshots and fixtures must use synthetic data; never publish real host telemetry or local
 identifiers. Generated build output is not part of source commits.
 
 ## Open questions

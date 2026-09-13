@@ -126,6 +126,27 @@ test('a single observation is visible without implying a trend', async ({ page }
   await expect(cpu.getByText('rising', { exact: true })).toHaveCount(0);
 });
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`overview preserves isolated points and labels missing values in ${theme}`, async ({ page }) => {
+    await fixture(page, theme, 'gapped');
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.goto('/');
+    const cpu = page.getByRole('region', { name: 'CPU Usage', exact: true });
+    await expect(cpu.getByText('3 observations · 1 missing value')).toBeVisible();
+    const markers = cpu.locator('.recharts-area-dot');
+    await expect(markers).toHaveCount(3);
+    for (const marker of await markers.all()) {
+      await expect(marker).toBeVisible();
+      expect(Number(await marker.getAttribute('r'))).toBeGreaterThan(0);
+    }
+    const curve = await cpu.locator('.recharts-area-curve').getAttribute('d');
+    // Separate subpaths prove the curve does not connect across the missing value.
+    expect(curve!.match(/M/g)).toHaveLength(2);
+    expect(await cpu.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await cpu.screenshot({ path: `test-results/screenshots/overview-gaps-${theme}-mobile.png` });
+  });
+}
+
 test('empty metric curves are explicitly unavailable, not a healthy flat line', async ({ page }) => {
   await fixture(page, 'dark', 'empty');
   await page.goto('/?page=trends');

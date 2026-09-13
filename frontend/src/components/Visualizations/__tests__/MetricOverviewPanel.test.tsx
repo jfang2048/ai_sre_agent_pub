@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import MetricOverviewPanel from '../MetricOverviewPanel';
 import { fetchControllerStatus } from '@/api/controlPlane';
 import { fetchFleetTimeseries } from '@/api/trends';
@@ -209,5 +209,28 @@ describe('MetricOverviewPanel data flow', () => {
         expect(screen.queryByText('NaN%')).not.toBeInTheDocument();
         expect(screen.queryByText('Infinity')).not.toBeInTheDocument();
         expect(screen.getAllByText('No data')).toHaveLength(6);
+    });
+
+    it('counts missing values separately from observed zeros in compact history', async () => {
+        fetchFleetTimeseriesMock.mockResolvedValue({
+            collector_id: '', hostname: '', window: '30m', generated_at: '2026-09-01T12:10:00Z', sample_count: 3,
+            numeric_summary: { cpu_usage_percent: 12 }, telemetry_quality: { state: 'fresh' },
+            series: [{
+                key: 'cpu_usage_percent', display: 'CPU Usage', unit: 'percent',
+                latest: 12, min: 0, max: 12, avg: 6, change_pct: 0, spike_count: 0,
+                points: [
+                    { timestamp: '2026-09-01T12:00:00Z', value: 0 },
+                    { timestamp: '2026-09-01T12:05:00Z', value: NaN },
+                    { timestamp: '2026-09-01T12:10:00Z', value: 12 },
+                    { timestamp: 'invalid', value: 999 },
+                ],
+            }],
+        });
+        renderWithClient(<MetricOverviewPanel />);
+
+        const cpu = await screen.findByRole('region', { name: 'CPU Usage' });
+        expect(within(cpu).getByText('2 observations · 1 missing value')).toBeInTheDocument();
+        expect(within(cpu).getByText('Range 0.0% – 12.0%')).toBeInTheDocument();
+        expect(within(cpu).queryByText(/NaN|999/)).not.toBeInTheDocument();
     });
 });

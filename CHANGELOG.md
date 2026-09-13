@@ -12,6 +12,7 @@
 - Added keyboard- and touch-accessible observation tables with unrounded values, explicit units/timezone, and textual anomaly/missing-value states.
 - Made detailed chart headers wrap, adapted time-axis density to card width, and kept observation rows unmounted until expanded.
 - Kept isolated observations visible on either side of missing-value gaps.
+- Applied gap markers to compact overview charts and separated missing-value counts from valid observations in their captions.
 
 ### Telemetry reliability
 

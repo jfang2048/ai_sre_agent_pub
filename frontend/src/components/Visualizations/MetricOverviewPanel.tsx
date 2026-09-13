@@ -201,6 +201,7 @@ export default function MetricOverviewPanel() {
                     const Icon = card.icon;
                     const points = prepareChartPoints(card.series?.points ?? []);
                     const observations = points.filter(point => point.value !== null);
+                    const missingCount = points.length - observations.length;
                     const values = observations.map(point => point.value as number);
 
                     return (
@@ -255,7 +256,7 @@ export default function MetricOverviewPanel() {
                                                 stroke={card.color}
                                                 strokeWidth={2}
                                                 fill={`url(#overview-${card.key})`}
-                                                dot={observations.length === 1 ? { r: 3, fill: card.color, strokeWidth: 0 } : false}
+                                                dot={observations.length === 1 || missingCount > 0 ? { r: 3, fill: card.color, strokeWidth: 0 } : false}
                                                 isAnimationActive={false}
                                                 connectNulls={false}
                                             />
@@ -265,16 +266,23 @@ export default function MetricOverviewPanel() {
                                     <div className="h-full flex items-center text-xs text-muted-foreground">Awaiting trend samples...</div>
                                 )}
                             </div>
-                            {observations.length === 1 && (
-                                <figcaption className="text-xs text-muted-foreground space-y-1">
-                                    <div>{formatChartTime(observations[0].timestamp)}</div>
-                                    <div>Single observation · trend unavailable</div>
-                                </figcaption>
-                            )}
-                            {observations.length > 1 && (
+                            {points.length > 0 && (
                                 <figcaption className="space-y-1 text-xs text-muted-foreground tabular-nums">
-                                    <div className="flex justify-between gap-2"><span>{formatChartTime(observations[0].timestamp)}</span><span>{formatChartTime(observations[observations.length - 1].timestamp)}</span></div>
-                                    <div>Range {formatMetricByUnit(Math.min(...values), card.unit)} – {formatMetricByUnit(Math.max(...values), card.unit)}</div>
+                                    {observations.length === 1 && (
+                                        <>
+                                            <div>{formatChartTime(observations[0].timestamp)}</div>
+                                            <div>Single observation · trend unavailable</div>
+                                        </>
+                                    )}
+                                    {observations.length > 1 && (
+                                        <>
+                                            <div className="flex justify-between gap-2"><span>{formatChartTime(observations[0].timestamp)}</span><span>{formatChartTime(observations[observations.length - 1].timestamp)}</span></div>
+                                            <div>Range {formatMetricByUnit(Math.min(...values), card.unit)} – {formatMetricByUnit(Math.max(...values), card.unit)}</div>
+                                        </>
+                                    )}
+                                    {missingCount > 0 && (
+                                        <div>{observations.length} {observations.length === 1 ? 'observation' : 'observations'} · {missingCount} missing {missingCount === 1 ? 'value' : 'values'}</div>
+                                    )}
                                 </figcaption>
                             )}
                             </figure>
