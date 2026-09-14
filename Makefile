@@ -14,7 +14,7 @@
         run run-collector run-controller run-both run-multinode \
         rag-status rag-query rag-index rag-rebuild rag-update rag-demo \
         test test-controller test-agent-workflow test-agent-replay test-all test-cover test-race test-stability test-screenshot-tools test-publish-privacy test-dataset-fetch bench \
-        eval-fast eval-regression eval-benchmark \
+        eval-fast eval-regression eval-benchmark eval-system-fast eval-system-regression eval-system-benchmark eval-release eval-baseline eval-report \
         predictive-test predictive-bench low-overhead-benchmark chaos-test \
         fmt fmt-check vet lint harness-boundary-check ci verify-version verify-readme-screenshots capture-keys validate-manifests \
         gpu-platform-validate gpu-platform-smoke gpu-platform-evidence-template \
@@ -274,6 +274,46 @@ eval-regression:
 eval-benchmark:
 	@mkdir -p $(GO_CACHE)
 	@$(GO) -C backend run ./cmd/evalctl -scope benchmark -format text
+
+## eval-system-fast: Run the evaluation v2 system benchmark (fast scope, 1 trial/case)
+eval-system-fast:
+	@mkdir -p $(GO_CACHE)
+	@$(GO) -C backend run ./cmd/evalctl -system-perf-v2 -scope fast -format table
+
+## eval-system-regression: Run the evaluation v2 system benchmark (regression scope, 3 trials/case)
+eval-system-regression:
+	@mkdir -p $(GO_CACHE)
+	@$(GO) -C backend run ./cmd/evalctl -system-perf-v2 -scope regression -format table
+
+## eval-system-benchmark: Run the full v2 benchmark (5 descriptive replays/case; seeded case bootstrap)
+eval-system-benchmark:
+	@mkdir -p $(GO_CACHE)
+	@$(GO) -C backend run ./cmd/evalctl -system-perf-v2 -scope benchmark -trials 5 -seed 42 -format table
+
+## eval-release: Run both component-level and end-to-end regression gates
+eval-release: eval-regression eval-system-regression
+
+## eval-baseline: Save the latest evaluation v2 report as the comparison baseline
+eval-baseline:
+	@mkdir -p data/eval/baselines
+	@latest=$$(cat data/eval/reports/latest.txt 2>/dev/null); \
+	if [ -z "$$latest" ] || [ ! -f "$$latest/report.json" ]; then \
+		echo "no v2 report found; run make eval-system-benchmark first"; exit 1; \
+	fi; \
+	cp "$$latest/report.json" data/eval/baselines/baseline.json; \
+	echo "baseline saved to data/eval/baselines/baseline.json"
+
+## eval-report: Regenerate figures from the latest evaluation v2 report (requires matplotlib)
+eval-report:
+	@latest=$$(cat data/eval/reports/latest.txt 2>/dev/null); \
+	if [ -z "$$latest" ] || [ ! -f "$$latest/report.json" ]; then \
+		echo "no latest v2 report found; run make eval-system-benchmark first"; exit 1; \
+	fi; \
+	python3 -c 'import matplotlib' >/dev/null 2>&1 || { \
+		echo "matplotlib is required; install it with: python3 -m pip install matplotlib"; exit 1; \
+	}; \
+	python3 scripts/evaluation/render_report.py "$$latest/report.json" "$$latest/figures"; \
+	echo "figures regenerated in $$latest/figures"
 
 ## predictive-test: Run predictive controller and agent tests
 predictive-test:

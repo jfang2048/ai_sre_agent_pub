@@ -1,0 +1,134 @@
+name: evaluation
+
+# Layered evaluation CI: PRs run evaluator unit tests plus a small fast
+# deterministic eval; pushes to main/release branches run the regression
+# scope; the full benchmark is manual/scheduled only. No job requires an LLM
+# API key — LLM-as-a-judge is never part of these gates.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'v*'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 6' # weekly
+
+jobs:
+  evaluator-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run evaluator unit tests
+        run: go -C backend test ./internal/controller/evaluation/... ./internal/controller/eval/... -count=1
+
+  fast-eval:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run fast retrieval and anomaly evaluation
+        run: go -C backend run ./cmd/evalctl -scope fast -format text
+
+      - name: Run fast deterministic evaluation v2 (subset)
+        run: |
+          go -C backend run ./cmd/evalctl -system-perf-v2 -scope fast \
+            -system-perf-cases memory_leak_diagnose,disk_latency_diagnose,cpu_contention_diagnose,memory_pressure_detect,healthy_baseline_noop \
+            -format table
+
+  regression-eval:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run retrieval and anomaly regression evaluation
+        run: go -C backend run ./cmd/evalctl -scope regression -format text
+
+      - name: Run regression evaluation v2
+        run: go -C backend run ./cmd/evalctl -system-perf-v2 -scope regression -trials 3 -seed 42 -format table
+
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evaluation-v2-report
+          path: |
+            data/eval/system_performance/*/report.json
+            data/eval/system_performance/*/summary.md
+            data/eval/system_performance/*/metrics.csv
+            data/eval/system_performance/*/cases.csv
+            data/eval/system_performance/*/failure_modes.csv
+          if-no-files-found: ignore
+
+  benchmark:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Python (figures)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install matplotlib
+        run: python -m pip install --upgrade pip && python -m pip install matplotlib
+
+      - name: Run full retrieval and anomaly benchmark
+        run: go -C backend run ./cmd/evalctl -scope benchmark -format text
+
+      - name: Run full benchmark (evaluation v2, 5 trials/case)
+        run: go -C backend run ./cmd/evalctl -system-perf-v2 -scope benchmark -trials 5 -seed 42 -include-trials -format table
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evaluation-v2-benchmark
+          path: |
+            data/eval/system_performance/*/report.json
+            data/eval/system_performance/*/summary.md
+            data/eval/system_performance/*/metrics.csv
+            data/eval/system_performance/*/cases.csv
+            data/eval/system_performance/*/failure_modes.csv
+            data/eval/system_performance/*/figures/
+          if-no-files-found: ignore

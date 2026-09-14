@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -19,15 +20,46 @@ func main() {
 		judgeLLM                  = flag.Bool("judge-llm", false, "grade anomaly explanations with the configured LLM provider")
 		judgeLimit                = flag.Int("judge-limit", 0, "limit the number of anomaly cases sent to the LLM judge; 0 means all")
 		judgeBatch                = flag.Int("judge-batch-size", 5, "number of anomaly cases to grade per LLM judge call")
-		systemPerf                = flag.Bool("system-perf", false, "run the end-to-end multi-agent system performance evaluator")
+		systemPerf                = flag.Bool("system-perf", false, "run the end-to-end multi-agent system performance evaluator (v1)")
 		comparePath               = flag.String("compare", "", "compare the current system performance report against a saved baseline JSON report")
 		systemPerfVariant         = flag.String("variant", "", "optional label for the current system-performance configuration")
 		systemPerfCases           = flag.String("system-perf-cases", "", "optional comma-separated list of system-performance case ids to run")
 		systemPerfReplayRuns      = flag.Int("system-perf-replay-runs", 2, "number of repeated runs per system-performance case")
 		systemPerfMessageProtocol = flag.String("system-perf-message-protocol", "default", "message protocol mode for system-perf: default, on, off")
 		systemPerfValidationAgent = flag.String("system-perf-validation-agent", "default", "validation agent mode for system-perf: default, on, off")
+
+		systemPerfV2             = flag.Bool("system-perf-v2", false, "run the evaluation v2 system benchmark (task-success-first scorecard)")
+		systemPerfV2Trials       = flag.Int("trials", 0, "number of repeated trials per evaluation v2 case (fast=1, regression=3, benchmark=5 by default)")
+		systemPerfV2Seed         = flag.Int64("seed", 42, "random seed for confidence-interval bootstrapping")
+		systemPerfV2Mode         = flag.String("runtime-mode", "legacy_deterministic", "runtime mode for evaluation v2: legacy_deterministic, hybrid_adaptive, full_adaptive")
+		systemPerfV2Report       = flag.String("report-dir", "", "override the evaluation v2 report output directory")
+		systemPerfV2TrialsDetail = flag.Bool("include-trials", false, "persist per-trial detail in the evaluation v2 report JSON")
 	)
 	flag.Parse()
+
+	if *systemPerfV2 {
+		report, err := evaluation.RunSystemPerformanceV2(context.Background(), evaluation.SystemPerformanceV2Options{
+			Scope:         eval.Scope(*scope),
+			RepoRoot:      *repoRoot,
+			Variant:       *systemPerfVariant,
+			RuntimeMode:   *systemPerfV2Mode,
+			ComparePath:   *comparePath,
+			Trials:        *systemPerfV2Trials,
+			Seed:          *systemPerfV2Seed,
+			CaseIDs:       splitCSV(*systemPerfCases),
+			ReportDir:     *systemPerfV2Report,
+			IncludeTrials: *systemPerfV2TrialsDetail,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "system performance v2 eval failed: %v\n", err)
+			os.Exit(1)
+		}
+		renderSystemPerfV2(report, *format)
+		if report.Verdict != "PASS" {
+			os.Exit(2)
+		}
+		return
+	}
 
 	if *systemPerf {
 		report, err := evaluation.RunSystemPerformance(context.Background(), evaluation.SystemPerformanceOptions{
@@ -87,6 +119,23 @@ func main() {
 
 	if !report.Passed {
 		os.Exit(2)
+	}
+}
+
+// renderSystemPerfV2 prints the evaluation v2 report in the requested format.
+func renderSystemPerfV2(report evaluation.SystemPerformanceReportV2, format string) {
+	switch format {
+	case "json":
+		raw, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "encode system performance v2 report: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(raw))
+	case "table":
+		fmt.Println(evaluation.RenderV2Table(report))
+	default:
+		fmt.Println(evaluation.RenderV2Text(report))
 	}
 }
 

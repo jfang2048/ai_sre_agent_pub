@@ -355,6 +355,33 @@ The governed loop is:
 
 The tool catalog is code-owned in `backend/internal/controller/agentcore/workflow_tool_contracts.go` and related contract tests.
 
+## Evaluation
+
+The evaluation v2 benchmark answers "is the agent actually good?" with a
+task-success-first scorecard, per-task-type success definitions, entity-level
+RCA scoring, safety hard gates, MAST-style failure modes, repeated trials with
+confidence intervals, and baseline comparison:
+
+```bash
+make eval-system-fast       # fast gate: 8 cases, 1 trial each
+make eval-system-benchmark  # full: 16 cases, 5 descriptive replays; seeded case bootstrap
+make eval-release           # retrieval/anomaly + end-to-end regression gates
+make eval-report            # regenerate PNG figures from the latest run (requires matplotlib)
+```
+
+Each run writes `report.json`, `summary.md`, `metrics.csv`, `cases.csv`,
+`failure_modes.csv` and `figures/` under `data/eval/system_performance/<run-id>/`.
+JSON, Markdown, and CSV artifacts do not depend on Python. Figure rendering is
+best-effort during evaluation; explicitly running `make eval-report` requires
+Python 3 with matplotlib (`python3 -m pip install matplotlib`) and fails with a
+clear message when that dependency is unavailable.
+
+Ground truth lives in `eval_data/system_perf_cases_v2.json` and is independent
+of agent output. The release gate also runs the component-level retrieval and
+anomaly suites, so end-to-end task success cannot hide a retrieval or detection
+regression. Details: [`docs/evaluation.md`](docs/evaluation.md) and
+[`docs/evaluation-gap-analysis.md`](docs/evaluation-gap-analysis.md).
+
 ## Deployment boundary
 
 This repo does not assume one controller forever.

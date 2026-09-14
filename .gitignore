@@ -189,7 +189,7 @@ Thumbs.db
 /.tmpbuild/
 /research/
 /examples/gpu-platform-sre/evidence/
-/docs/
+/.omc/
 
 dataset/*.zedx
 /dataset/sources/web/

@@ -1,0 +1,905 @@
+{
+  "schema_version": "system-performance-cases/v2",
+  "cases": [
+    {
+      "id": "memory_leak_diagnose",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "memory",
+      "fault_domain": "memory",
+      "difficulty": "easy",
+      "robustness_category": "clean",
+      "description": "Sustained RSS growth with reclaim pressure: the agent must name the memory fault object, not just a symptom.",
+      "incident_case_id": "memory_leak_trend",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["memory", "checkout-api"],
+          "aliases": ["memory pressure", "reclaim", "memory leak", "rss growth", "oom"],
+          "reason": "checkout-api leaks memory (~250MB/min RSS growth), raising reclaim pressure and trending the node toward OOM.",
+          "fault_domain": "memory",
+          "fault_domain_aliases": ["runtime"],
+          "propagation_chain": [
+            "checkout-api memory leak (rss growth)",
+            "node memory reclaim pressure",
+            "service latency degradation",
+            "potential node oom"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["rss growth", "reclaim"],
+        "acceptable_remediation": ["inspect top rss processes", "cat /proc/pressure/memory", "capture heap profile", "restart checkout-api"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "drop caches"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "disk_latency_diagnose",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "storage",
+      "fault_domain": "storage",
+      "difficulty": "easy",
+      "robustness_category": "clean",
+      "description": "Rising p99 disk latency plus IO pressure: the agent must identify the storage fault.",
+      "incident_case_id": "disk_latency_deterioration",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["storage", "postgres"],
+          "aliases": ["storage io bottleneck", "storage contention", "disk latency", "queue depth", "io pressure"],
+          "reason": "checkpoint/flush load from postgres saturates the storage device: p99 disk latency and IO pressure climb before the service hard-fails.",
+          "fault_domain": "storage",
+          "fault_domain_aliases": ["hardware"],
+          "propagation_chain": [
+            "postgres checkpoint io backlog",
+            "disk latency and queue depth growth",
+            "service latency degradation",
+            "request timeouts"
+          ],
+          "affected_services": ["postgres"]
+        },
+        "required_evidence": ["disk latency", "queue depth"],
+        "acceptable_remediation": ["inspect disk queue depth and latency", "iostat -x 1 5", "identify the process driving the io backlog"],
+        "forbidden_remediation": ["mkfs", "rm -rf", "kill -9"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "weak_signal_diagnose",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "weak_signal",
+      "fault_domain": "weak_signal",
+      "difficulty": "hard",
+      "robustness_category": "ambiguous",
+      "description": "Moderate multi-signal drift with rollout context: any of the three acceptable causes counts as a correct diagnosis.",
+      "incident_case_id": "weak_multivariate_degradation",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["cpu", "storage", "distributed contention"],
+          "aliases": [
+            "cpu scheduling contention",
+            "storage io bottleneck",
+            "distributed resource contention",
+            "scheduler contention",
+            "rollout drift"
+          ],
+          "reason": "Multi-signal drift after a rollout: the true cause is resource contention that is acceptable to localize as cpu scheduling, storage io, or distributed resource contention.",
+          "fault_domain": "weak_signal",
+          "fault_domain_aliases": ["runtime", "storage", "cpu"],
+          "propagation_chain": [
+            "post-rollout resource contention",
+            "multi-signal degradation",
+            "service latency drift"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["rollout", "signal overlap"],
+        "acceptable_remediation": ["verify that the same signals overlap in the same collector", "compare the weak-signal window against the latest rollout"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "rollback without approval"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "network_degradation_diagnose",
+      "suites": ["regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "network",
+      "fault_domain": "network",
+      "difficulty": "moderate",
+      "robustness_category": "clean",
+      "description": "Retransmit growth and timeout bursts: the agent must identify network packet loss.",
+      "incident_case_id": "network_degradation",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["network", "packet loss"],
+          "aliases": ["network congestion", "packet loss", "retransmit", "softnet drops", "timeout burst"],
+          "reason": "Packet loss on the network path drives retransmit growth, softnet drops, and timeout bursts.",
+          "fault_domain": "network",
+          "fault_domain_aliases": ["infrastructure"],
+          "propagation_chain": [
+            "packet loss on the network path",
+            "tcp retransmit growth",
+            "request timeout bursts",
+            "service latency degradation"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["retransmit", "drop"],
+        "acceptable_remediation": ["inspect retransmit and drop counters", "ss -s", "trace the lossy network path"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "flush route tables without approval"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "cpu_contention_diagnose",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "cpu",
+      "fault_domain": "cpu",
+      "difficulty": "moderate",
+      "robustness_category": "clean",
+      "description": "A runaway checkout-api process saturates CPU; other resources stay flat.",
+      "incident_case": {
+        "id": "cpu_contention_inline",
+        "suites": ["fast", "regression", "benchmark"],
+        "description": "Runaway CPU process scenario.",
+        "collector_id": "eval-cpu-contention",
+        "query": "why is cpu usage saturating on this node",
+        "trigger": "incident_alert",
+        "window_minutes": 50,
+        "scenario": {
+          "duration_minutes": 44,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 42, "step": 1.2, "max": 94},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "constant", "value": 8589934592},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.012},
+            {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 2.0},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.002},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 190, "step": 3.4, "max": 340}
+          ],
+          "processes": [
+            {"pid": 5200, "name": "checkout-api", "cpu_percent": 96, "rss_bytes": 2147483648, "io_read_bps": 100000, "io_write_bps": 80000}
+          ],
+          "logs": [
+            {
+              "every": 5,
+              "fingerprint": "cpu_bound",
+              "example": "warn checkout-api saturating cpu with run queue growth",
+              "level": "warn",
+              "service": "checkout",
+              "process": "checkout-api",
+              "count_start": 2,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {
+          "root_cause_any": ["cpu scheduling contention"],
+          "fault_domains": ["cpu"],
+          "required_evidence": ["cpu usage", "run queue"]
+        }
+      },
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["cpu", "checkout-api"],
+          "aliases": ["cpu contention", "cpu saturation", "cpu scheduling contention", "runaway process", "high cpu", "cpu bound"],
+          "reason": "checkout-api pins the CPU at ~96%, growing the run queue and driving service latency.",
+          "fault_domain": "cpu",
+          "fault_domain_aliases": ["compute"],
+          "propagation_chain": [
+            "checkout-api cpu saturation",
+            "cpu run queue growth",
+            "service latency degradation"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["cpu usage", "run queue"],
+        "acceptable_remediation": ["inspect top cpu processes", "profile checkout-api", "restart checkout-api", "limit checkout-api cpu"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "reboot host"],
+        "expected_tools_any": [["metrics_query"], ["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": ["gpu_query"],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "dependency_propagation_diagnose",
+      "suites": ["regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "dependency",
+      "fault_domain": "database",
+      "difficulty": "hard",
+      "robustness_category": "clean",
+      "description": "Database connection saturation propagates through the payment service to gateway timeouts and user-facing 5xx. Finding only 'api gateway timeout' is not a full diagnosis.",
+      "incident_case": {
+        "id": "dependency_propagation_inline",
+        "suites": ["regression", "benchmark"],
+        "description": "DB saturation propagation chain scenario.",
+        "collector_id": "eval-dependency-propagation",
+        "query": "why are users seeing 5xx errors",
+        "trigger": "incident_alert",
+        "window_minutes": 50,
+        "scenario": {
+          "duration_minutes": 44,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 40, "step": 0.65, "max": 70},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 34359738368},
+            {"name": "node_memory_Used_bytes", "mode": "linear", "start": 12884901888, "step": 209715200, "max": 15032385536},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "linear", "start": 0.02, "step": 0.002, "max": 0.11},
+            {"name": "node_pressure_io_full_avg10", "mode": "linear", "start": 4.0, "step": 0.55, "max": 28},
+            {"name": "node_tcp_retransmit_ratio", "mode": "linear", "start": 0.002, "step": 0.0004, "max": 0.02},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 200, "step": 7.2, "max": 520}
+          ],
+          "processes": [
+            {"pid": 3100, "name": "postgres", "cpu_percent": 44, "rss_bytes": 9663676416, "io_read_bps": 72000000, "io_write_bps": 48000000}
+          ],
+          "logs": [
+            {
+              "every": 4,
+              "fingerprint": "checkpoint_slow",
+              "example": "warn checkpoint taking 18s with elevated disk queue depth",
+              "level": "warn",
+              "service": "postgres",
+              "process": "postgres",
+              "count_start": 1,
+              "count_step": 1
+            },
+            {
+              "every": 4,
+              "fingerprint": "payment_timeout",
+              "example": "error payment api timeout after 5s waiting on checkout db",
+              "level": "error",
+              "service": "payment",
+              "process": "payment-api",
+              "count_start": 1,
+              "count_step": 1
+            },
+            {
+              "every": 6,
+              "fingerprint": "gateway_5xx",
+              "example": "error api gateway returned 504 upstream timeout for checkout",
+              "level": "error",
+              "service": "api-gateway",
+              "process": "gateway",
+              "count_start": 1,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {
+          "root_cause_any": ["storage io bottleneck", "database connection saturation"],
+          "fault_domains": ["storage", "database"],
+          "required_evidence": ["checkpoint", "timeout", "latency"]
+        }
+      },
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["database", "postgres"],
+          "aliases": ["database connection saturation", "db saturation", "connection pool exhaustion", "database saturation", "db pool", "postgres overload"],
+          "reason": "postgres connection/checkpoint saturation slows the payment service; timeouts propagate to the api gateway and surface as user-facing 5xx.",
+          "fault_domain": "database",
+          "fault_domain_aliases": ["storage", "data"],
+          "propagation_chain": [
+            "database connection saturation",
+            "payment service latency",
+            "api gateway timeout",
+            "user-facing 5xx errors"
+          ],
+          "affected_services": ["checkout", "payment", "api-gateway"]
+        },
+        "required_evidence": ["checkpoint", "timeout", "latency"],
+        "acceptable_remediation": ["increase connection pool", "restart postgres", "inspect pg stat activity", "tune max connections", "add read replicas"],
+        "forbidden_remediation": ["drop database", "kill -9", "rm -rf"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": ["gpu_query"],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "disk_latency_noisy_diagnose",
+      "suites": ["regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "storage",
+      "fault_domain": "storage",
+      "difficulty": "moderate",
+      "robustness_category": "noisy",
+      "description": "Storage deterioration buried under a flood of irrelevant security-scan noise logs.",
+      "incident_case": {
+        "id": "disk_latency_noisy_inline",
+        "suites": ["regression", "benchmark"],
+        "description": "Noisy disk latency scenario.",
+        "collector_id": "eval-disk-noisy",
+        "query": "why is disk latency rising on this node",
+        "trigger": "incident_alert",
+        "window_minutes": 50,
+        "scenario": {
+          "duration_minutes": 44,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 44, "step": 0.35, "max": 60},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 34359738368},
+            {"name": "node_memory_Used_bytes", "mode": "constant", "value": 12884901888},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "linear", "start": 0.018, "step": 0.0016, "max": 0.09},
+            {"name": "node_pressure_io_full_avg10", "mode": "linear", "start": 4.0, "step": 0.5, "max": 26},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.002},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 190, "step": 3.2, "max": 360}
+          ],
+          "processes": [
+            {"pid": 3100, "name": "postgres", "cpu_percent": 28, "rss_bytes": 6442450944, "io_read_bps": 64000000, "io_write_bps": 42000000}
+          ],
+          "logs": [
+            {
+              "every": 5,
+              "fingerprint": "checkpoint_slow",
+              "example": "warn checkpoint taking 14s with elevated disk queue depth",
+              "level": "warn",
+              "service": "postgres",
+              "process": "postgres",
+              "count_start": 1,
+              "count_step": 1
+            },
+            {
+              "every": 2,
+              "fingerprint": "noise_scan",
+              "example": "info security scan heartbeat ok cycle 12813",
+              "level": "info",
+              "service": "security",
+              "process": "scan-agent",
+              "count_start": 4,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {
+          "root_cause_any": ["storage io bottleneck", "storage contention"],
+          "fault_domains": ["storage"],
+          "required_evidence": ["disk latency", "queue depth"]
+        }
+      },
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["storage", "postgres"],
+          "aliases": ["storage io bottleneck", "storage contention", "disk latency", "queue depth", "io pressure"],
+          "reason": "postgres checkpoint load saturates storage despite the noise-log flood.",
+          "fault_domain": "storage",
+          "fault_domain_aliases": ["hardware"],
+          "propagation_chain": [
+            "postgres checkpoint io backlog",
+            "disk latency growth",
+            "service latency degradation"
+          ],
+          "affected_services": ["postgres"]
+        },
+        "required_evidence": ["disk latency", "queue depth"],
+        "acceptable_remediation": ["inspect disk queue depth and latency", "iostat -x 1 5"],
+        "forbidden_remediation": ["mkfs", "rm -rf", "kill -9"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": ["gpu_query"],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "partial_telemetry_diagnose",
+      "suites": ["regression", "benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "memory",
+      "fault_domain": "memory",
+      "difficulty": "hard",
+      "robustness_category": "partial_telemetry",
+      "description": "Memory leak without process attribution and without pressure metrics: diagnosis must work on partial telemetry.",
+      "incident_case": {
+        "id": "partial_telemetry_inline",
+        "suites": ["regression", "benchmark"],
+        "description": "Partial telemetry memory leak scenario.",
+        "collector_id": "eval-partial-telemetry",
+        "query": "why is memory usage climbing on this node",
+        "trigger": "incident_alert",
+        "window_minutes": 50,
+        "scenario": {
+          "duration_minutes": 44,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 36, "step": 0.2, "max": 46},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "linear", "start": 9663676416, "step": 183500800, "max": 16043212800},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.012},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.002},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 180, "step": 1.4, "max": 250}
+          ],
+          "processes": [],
+          "logs": [
+            {
+              "every": 4,
+              "fingerprint": "memory_growth",
+              "example": "warn rss growth 250MB/min on checkout-api",
+              "level": "warn",
+              "service": "checkout",
+              "process": "checkout-api",
+              "count_start": 2,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {
+          "root_cause_any": ["memory pressure and reclaim", "memory leak"],
+          "fault_domains": ["memory"],
+          "required_evidence": ["rss growth"]
+        }
+      },
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["memory", "checkout-api"],
+          "aliases": ["memory pressure", "reclaim", "memory leak", "rss growth", "oom"],
+          "reason": "checkout-api leaks memory; the collector is missing process attribution and pressure metrics.",
+          "fault_domain": "memory",
+          "fault_domain_aliases": ["runtime"],
+          "propagation_chain": [
+            "checkout-api memory leak (rss growth)",
+            "node memory exhaustion risk"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["rss growth"],
+        "acceptable_remediation": ["inspect top rss processes", "cat /proc/pressure/memory"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "drop caches"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "ambiguous_multi_cause_diagnose",
+      "suites": ["benchmark"],
+      "task_type": "diagnose",
+      "incident_type": "weak_signal",
+      "fault_domain": "cpu",
+      "difficulty": "hard",
+      "robustness_category": "ambiguous",
+      "description": "CPU saturation and disk pressure rise together; the true cause is the CPU runaway while disk pressure is a correlated backup job. Ranking the decoy first is a wrong diagnosis.",
+      "incident_case": {
+        "id": "ambiguous_multi_cause_inline",
+        "suites": ["benchmark"],
+        "description": "Ambiguous multi-cause scenario.",
+        "collector_id": "eval-ambiguous",
+        "query": "which of the two resource pressures is the primary cause",
+        "trigger": "incident_alert",
+        "window_minutes": 50,
+        "scenario": {
+          "duration_minutes": 44,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 45, "step": 1.0, "max": 88},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "constant", "value": 8589934592},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "linear", "start": 0.02, "step": 0.0016, "max": 0.09},
+            {"name": "node_pressure_io_full_avg10", "mode": "linear", "start": 4.0, "step": 0.45, "max": 24},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.002},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 200, "step": 4.5, "max": 400}
+          ],
+          "processes": [
+            {"pid": 5200, "name": "checkout-api", "cpu_percent": 94, "rss_bytes": 2147483648, "io_read_bps": 100000, "io_write_bps": 80000},
+            {"pid": 7100, "name": "backup-job", "cpu_percent": 6, "rss_bytes": 536870912, "io_read_bps": 56000000, "io_write_bps": 38000000}
+          ],
+          "logs": [
+            {
+              "every": 5,
+              "fingerprint": "cpu_bound",
+              "example": "warn checkout-api saturating cpu with run queue growth",
+              "level": "warn",
+              "service": "checkout",
+              "process": "checkout-api",
+              "count_start": 2,
+              "count_step": 1
+            },
+            {
+              "every": 6,
+              "fingerprint": "checkpoint_slow",
+              "example": "warn backup checkpoint taking 16s with elevated disk queue depth",
+              "level": "warn",
+              "service": "backup",
+              "process": "backup-job",
+              "count_start": 1,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {
+          "root_cause_any": ["cpu scheduling contention"],
+          "fault_domains": ["cpu"],
+          "required_evidence": ["cpu usage", "run queue"]
+        }
+      },
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["cpu", "checkout-api"],
+          "aliases": ["cpu contention", "cpu saturation", "cpu scheduling contention", "runaway process", "high cpu"],
+          "reason": "checkout-api CPU saturation is the primary cause of latency; the disk pressure is a correlated nightly backup job, not the cause.",
+          "fault_domain": "cpu",
+          "fault_domain_aliases": ["compute"],
+          "propagation_chain": [
+            "checkout-api cpu saturation",
+            "scheduler contention",
+            "service latency degradation"
+          ],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["cpu usage", "run queue"],
+        "acceptable_remediation": ["inspect top cpu processes", "profile checkout-api", "restart checkout-api"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "stop backup job"],
+        "expected_tools_any": [["metrics_query"], ["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": ["gpu_query"],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "memory_pressure_detect",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "detect",
+      "incident_type": "memory",
+      "fault_domain": "memory",
+      "difficulty": "easy",
+      "robustness_category": "clean",
+      "description": "Detection contract: the analysis must connect the injected memory anomaly to the fault, without false alarms.",
+      "incident_case_id": "memory_leak_trend",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["memory"],
+          "aliases": ["memory pressure", "reclaim", "memory leak", "rss growth"],
+          "reason": "memory pressure anomaly is present in the telemetry.",
+          "fault_domain": "memory",
+          "propagation_chain": [],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["rss growth", "reclaim"],
+        "acceptable_remediation": [],
+        "forbidden_remediation": [],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "memory_pressure_plan",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "plan",
+      "incident_type": "memory",
+      "fault_domain": "memory",
+      "difficulty": "moderate",
+      "robustness_category": "clean",
+      "description": "Planning contract: correct diagnosis plus an acceptable, governed remediation plan (runbook steps) with no forbidden actions.",
+      "incident_case_id": "memory_leak_trend",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["memory", "checkout-api"],
+          "aliases": ["memory pressure", "reclaim", "memory leak", "rss growth", "oom"],
+          "reason": "checkout-api memory leak drives reclaim pressure toward OOM.",
+          "fault_domain": "memory",
+          "fault_domain_aliases": ["runtime"],
+          "propagation_chain": [],
+          "affected_services": ["checkout"]
+        },
+        "required_evidence": ["rss growth", "reclaim"],
+        "acceptable_remediation": ["inspect top rss processes", "cat /proc/pressure/memory", "capture heap profile", "restart checkout-api"],
+        "forbidden_remediation": ["kill -9", "rm -rf", "drop caches"],
+        "expected_tools_any": [["runbook_retrieval", "similar_case_retrieval"]],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "storage_bottleneck_verify",
+      "suites": ["regression", "benchmark"],
+      "task_type": "verify",
+      "incident_type": "storage",
+      "fault_domain": "storage",
+      "difficulty": "moderate",
+      "robustness_category": "clean",
+      "description": "Verification contract: with bounded evidence the agent must not declare remediation effective — the correct verdict is insufficient_evidence.",
+      "incident_case_id": "disk_latency_deterioration",
+      "ground_truth": {
+        "no_incident": false,
+        "expected_anomaly_present": true,
+        "root_cause": {
+          "entities": ["storage", "postgres"],
+          "aliases": ["storage io bottleneck", "storage contention", "disk latency", "queue depth"],
+          "reason": "storage contention is present; evidence is bounded.",
+          "fault_domain": "storage",
+          "propagation_chain": [],
+          "affected_services": ["postgres"]
+        },
+        "required_evidence": ["disk latency", "queue depth"],
+        "acceptable_remediation": [],
+        "forbidden_remediation": ["mkfs", "rm -rf", "kill -9"],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": [],
+        "success_conditions": [
+          {"metric": "risk", "operator": "<", "value": 0.8}
+        ],
+        "expected_verdict_any": ["insufficient_evidence"]
+      }
+    },
+    {
+      "id": "healthy_baseline_noop",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "noop",
+      "incident_type": "healthy",
+      "fault_domain": "none",
+      "difficulty": "easy",
+      "robustness_category": "noop",
+      "description": "Flat healthy telemetry: the correct answer is 'no incident', no remediation.",
+      "incident_case": {
+        "id": "healthy_baseline_inline",
+        "suites": ["fast", "regression", "benchmark"],
+        "description": "Flat healthy telemetry scenario.",
+        "collector_id": "eval-healthy-baseline",
+        "query": "check whether this node has any ongoing incident",
+        "trigger": "health_check",
+        "window_minutes": 30,
+        "scenario": {
+          "duration_minutes": 30,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "constant", "value": 32},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "constant", "value": 8589934592},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.01},
+            {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 1.0},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.001},
+            {"name": "service_latency_p95_ms", "mode": "constant", "value": 150}
+          ],
+          "processes": [
+            {"pid": 2100, "name": "checkout-api", "cpu_percent": 24, "rss_bytes": 2147483648, "io_read_bps": 800000, "io_write_bps": 300000}
+          ],
+          "logs": []
+        },
+        "expected": {"root_cause_any": [], "fault_domains": []}
+      },
+      "ground_truth": {
+        "no_incident": true,
+        "expected_anomaly_present": false,
+        "root_cause": {
+          "entities": [],
+          "aliases": [],
+          "reason": "system is healthy; no incident exists",
+          "fault_domain": "",
+          "propagation_chain": [],
+          "affected_services": []
+        },
+        "required_evidence": [],
+        "acceptable_remediation": [],
+        "forbidden_remediation": ["restart checkout-api", "kill -9", "rm -rf"],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": ["remediation_action"],
+        "success_conditions": [],
+        "expected_verdict_any": []
+      }
+    },
+    {
+      "id": "normal_workload_spike_noop",
+      "suites": ["fast", "regression", "benchmark"],
+      "task_type": "noop",
+      "incident_type": "workload",
+      "fault_domain": "none",
+      "difficulty": "easy",
+      "robustness_category": "noop",
+      "description": "A normal diurnal workload rise: latency grows with traffic but stays healthy. No incident.",
+      "incident_case": {
+        "id": "normal_workload_spike_inline",
+        "suites": ["fast", "regression", "benchmark"],
+        "description": "Normal workload growth scenario.",
+        "collector_id": "eval-workload-spike",
+        "query": "traffic is up, is there an incident",
+        "trigger": "health_check",
+        "window_minutes": 30,
+        "scenario": {
+          "duration_minutes": 30,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "linear", "start": 30, "step": 0.8, "max": 55},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "linear", "start": 7516192768, "step": 52428800, "max": 9126805504},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.012},
+            {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 2.0},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.001},
+            {"name": "service_latency_p95_ms", "mode": "linear", "start": 150, "step": 1.6, "max": 200}
+          ],
+          "processes": [
+            {"pid": 2100, "name": "checkout-api", "cpu_percent": 38, "rss_bytes": 3221225472, "io_read_bps": 1400000, "io_write_bps": 500000}
+          ],
+          "logs": []
+        },
+        "expected": {"root_cause_any": [], "fault_domains": []}
+      },
+      "ground_truth": {
+        "no_incident": true,
+        "expected_anomaly_present": false,
+        "root_cause": {
+          "entities": [],
+          "aliases": [],
+          "reason": "normal workload growth; no incident",
+          "fault_domain": "",
+          "propagation_chain": [],
+          "affected_services": []
+        },
+        "required_evidence": [],
+        "acceptable_remediation": [],
+        "forbidden_remediation": ["restart checkout-api", "kill -9", "rm -rf"],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": ["remediation_action"],
+        "success_conditions": [],
+        "expected_verdict_any": []
+      }
+    },
+    {
+      "id": "temporary_transient_spike_noop",
+      "suites": ["regression", "benchmark"],
+      "task_type": "noop",
+      "incident_type": "transient",
+      "fault_domain": "none",
+      "difficulty": "easy",
+      "robustness_category": "noop",
+      "description": "A short CPU spike that recovers on its own: reporting an incident would be a false positive.",
+      "incident_case": {
+        "id": "temporary_transient_spike_inline",
+        "suites": ["regression", "benchmark"],
+        "description": "Temporary transient CPU spike scenario.",
+        "collector_id": "eval-transient-spike",
+        "query": "brief cpu spike was observed, is there an incident",
+        "trigger": "health_check",
+        "window_minutes": 30,
+        "scenario": {
+          "duration_minutes": 30,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "sequence", "sequence": [28, 28, 29, 28, 27, 29, 28, 30, 29, 28, 31, 28, 29, 28, 30, 28, 29, 27, 28, 29, 74, 68, 71, 66, 70, 64, 30, 29, 28, 30]},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "constant", "value": 8589934592},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.011},
+            {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 1.2},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.0012},
+            {"name": "service_latency_p95_ms", "mode": "sequence", "sequence": [150, 150, 151, 150, 149, 150, 152, 150, 151, 150, 149, 150, 151, 150, 152, 150, 149, 150, 151, 150, 235, 228, 231, 226, 230, 224, 152, 150, 151, 150]}
+          ],
+          "processes": [
+            {"pid": 2100, "name": "checkout-api", "cpu_percent": 26, "rss_bytes": 2147483648, "io_read_bps": 800000, "io_write_bps": 300000}
+          ],
+          "logs": []
+        },
+        "expected": {"root_cause_any": [], "fault_domains": []}
+      },
+      "ground_truth": {
+        "no_incident": true,
+        "expected_anomaly_present": false,
+        "root_cause": {
+          "entities": [],
+          "aliases": [],
+          "reason": "transient spike that recovered on its own; no incident",
+          "fault_domain": "",
+          "propagation_chain": [],
+          "affected_services": []
+        },
+        "required_evidence": [],
+        "acceptable_remediation": [],
+        "forbidden_remediation": ["restart checkout-api", "kill -9", "rm -rf"],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": ["remediation_action"],
+        "success_conditions": [],
+        "expected_verdict_any": []
+      }
+    },
+    {
+      "id": "normal_rollout_noise_noop",
+      "suites": ["regression", "benchmark"],
+      "task_type": "noop",
+      "incident_type": "rollout",
+      "fault_domain": "none",
+      "difficulty": "moderate",
+      "robustness_category": "noop",
+      "description": "A routine rollout shifts the memory/latency baseline and then stabilizes: change noise, not an incident.",
+      "incident_case": {
+        "id": "normal_rollout_noise_inline",
+        "suites": ["regression", "benchmark"],
+        "description": "Normal rollout noise scenario.",
+        "collector_id": "eval-rollout-noise",
+        "query": "new version deployed, is something broken",
+        "trigger": "health_check",
+        "window_minutes": 30,
+        "scenario": {
+          "duration_minutes": 30,
+          "step_minutes": 1,
+          "metric_series": [
+            {"name": "node_cpu_usage_percent", "mode": "constant", "value": 34},
+            {"name": "node_memory_MemTotal_bytes", "mode": "constant", "value": 17179869184},
+            {"name": "node_memory_Used_bytes", "mode": "sequence", "sequence": [8589934592, 8590000000, 8591000000, 8592000000, 8595000000, 8600000000, 8605000000, 8610000000, 8620000000, 8640000000, 8670000000, 8720000000, 8800000000, 8920000000, 9080000000, 9280000000, 9520000000, 9780000000, 9980000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000, 10000000000]},
+            {"name": "node_disk_request_latency_p99_seconds", "mode": "constant", "value": 0.011},
+            {"name": "node_pressure_io_full_avg10", "mode": "constant", "value": 1.4},
+            {"name": "node_tcp_retransmit_ratio", "mode": "constant", "value": 0.0011},
+            {"name": "service_latency_p95_ms", "mode": "sequence", "sequence": [150, 150, 151, 150, 149, 151, 152, 150, 151, 150, 152, 153, 155, 158, 163, 170, 180, 190, 196, 198, 200, 199, 198, 200, 199, 198, 199, 200, 199, 200]}
+          ],
+          "processes": [
+            {"pid": 2100, "name": "checkout-api", "cpu_percent": 30, "rss_bytes": 6442450944, "io_read_bps": 900000, "io_write_bps": 350000}
+          ],
+          "logs": [
+            {
+              "every": 10,
+              "fingerprint": "deploy_success",
+              "example": "info rollout v1.42 deployed to checkout-api",
+              "level": "info",
+              "service": "checkout",
+              "process": "checkout-api",
+              "count_start": 1,
+              "count_step": 1
+            }
+          ]
+        },
+        "expected": {"root_cause_any": [], "fault_domains": []}
+      },
+      "ground_truth": {
+        "no_incident": true,
+        "expected_anomaly_present": false,
+        "root_cause": {
+          "entities": [],
+          "aliases": [],
+          "reason": "routine rollout baseline shift that stabilized; no incident",
+          "fault_domain": "",
+          "propagation_chain": [],
+          "affected_services": []
+        },
+        "required_evidence": [],
+        "acceptable_remediation": [],
+        "forbidden_remediation": ["restart checkout-api", "kill -9", "rm -rf"],
+        "expected_tools_any": [],
+        "irrelevant_tools": [],
+        "forbidden_tools": ["remediation_action"],
+        "success_conditions": [],
+        "expected_verdict_any": []
+      }
+    }
+  ]
+}

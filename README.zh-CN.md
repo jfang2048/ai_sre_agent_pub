@@ -396,6 +396,33 @@ dry-run 或 approval-gated，除非运维人员显式调整执行姿态。
 [`backend/internal/controller/agentcore/workflow_tool_contracts.go`](backend/internal/controller/agentcore/workflow_tool_contracts.go)
 及相关契约测试维护。
 
+## 评估
+
+evaluation v2 基准回答“这个 Agent 到底做得好不好”：以任务成功率为首要结果，
+按任务类型（detect / diagnose / plan / mitigate / verify / noop）定义成功，
+实体级 RCA 评分（precision / recall / F1 / 传播链）、安全硬门槛、
+MAST 风格失败模式分类、多次重复试验与置信区间、以及与基线的对比：
+
+```bash
+make eval-system-fast       # 快速门禁：8 个用例，每用例 1 次试验
+make eval-system-benchmark  # 完整基准：16 个用例，每例 5 次描述性重放；固定种子用于用例级 bootstrap
+make eval-release           # 检索/异常检测 + 端到端回归门禁
+make eval-report            # 从最近一次运行重新生成 PNG 图表（需要 matplotlib）
+```
+
+每次运行在 `data/eval/system_performance/<run-id>/` 下生成
+`report.json`、`summary.md`、`metrics.csv`、`cases.csv`、
+`failure_modes.csv` 和 `figures/`。JSON、Markdown 和 CSV 产物不依赖 Python；
+评估过程会尽力生成图表，但不会因缺少绘图环境而让基准失败。显式运行
+`make eval-report` 需要 Python 3 和 matplotlib
+（`python3 -m pip install matplotlib`）；依赖缺失时会给出明确错误并退出。
+
+Ground truth 独立定义于
+`eval_data/system_perf_cases_v2.json`，与 Agent 输出无关。发布门禁同时运行
+组件级检索与异常检测套件，防止端到端总分掩盖检索或检测退化。
+详见 [`docs/evaluation.md`](docs/evaluation.md) 与
+[`docs/evaluation-gap-analysis.md`](docs/evaluation-gap-analysis.md)。
+
 ## 部署边界
 
 仓库不假设永远只有一个 controller：

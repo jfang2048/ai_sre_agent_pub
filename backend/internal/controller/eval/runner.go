@@ -845,6 +845,9 @@ func applyWorkflowConfigOverride(cfg agentcore.WorkflowConfig, override Workflow
 	if override.ValidationReadOnlyOnly != nil {
 		cfg.ValidationReadOnlyOnly = *override.ValidationReadOnlyOnly
 	}
+	if override.RuntimeMode != nil {
+		cfg.RuntimeMode = *override.RuntimeMode
+	}
 	return cfg
 }
 

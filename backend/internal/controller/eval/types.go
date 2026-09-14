@@ -173,9 +173,10 @@ type RunOptions struct {
 // WorkflowConfigOverride allows evaluation callers to compare the same cases
 // under different runtime configurations without bypassing the real workflow path.
 type WorkflowConfigOverride struct {
-	AgentMessageProtocolEnabled *bool `json:"agent_message_protocol_enabled,omitempty"`
-	ValidationAgentEnabled      *bool `json:"validation_agent_enabled,omitempty"`
-	ValidationReadOnlyOnly      *bool `json:"validation_read_only_only,omitempty"`
+	AgentMessageProtocolEnabled *bool   `json:"agent_message_protocol_enabled,omitempty"`
+	ValidationAgentEnabled      *bool   `json:"validation_agent_enabled,omitempty"`
+	ValidationReadOnlyOnly      *bool   `json:"validation_read_only_only,omitempty"`
+	RuntimeMode                 *string `json:"runtime_mode,omitempty"`
 }
 
 // WorkflowCaseRunOptions controls one detailed workflow-case execution.
