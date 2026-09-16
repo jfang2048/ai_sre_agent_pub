@@ -14,7 +14,7 @@
         "require_message_protocol": true,
         "require_validation_agent": true,
         "expected_validation_mode": "bounded_react",
-        "expected_execution_category": "read_only_validation",
+        "expected_execution_category": "medium_term_remediation",
         "expect_dry_run": true
       },
       "expected_post_action_outcome": {
@@ -50,7 +50,7 @@
         "require_message_protocol": true,
         "require_validation_agent": true,
         "expected_validation_mode": "bounded_react",
-        "expected_execution_category": "read_only_validation",
+        "expected_execution_category": "medium_term_remediation",
         "expect_dry_run": true
       },
       "expected_post_action_outcome": {
@@ -122,7 +122,7 @@
         "require_message_protocol": true,
         "require_validation_agent": true,
         "expected_validation_mode": "bounded_react",
-        "expected_execution_category": "read_only_validation",
+        "expected_execution_category": "medium_term_remediation",
         "expect_dry_run": true
       },
       "expected_post_action_outcome": {

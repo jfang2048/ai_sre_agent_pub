@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	agentcore "github.com/jfang2048/ai_sre_agent_pub/internal/controller/agentcore"
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,46 @@ func TestGoldenEvaluationFastAnomalyConfusionMatrix(t *testing.T) {
 		require.NotEmpty(t, item.PredictedDisposition)
 		require.NotEmpty(t, item.Explanation)
 	}
+}
+
+func TestDurableVerificationCoverageExcludesProposalOnlySteps(t *testing.T) {
+	now := time.Now().UTC()
+
+	// A proposal-only guarded step was planned but never executed: with no
+	// executed steps at all, coverage must stay 1 instead of collapsing to 0.
+	proposalOnly := agentcore.DurableStepRecord{
+		StepID:      "guarded-step",
+		Tool:        agentcore.ToolRemediation,
+		Status:      "proposal_only",
+		CompletedAt: now,
+	}
+	require.Equal(t, 1.0, durableVerificationCoverage(&agentcore.DurableRun{
+		Steps: []agentcore.DurableStepRecord{proposalOnly},
+	}))
+
+	// Executed steps keep dominating the denominator: the proposal-only step
+	// must not dilute coverage of steps that were actually verified.
+	executed := agentcore.DurableStepRecord{
+		StepID:      "executed-step",
+		Tool:        agentcore.ToolDeploymentHistory,
+		Status:      "verified",
+		StartedAt:   now,
+		CompletedAt: now,
+		Verification: &agentcore.DurableVerificationRecord{
+			Outcome: "resolved",
+			Success: true,
+		},
+	}
+	unverified := agentcore.DurableStepRecord{
+		StepID:      "unverified-step",
+		Tool:        agentcore.ToolLogs,
+		Status:      "completed",
+		StartedAt:   now,
+		CompletedAt: now,
+	}
+	require.InDelta(t, 0.5, durableVerificationCoverage(&agentcore.DurableRun{
+		Steps: []agentcore.DurableStepRecord{executed, unverified, proposalOnly},
+	}), 0.000001)
 }
 
 func TestWorkflowEvaluationTracksTwoAgentArtifacts(t *testing.T) {

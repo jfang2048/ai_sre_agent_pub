@@ -887,6 +887,12 @@ func durableVerificationCoverage(run *agentcore.DurableRun) float64 {
 		if strings.TrimSpace(string(step.Tool)) == "" {
 			continue
 		}
+		// Proposal-only guarded steps were planned but never executed
+		// (dry-run or read-only safety decision), so there is no execution
+		// to verify and they stay out of the coverage denominator.
+		if step.Status == "proposal_only" {
+			continue
+		}
 		if step.StartedAt.IsZero() && step.CompletedAt.IsZero() {
 			continue
 		}
