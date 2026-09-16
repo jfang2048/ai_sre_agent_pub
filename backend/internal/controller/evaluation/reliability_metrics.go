@@ -138,6 +138,7 @@ func statisticBootstrapCI(values []float64, seed int64, resamples int, statistic
 	if resamples <= 0 {
 		resamples = 2000
 	}
+	// #nosec G404 -- reproducible bootstrap sampling is statistical, not security-sensitive.
 	rng := rand.New(rand.NewSource(seed))
 	sample := make([]float64, len(values))
 	estimates := make([]float64, 0, resamples)

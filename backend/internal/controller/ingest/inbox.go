@@ -488,7 +488,7 @@ func unmarshalReceipt(payload []byte) (Receipt, error) {
 
 func validateReceipt(receipt Receipt) error {
 	if receipt.SchemaVersion != 1 || receipt.Identity == "" || len(receipt.Identity) > 80 ||
-		receipt.State != ReceiptCommitted || receipt.Revision != 1 || receipt.AcceptedAt.IsZero() {
+		receipt.State != ReceiptCommitted || receipt.Revision != 1 || receipt.Attempts != 0 || receipt.AcceptedAt.IsZero() {
 		return fmt.Errorf("invalid initial ingest receipt")
 	}
 	if len(receipt.Payload) == 0 || len(receipt.Payload) > maxInboxPayloadBytes {

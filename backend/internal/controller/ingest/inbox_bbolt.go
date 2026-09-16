@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,8 +99,15 @@ func newBoltInbox(cfg InboxConfig, logger *zap.Logger) (*boltInbox, error) {
 			var bytes uint64
 			if err := tx.Bucket(bucketInboxReceipts).ForEach(func(_, payload []byte) error {
 				receipt, err := unmarshalReceipt(payload)
-				bytes += uint64(len(receipt.Payload))
-				return err
+				if err != nil {
+					return err
+				}
+				payloadBytes := uint64(len(receipt.Payload))
+				if payloadBytes > math.MaxUint64-bytes {
+					return fmt.Errorf("ingest inbox payload byte accounting overflow")
+				}
+				bytes += payloadBytes
+				return nil
 			}); err != nil {
 				return err
 			}
@@ -142,10 +150,13 @@ func (b *boltInbox) Commit(ctx context.Context, receipt Receipt) (Receipt, bool,
 			return nil
 		}
 		meta := tx.Bucket(bucketInboxMeta)
-		bytes := inboxBytes(meta) + uint64(len(receipt.Payload))
-		if bucket.Stats().KeyN >= b.cfg.MaxRecords || bytes > uint64(b.cfg.MaxBytes) {
+		maxBytes := uint64(b.cfg.MaxBytes) // #nosec G115 -- normalized config guarantees a positive int64
+		currentBytes := inboxBytes(meta)
+		payloadBytes := uint64(len(receipt.Payload))
+		if bucket.Stats().KeyN >= b.cfg.MaxRecords || currentBytes > maxBytes || payloadBytes > maxBytes-currentBytes {
 			return ErrInboxFull
 		}
+		bytes := currentBytes + payloadBytes
 		payload, err := marshalReceipt(receipt)
 		if err != nil {
 			return err
@@ -372,8 +383,12 @@ func (b *boltInbox) Prune(ctx context.Context, cutoff time.Time, maxRecords int)
 				return err
 			}
 			if receipt.State == ReceiptApplied && !receipt.AppliedAt.IsZero() && receipt.AppliedAt.Before(cutoff) {
+				payloadBytes := uint64(len(receipt.Payload))
+				if payloadBytes > bytes {
+					return fmt.Errorf("ingest inbox payload byte accounting underflow: tracked=%d receipt=%d", bytes, payloadBytes)
+				}
 				keys = append(keys, append([]byte(nil), key...))
-				bytes -= uint64(len(receipt.Payload))
+				bytes -= payloadBytes
 				if err := tx.Bucket(bucketInboxOrder).Delete([]byte(receiptOrder(receipt))); err != nil {
 					return err
 				}
@@ -420,7 +435,11 @@ func (b *boltInbox) Stats(ctx context.Context) InboxStats {
 		return stats
 	}
 	if err := b.db.View(func(tx *bolt.Tx) error {
-		stats.PayloadBytes = int64(inboxBytes(tx.Bucket(bucketInboxMeta)))
+		payloadBytes := inboxBytes(tx.Bucket(bucketInboxMeta))
+		if payloadBytes > math.MaxInt64 {
+			return fmt.Errorf("ingest inbox payload byte counter exceeds int64: %d", payloadBytes)
+		}
+		stats.PayloadBytes = int64(payloadBytes) // #nosec G115 -- upper bound checked above
 		stats.Records = int64(tx.Bucket(bucketInboxReceipts).Stats().KeyN)
 		stats.Pending = int64(tx.Bucket(bucketInboxPending).Stats().KeyN)
 		stats.Applied = stats.Records - stats.Pending

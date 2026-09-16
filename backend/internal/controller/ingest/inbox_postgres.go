@@ -117,6 +117,9 @@ func (p *postgresInbox) Commit(ctx context.Context, receipt Receipt) (Receipt, b
 	if err := validateReceipt(receipt); err != nil {
 		return Receipt{}, false, err
 	}
+	// validateReceipt fixes these initial counters at 1 and 0 respectively.
+	revision := int64(receipt.Revision) // #nosec G115 -- validated bounded value
+	attempts := int64(receipt.Attempts) // #nosec G115 -- validated bounded value
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Receipt{}, false, err
@@ -137,7 +140,7 @@ INSERT INTO telemetry_ingest_receipts (
 ON CONFLICT (identity) DO NOTHING`,
 		receipt.Identity, receipt.SchemaVersion, receipt.IdentityKind, receipt.CollectorID,
 		receipt.ProducerEpoch, strconv.FormatUint(receipt.ProducerSequence, 10), receipt.BatchID, receipt.AcceptedAt,
-		receipt.Payload, receipt.State, int64(receipt.Revision), int64(receipt.Attempts))
+		receipt.Payload, receipt.State, revision, attempts)
 	if err != nil {
 		p.recordError(err)
 		return Receipt{}, false, err
@@ -347,13 +350,16 @@ func (p *postgresInbox) Prune(ctx context.Context, cutoff time.Time, maxRecords 
 	if err != nil {
 		return 0, err
 	}
+	if removed < 0 || bytes < 0 {
+		return 0, fmt.Errorf("postgres inbox returned invalid prune totals: records=%d bytes=%d", removed, bytes)
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE telemetry_ingest_capacity SET records = records - $1, payload_bytes = payload_bytes - $2 WHERE singleton = 1`, removed, bytes); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	p.pruned.Add(uint64(removed))
+	p.pruned.Add(uint64(removed)) // #nosec G115 -- COUNT(*) is checked non-negative above
 	p.lastGCNano.Store(time.Now().UTC().UnixNano())
 	return int(removed), nil
 }

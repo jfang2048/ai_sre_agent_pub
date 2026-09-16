@@ -138,6 +138,12 @@ func TestInboxContract(t *testing.T) {
 	}
 }
 
+func TestValidateReceiptRejectsNonInitialAttemptCounter(t *testing.T) {
+	receipt := testReceipt(t, 1)
+	receipt.Attempts = 1
+	require.Error(t, validateReceipt(receipt))
+}
+
 func TestInboxBoundsPreserveDedupeWindow(t *testing.T) {
 	for _, backend := range []string{InboxBackendMemory, InboxBackendBbolt, InboxBackendPostgres} {
 		for _, bound := range []string{"records", "bytes"} {
