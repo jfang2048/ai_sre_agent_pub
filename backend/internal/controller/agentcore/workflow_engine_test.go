@@ -195,7 +195,7 @@ func TestBuildRCAWorkflowProducesStructuredHypothesesAndEvidence(t *testing.T) {
 	require.Equal(t, report.LatestAnalysisHandoffMessage.MessageID, report.Validation.SourceAnalysisMessage.MessageID)
 	require.Equal(t, report.LatestValidationRequestMessage.MessageID, report.Validation.SourceValidationRequest.MessageID)
 	require.Equal(t, report.LatestValidationResultMessage.MessageID, report.Validation.ResultMessage.MessageID)
-	require.True(t, strings.Contains(strings.ToLower(report.Validation.PostActionValidation.Summary), "no guarded remediation executed"))
+	require.True(t, strings.Contains(strings.ToLower(report.Validation.PostActionValidation.Summary), "no live state change was applied"))
 	require.Equal(t, report.AnalysisHandoff.CollectorID, report.CollectorID)
 	require.Equal(t, "bounded_react", report.AgentLoop.Mode)
 	require.NotNil(t, report.MessageHistoryArtifact)

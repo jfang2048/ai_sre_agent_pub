@@ -4861,34 +4861,6 @@ func buildRCARecommendations(state *workflowState) []WorkflowRecommendation {
 			state.retrievalEvidenceIDs,
 		))
 	}
-	for i, hit := range state.retrievedCases {
-		if i >= 3 {
-			break
-		}
-		checks := appendKnowledgeChecks(
-			[]string{"compare the top hypothesis with the retrieved likely causes", "confirm whether the same trigger conditions exist in the current incident"},
-			hit,
-			2,
-			1,
-		)
-		recs = append(recs, recommendationFromFields(
-			fmt.Sprintf("rca-case-%d", i+1),
-			"immediate_investigation",
-			"medium",
-			fmt.Sprintf("Compare the incident against similar case: %s", firstNonEmpty(hit.Title, hit.SourcePath)),
-			fmt.Sprintf("%s [%s] %s", hit.SourcePath, hit.EvidenceID, truncateString(firstNonEmpty(strings.Join(hit.LikelyCauses, " · "), hit.Snippet), 220)),
-			"knowledge_base",
-			checks,
-			true, true, false, true,
-			"read-only knowledge review",
-			"",
-			"historical analogies can strengthen or disprove the leading root-cause hypothesis",
-			"improves operator next-step quality",
-			"low",
-			hit.Score,
-			[]string{hit.EvidenceID},
-		))
-	}
 	for i, hit := range state.retrievedRunbooks {
 		if i >= 2 {
 			break
@@ -4912,6 +4884,34 @@ func buildRCARecommendations(state *workflowState) []WorkflowRecommendation {
 			"",
 			"retrieved runbooks should become concrete remediation guidance only after the diagnosis is grounded",
 			"turns historical knowledge into actionable remediation without skipping verification",
+			"low",
+			hit.Score,
+			[]string{hit.EvidenceID},
+		))
+	}
+	for i, hit := range state.retrievedCases {
+		if i >= 3 {
+			break
+		}
+		checks := appendKnowledgeChecks(
+			[]string{"compare the top hypothesis with the retrieved likely causes", "confirm whether the same trigger conditions exist in the current incident"},
+			hit,
+			2,
+			1,
+		)
+		recs = append(recs, recommendationFromFields(
+			fmt.Sprintf("rca-case-%d", i+1),
+			"immediate_investigation",
+			"medium",
+			fmt.Sprintf("Compare the incident against similar case: %s", firstNonEmpty(hit.Title, hit.SourcePath)),
+			fmt.Sprintf("%s [%s] %s", hit.SourcePath, hit.EvidenceID, truncateString(firstNonEmpty(strings.Join(hit.LikelyCauses, " · "), hit.Snippet), 220)),
+			"knowledge_base",
+			checks,
+			true, true, false, true,
+			"read-only knowledge review",
+			"",
+			"historical analogies can strengthen or disprove the leading root-cause hypothesis",
+			"improves operator next-step quality",
 			"low",
 			hit.Score,
 			[]string{hit.EvidenceID},
@@ -5357,12 +5357,7 @@ func (e *WorkflowEngine) applyGuardedHumanEscalation(ctx context.Context, state 
 
 func (e *WorkflowEngine) stepFinalizeRCA(ctx context.Context, state *workflowState) error {
 	mergeLLMIntoState(state)
-	sort.Slice(state.hypotheses, func(i, j int) bool {
-		if state.hypotheses[i].Confidence == state.hypotheses[j].Confidence {
-			return state.hypotheses[i].Title < state.hypotheses[j].Title
-		}
-		return state.hypotheses[i].Confidence > state.hypotheses[j].Confidence
-	})
+	rankFinalHypotheses(state)
 	for i := range state.hypotheses {
 		state.hypotheses[i].Rank = i + 1
 	}

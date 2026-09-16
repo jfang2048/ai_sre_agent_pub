@@ -1250,6 +1250,11 @@ func (o *DurableOrchestrator) mutateRun(ctx context.Context, runID string, mutat
 
 func durableStepFromPlanStep(stage string, step AgentPlanStep) DurableStepRecord {
 	contract, _ := decodeValidationActionContract(step.Query["action_contract"])
+	if contract == nil {
+		// Guarded action plan steps carry the validated contract on the typed
+		// field; the query form is only present on remediation tool requests.
+		contract = step.ActionContract
+	}
 	return DurableStepRecord{
 		StepID:            step.ID,
 		Stage:             stage,
