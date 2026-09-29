@@ -15,7 +15,7 @@ hard safety gates that no average can dilute.
 ## Existing metric → verdict
 
 | existing metric | problem | keep / replace / redefine | new metric | reason |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | RootCauseTop1Rate / RootCauseTopKRate | substring match against a loose `expected_root_cause_any` list; natural-language only, no entities | keep (v1 compat); redefine in v2 | RootCauseEntityPrecision/Recall/F1, RootCauseEntityRecallAt1/3/5 | compare fault *objects* (database, process, disk), not sentences; ITBench-style fault localization |
 | HypothesisSupportCorrectness | counts validation verdicts, ignores whether hypotheses match ground truth | keep; redefine in v2 | RootCauseReasoningScore | 0 / 0.5 / 1 causal-reasoning scale: contradicts evidence / right direction incomplete / correct + evidence-supported |
 | ContradictionDetectionRate | only measures that contradictions were *detected*, not whether the final answer is consistent | keep | (feeds ReasoningScore) | contradiction is an input signal, not an outcome |
@@ -38,7 +38,7 @@ hard safety gates that no average can dilute.
 
 ## Score hierarchy v2
 
-```
+```text
 Level 1 (primary):  Task Success (per task_type: detect | diagnose | plan | mitigate | verify | noop)
 Level 2 (dimensions): Diagnosis Quality | Safety | Trajectory Quality | Efficiency | Reliability | Collaboration/Artifact
 Level 3 (diagnostics): failure modes, per-category stats, CIs, baseline comparison

@@ -22,7 +22,7 @@ This repository is a reusable platform slice rather than a single-purpose
 application. Seeded local data exists for development and UI validation only; it
 is not part of the public product boundary.
 
-中文：[`README.zh-CN.md`](README.zh-CN.md)
+中文：[项目导览与事故调查示例](README.zh-CN.md) · [评估指南](docs/evaluation.zh-CN.md)
 
 ## Platform artifact scope
 
@@ -45,6 +45,7 @@ git clone https://github.com/jfang2048/ai_sre_agent_pub.git
 cd ai_sre_agent_pub
 git switch v0.95
 
+npm -C frontend ci
 make build
 make test
 make run-both
@@ -53,6 +54,10 @@ make run-both
 The local stack serves the web UI and API at <http://127.0.0.1:8080/>. Press
 `Ctrl+C` to stop it. Run `make help` for focused build, evaluation, deployment,
 and security targets.
+
+The local runner builds the UI but does not install its dependencies; the
+`npm ci` step above is required on a fresh clone. Use the listen address printed
+at startup if it differs from the default.
 
 ## Unix design contract
 
@@ -243,6 +248,10 @@ The concrete schema is defined in `backend/internal/controller/agentcore/workflo
 ## Adaptive control and deterministic boundary
 
 Model output can propose evidence gaps, hypotheses, tool candidates, contradiction checks, query refinements, and stop-or-continue recommendations. It does not decide execution.
+
+Autonomous tool selection in the adaptive loop excludes state-changing tools.
+Remediation proposals use a separate governed execution path; changing runtime
+mode does not grant permission to modify production state.
 
 Execution is still gated by controller code:
 
