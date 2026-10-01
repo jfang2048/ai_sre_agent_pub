@@ -121,6 +121,20 @@
   background: hsl(var(--muted-foreground) / 0.7);
 }
 
+/* Occupancy is a measurement, not a green/red health verdict. */
+.inference-meter::-webkit-meter-bar {
+  background: hsl(var(--secondary));
+  border: 0;
+}
+
+.inference-meter::-webkit-meter-optimum-value {
+  background: hsl(var(--muted-foreground));
+}
+
+.inference-meter::-moz-meter-bar {
+  background: hsl(var(--muted-foreground));
+}
+
 /* Dashboard Grid Styles */
 .react-grid-item {
   transition: all 200ms ease;

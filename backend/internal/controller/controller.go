@@ -27,6 +27,7 @@ import (
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/analysis"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/gpuobs"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/incidents"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/inferenceobs"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/inventory"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/k8sview"
@@ -73,6 +74,7 @@ type Config struct {
 	Inventory     inventory.Config     `yaml:"inventory"`
 	Agent         ctragent.Config      `yaml:"agent"`
 	GPU           gpuobs.Config        `yaml:"gpu"`
+	Inference     inferenceobs.Config  `yaml:"inference"`
 	Incidents     incidents.Config     `yaml:"incidents"`
 	HA            HAConfig             `yaml:"ha"`
 }
@@ -100,6 +102,7 @@ func DefaultConfig() Config {
 		Inventory:      inventory.DefaultConfig(),
 		Agent:          ctragent.DefaultConfig(),
 		GPU:            gpuobs.DefaultConfig(),
+		Inference:      inferenceobs.DefaultConfig(),
 		Incidents:      incidents.DefaultConfig(),
 		HA:             DefaultHAConfig(),
 	}
@@ -166,6 +169,7 @@ type Controller struct {
 	timeseriesService    *timeseries.Service
 	logIndex             *logindex.Index
 	gpuStore             *gpuobs.Store
+	inferenceStore       *inferenceobs.Store
 	incidentOrchestrator *incidents.Orchestrator
 	incidentCoordinator  *incidents.Coordinator
 	grpcServer           *grpc.Server
@@ -906,6 +910,7 @@ func (c *Controller) registerHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/status", c.withCORS(c.handleStatus))
 	mux.HandleFunc("/api/v1/ha/status", c.withCORS(c.handleHAStatus))
 	c.registerIngestHandlers(mux)
+	mux.HandleFunc("/api/v1/inference/overview", c.withCORS(c.handleInferenceOverview))
 	if c.inventoryManager != nil {
 		c.registerInventoryHandlers(mux)
 	}

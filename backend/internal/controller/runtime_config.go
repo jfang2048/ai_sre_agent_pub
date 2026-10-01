@@ -227,6 +227,7 @@ func diffRestartRequiredFields(current, next Config) []string {
 	appendIfChanged("orchestration", reflect.DeepEqual(current.Orchestration, next.Orchestration))
 	appendIfChanged("kubernetes", reflect.DeepEqual(current.Kubernetes, next.Kubernetes))
 	appendIfChanged("gpu", reflect.DeepEqual(current.GPU, next.GPU))
+	appendIfChanged("inference", reflect.DeepEqual(current.Inference, next.Inference))
 	appendIfChanged("incidents", reflect.DeepEqual(current.Incidents, next.Incidents))
 	appendIfChanged("ha", reflect.DeepEqual(current.HA, next.HA))
 

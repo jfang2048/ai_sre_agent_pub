@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/gpuobs"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/inferenceobs"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/logindex"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/signalinsights"
@@ -437,6 +438,7 @@ func (c *Controller) initIngest() error {
 	if c.config.GPU.Enabled {
 		c.gpuStore = gpuobs.New(c.config.GPU)
 	}
+	c.inferenceStore = inferenceobs.New(c.config.Inference)
 	c.rebuildIngestServer()
 	return nil
 }
@@ -445,7 +447,7 @@ func (c *Controller) rebuildIngestServer() {
 	if c.ingestStore == nil {
 		return
 	}
-	processors := make([]ingest.Processor, 0, 3)
+	processors := make([]ingest.Processor, 0, 4)
 	if c.analysisExt != nil && c.analysisExt.engine != nil {
 		if processor := newAnalysisIngestProcessor(c.analysisExt.engine); processor != nil {
 			processors = append(processors, processor)
@@ -456,6 +458,9 @@ func (c *Controller) rebuildIngestServer() {
 	}
 	if c.gpuStore != nil {
 		processors = append(processors, c.gpuStore)
+	}
+	if c.inferenceStore != nil {
+		processors = append(processors, c.inferenceStore)
 	}
 	c.ingestServer = ingest.NewServerWithInbox(c.ingestStore, c.ingestInbox, c.logger, processors...)
 	c.ingestServer.SetInboxPolicy(c.config.Ingest.Inbox)

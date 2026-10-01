@@ -96,6 +96,7 @@ type Collector struct {
 	protection      *protectionGovernor
 	securityAuditor *collectorSecurityAuditor
 	auxState        auxiliaryCollectionState
+	inferenceState  inferenceCollectionState
 	processState    processPayloadSuppressionState
 	lowChurnState   lowChurnSuppressionState
 	externalFetch   externalMetricPayloadFetcher
@@ -655,6 +656,7 @@ func (c *Collector) collectBatch(ctx context.Context) (*telemetryv1.TelemetryBat
 	appendHardwareWarningMetrics(now, &metrics, metrics, hardwareProfile)
 
 	metrics = append(metrics, c.collectExternalMetricsWithCadence(ctx, now, cfg, decision)...)
+	metrics = append(metrics, c.collectInferenceMetrics(ctx, now, cfg, decision)...)
 	if decision.DisableLogs {
 		metrics = append(metrics, &telemetryv1.Metric{
 			Name:              "collector_logs_collection_shed",

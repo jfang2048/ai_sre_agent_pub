@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import InferenceMonitoringPanel from './InferenceMonitoringPanel';
 import { useQuery } from '@tanstack/react-query';
 import {
     ResponsiveContainer,
@@ -264,6 +265,8 @@ export default function GPUObservabilityPage() {
                     </label>
                 </div>
             </div>
+
+            <InferenceMonitoringPanel collectorId={activeCollectorId} />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                 <div className="rounded-xl border border-border bg-card p-4">

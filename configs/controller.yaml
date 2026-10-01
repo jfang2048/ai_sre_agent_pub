@@ -44,6 +44,21 @@ scrape:
 # `inventory.targets_file` instead.
 nodes: []
 
+# Bounded serving/GPU observations and advisory thresholds (not SLOs).
+# Restart the controller after changing these settings.
+# Capacity limits may be lowered; values above these hard caps use the defaults.
+inference:
+  stale_after: "2m"
+  retention: "30m"
+  max_endpoints: 256
+  max_models_per_endpoint: 32
+  max_gpus: 2048
+  waiting_warning: 10
+  kv_cache_warning_percent: 90
+  ttft_warning_seconds: 2
+  itl_warning_seconds: 0.1
+  gpu_memory_warning_percent: 95
+
 # Web UI configuration
 web:
   # Path to static web files

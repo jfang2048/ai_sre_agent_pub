@@ -119,6 +119,14 @@ type Processor interface {
 	ProcessBatch(collectorID string, batch *telemetryv1.TelemetryBatch, receivedAt time.Time)
 }
 
+// ReplaySafeProcessor explicitly opts a deterministic, memory-only projection
+// into recovery of applied receipts. External writes and notifications must not
+// opt in: ordinary observers are deliberately skipped during hot-state restore.
+type ReplaySafeProcessor interface {
+	Processor
+	ReplaySafe() bool
+}
+
 // NewServer creates a new ingest server.
 func NewServer(store Store, logger *zap.Logger, processors ...Processor) *Server {
 	cfg := DefaultInboxConfig()
@@ -489,7 +497,7 @@ func (s *Server) materializeHotState(collectorID string, batch *telemetryv1.Tele
 }
 
 // RestoreHotState rebuilds retained acknowledged telemetry after a process exit,
-// without re-invoking observers for already applied receipts. Call before serving.
+// invoking only processors that explicitly declare replay safety. Call before serving.
 func (s *Server) RestoreHotState(ctx context.Context) error {
 	if s == nil || s.inbox == nil {
 		return fmt.Errorf("durable ingest inbox is unavailable")
@@ -511,6 +519,13 @@ func (s *Server) RestoreHotState(ctx context.Context) error {
 				}
 				if err := s.materializeHotState(receipt.CollectorID, batch, receipt.AcceptedAt); err != nil {
 					return err
+				}
+				for _, processor := range s.processors {
+					if replay, ok := processor.(ReplaySafeProcessor); ok && replay.ReplaySafe() {
+						if err := s.processBatchSafely(replay, receipt.CollectorID, batch, receipt.AcceptedAt); err != nil {
+							return err
+						}
+					}
 				}
 			}
 			after = receiptOrder(receipt)

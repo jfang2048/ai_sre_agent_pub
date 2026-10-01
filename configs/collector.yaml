@@ -183,3 +183,14 @@ hardware:
 # Optional: external metrics command (fast C++ helper provided in cpp/proc_metrics/main.cpp)
 external_metrics_cmd: ""
 external_metrics_timeout: "500ms"
+
+# Optional read-only vLLM Prometheus collection. Empty endpoints disables it.
+# Configure endpoints reachable from THIS collector; URLs are never sent upstream.
+# At most 8 targets, 1 MiB per response and 32 model/engine pairs per target.
+inference_metrics:
+  interval: "30s"
+  timeout: "2s"
+  endpoints: []
+  # endpoints:
+  #   - name: "local-serving"
+  #     url: "http://127.0.0.1:8000/metrics"

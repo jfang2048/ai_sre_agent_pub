@@ -706,7 +706,13 @@ func (s *MemoryStore) StoreMetrics(collectorID string, metrics []*telemetryv1.Me
 
 		captureStorageMetric(node, metric, receivedAt)
 
-		if shouldAggregateMetric(metric.Name) {
+		if metric.Name == "node_inference_kv_cache_utilization_percent" {
+			// The node summary has no model/engine dimension. Keep peak cache
+			// pressure rather than whichever labeled series happened to arrive last.
+			if previous, ok := node.Metrics[metric.Name]; !ok || metric.Value > previous {
+				node.Metrics[metric.Name] = metric.Value
+			}
+		} else if shouldAggregateMetric(metric.Name) {
 			node.Metrics[metric.Name] += metric.Value
 		} else {
 			node.Metrics[metric.Name] = metric.Value

@@ -79,6 +79,46 @@ make test-dataset-fetch
 
 The first command audits current content, commit identities, and historical paths. The second locks the publisher's core guarantees: untracked files are omitted and credential-shaped content is rejected. The third verifies that dataset acquisition remains a line-oriented, HTTPS-only stream without using the network.
 
+## LLM serving and GPU monitoring
+
+The collector can read a vLLM Prometheus endpoint and push model/engine observations
+alongside existing GPU telemetry. Enable it in [collector.yaml](configs/collector.yaml):
+
+```yaml
+inference_metrics:
+  interval: "30s"
+  timeout: "2s"
+  endpoints:
+    - name: "local-serving"
+      url: "http://127.0.0.1:8000/metrics"
+```
+
+Restart the collector with that configuration, then open **GPU Observability →
+LLM serving & GPU evidence** or read `GET /api/v1/inference/overview` (optional
+`collector_id` filter). The selector works without GPU inventory. Empty endpoints
+disable scraping; this feature does not call model inference or require provider keys.
+
+| Operator question | Evidence shown | Interpretation boundary |
+| --- | --- | --- |
+| Why is the first token slow? | Waiting requests, interval mean first-token delay, KV-cache occupancy | Advisory thresholds are configurable, not an SLO verdict |
+| Why is streaming slow? | Interval mean inter-token latency and token throughput | Means are not p95; request-level time per output token is a separate statistic |
+| Is GPU pressure involved? | Same-node allocated memory, compute activity, explicit throttle flags and new Xid/ECC deltas | Node proximity does not prove model-to-device ownership or hardware failure |
+
+Two observations establish rates and histogram means. Warmup, resets and idle
+histogram intervals can leave derived values unavailable; actual zero remains zero.
+Each value has its own timestamp. Failed scrapes suppress current model advisories;
+expired values disappear after `inference.stale_after` (default two minutes).
+Targets are retained for thirty minutes. Thresholds and bounded storage settings
+are in [controller.yaml](configs/controller.yaml) and require a controller restart.
+Retained applied ingest receipts restore this projection after restart without
+repeating ordinary observer side effects. Scrapes are limited to eight
+targets, one MiB per response and 32 model/engine pairs per target; redirects and
+URL credentials are rejected. Unsupported or malformed targets report unavailable.
+
+See the [Chinese operator walkthrough](README.zh-CN.md#大模型与-gpu-联合监测) for
+the signal flow, configuration and diagnosis examples. Metric aliases follow the
+[vLLM metrics reference](https://docs.vllm.ai/en/latest/usage/metrics/).
+
 ## GPU Platform SRE Demo
 
 A runnable Kubernetes GPU platform SRE demo lives in [`examples/gpu-platform-sre/`](examples/gpu-platform-sre/). It keeps vLLM/KServe as external workloads and uses the existing collector/controller stack for GPU observability, incident evidence, and rollback practice.

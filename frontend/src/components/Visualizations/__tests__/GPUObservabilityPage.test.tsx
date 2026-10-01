@@ -11,6 +11,9 @@ import {
     fetchGPUTimeline,
 } from '@/api/gpuObservability';
 import { renderWithClient } from '@/test/utils';
+import { fetchInferenceOverview } from '@/api/inference';
+
+vi.mock('@/api/inference', () => ({ fetchInferenceOverview: vi.fn() }));
 
 vi.mock('@/api/gpuObservability', () => ({
     fetchGPUNodes: vi.fn(),
@@ -31,6 +34,10 @@ const fetchGPUCorrelationMock = vi.mocked(fetchGPUCorrelation);
 describe('GPUObservabilityPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(fetchInferenceOverview).mockResolvedValue({
+            generated_at: '2026-02-24T00:00:00Z', stale_after_seconds: 120,
+            capacity_limited: false, endpoints: [], gpus: [],
+        });
 
         fetchGPUNodesMock.mockResolvedValue({
             count: 1,

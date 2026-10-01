@@ -54,6 +54,8 @@ type Config struct {
 	Security                            SecurityConfig    `yaml:"security" json:"security"`
 	Protection                          ProtectionConfig  `yaml:"protection" json:"protection"`
 	Hardware                            HardwareConfig    `yaml:"hardware" json:"hardware"`
+
+	InferenceMetrics InferenceMetricsConfig `yaml:"inference_metrics" json:"inference_metrics"`
 }
 
 const (
@@ -197,6 +199,7 @@ func DefaultConfig() Config {
 		RuntimeMode:                         "auto",
 		Level:                               2,
 		ExternalMetricsTimeout:              500 * time.Millisecond,
+		InferenceMetrics:                    defaultInferenceMetricsConfig(),
 		AdaptivePolling:                     true,
 		MinCollectionInterval:               1 * time.Second,
 		MaxCollectionInterval:               20 * time.Second,
@@ -376,6 +379,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.RuntimeMode == "" {
 		return fmt.Errorf("runtime_mode must be one of auto, host, namespace, limited")
+	}
+	if err := cfg.InferenceMetrics.validate(); err != nil {
+		return err
 	}
 	if cfg.ExternalMetricsTimeout <= 0 {
 		return fmt.Errorf("external_metrics_timeout must be > 0")

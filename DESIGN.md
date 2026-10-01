@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-Status: Active. Updated: 2026-09-13.
+Status: Active. Updated: 2026-10-02.
 
 This contract covers the existing React console, with this iteration focused on
 the platform overview, metric trends, and shared navigation. Evidence reviewed:
@@ -40,6 +40,13 @@ Keep the existing navigation and URL page slugs. Overview provides current
 resource readings and compact history; Metric Trends provides detailed curves,
 anomalies, and process drilldowns. Scope and observation time precede readings;
 interpretations remain subordinate to data quality.
+
+GPU Observability also provides a serving evidence panel. Its target and
+model/engine selectors work without GPU inventory. Show only same-collector GPU
+context for a selected serving target; proximity is not model-to-device ownership.
+Queue depth, interval mean latency, token rates and cache occupancy precede
+advisory findings. Native meters show bounded occupancy; evidence disclosures
+retain exact units and observation times. Do not infer percentiles from means.
 
 ## Design principles
 
@@ -97,6 +104,12 @@ Distinguish loading, unavailable, empty, fresh, stale, delayed, and degraded dat
 Do not say "no anomalies" or "data available" during failed/pending requests.
 Show an explicit retry for overview fetch errors. Retained stale observations
 must not be presented as current verified health.
+Serving counter warmup, resets and idle histogram intervals leave derived values
+unavailable. Failed scrapes suppress current advisories, retain a labeled history
+only within the freshness window, and show attempt/success times. Expired metric
+values are omitted even when other signals remain fresh. Capacity truncation is
+visible. GPU findings use allocated memory, explicit throttle flags and newly
+observed error deltas, never a lifetime error count as a current incident.
 
 ## Content voice
 
@@ -107,7 +120,8 @@ to an unqualified healthy-state claim.
 ## Implementation constraints
 
 React, TypeScript, Tailwind, Recharts, and React Query remain the supported stack.
-Keep API contracts unchanged. Regression tests cover numeric validity and query
+Preserve existing API contracts; serving evidence uses the additive
+`/api/v1/inference/overview` endpoint. Regression tests cover numeric validity and query
 states; real-browser tests cover actual SVG rendering, themes, tooltips, and
 narrow-layout overflow, including keyboard and touch observation inspection.
 Mount observation rows only while expanded; use the existing bounded timeseries

@@ -442,6 +442,23 @@ func TestStoreMetricsAggregatesNetworkAndDiskAcrossLabels(t *testing.T) {
 	}
 }
 
+func TestStoreMetricsInferenceCacheUsesPerBatchPeak(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+	for _, values := range [][]float64{{96, 10}, {10, 96}, {0}} {
+		metrics := make([]*telemetryv1.Metric, 0, len(values))
+		for _, value := range values {
+			metrics = append(metrics, &telemetryv1.Metric{Name: "node_inference_kv_cache_utilization_percent", Value: value})
+		}
+		store.StoreMetrics("test", metrics, now)
+		want := 96.0
+		if len(values) == 1 {
+			want = 0
+		}
+		assert.Equal(t, want, store.Node("test").Metrics["node_inference_kv_cache_utilization_percent"])
+	}
+}
+
 func TestStoreMetricsResetsProcessNetworkPerBatch(t *testing.T) {
 	store := NewMemoryStore()
 	now := time.Now()
