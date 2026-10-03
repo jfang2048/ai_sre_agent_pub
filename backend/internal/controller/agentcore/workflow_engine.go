@@ -77,10 +77,16 @@ type WorkflowEngine struct {
 
 // NewWorkflowEngine creates a deterministic workflow engine with explicit tools.
 func NewWorkflowEngine(cfg WorkflowConfig, store *ingest.MemoryStore, idx *logindex.Index, topology TopologyProvider, logger *zap.Logger) *WorkflowEngine {
+	return NewWorkflowEngineFromConfig(WorkflowConfigFromEnv(cfg), store, idx, topology, logger)
+}
+
+// NewWorkflowEngineFromConfig uses an already resolved configuration without
+// applying process environment overrides again. Evaluation uses this boundary
+// to keep per-trial stores isolated after resolving the experiment settings.
+func NewWorkflowEngineFromConfig(cfg WorkflowConfig, store *ingest.MemoryStore, idx *logindex.Index, topology TopologyProvider, logger *zap.Logger) *WorkflowEngine {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	cfg = WorkflowConfigFromEnv(cfg)
 	cfg = normalizeWorkflowConfig(cfg)
 	cfg = applyWorkflowRuntimePaths(cfg)
 

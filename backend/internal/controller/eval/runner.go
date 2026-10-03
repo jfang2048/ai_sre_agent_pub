@@ -657,6 +657,7 @@ func runWorkflowCase(ctx context.Context, kb rag.KnowledgeBase, item IncidentCas
 	if err != nil {
 		return WorkflowCaseResult{}, err
 	}
+	defer execution.Close()
 	return execution.Result, nil
 }
 
@@ -674,13 +675,24 @@ func runWorkflowCaseDetailed(ctx context.Context, kb rag.KnowledgeBase, item Inc
 	}
 	trigger := firstNonEmpty(item.Trigger, "incident_alert")
 
-	noRAGCfg := applyWorkflowConfigOverride(agentcore.DefaultWorkflowConfig(), opts.ConfigOverride)
-	withRAGCfg := applyWorkflowConfigOverride(agentcore.DefaultWorkflowConfig(), opts.ConfigOverride)
-	noRAGEngine := agentcore.NewWorkflowEngine(noRAGCfg, store, index, nil, zap.NewNop())
-	withRAGEngine := agentcore.NewWorkflowEngine(withRAGCfg, store, index, nil, zap.NewNop())
+	cfg := applyWorkflowConfigOverride(agentcore.WorkflowConfigFromEnv(agentcore.DefaultWorkflowConfig()), opts.ConfigOverride)
+	noRAGEngine, closeNoRAG, err := newEvaluationWorkflowEngine(cfg, store, index)
+	if err != nil {
+		return WorkflowCaseExecution{}, err
+	}
+	defer closeNoRAG()
+	withRAGEngine, closeWithRAG, err := newEvaluationWorkflowEngine(cfg, store, index)
+	if err != nil {
+		return WorkflowCaseExecution{}, err
+	}
+	keepArtifacts := false
+	defer func() {
+		if !keepArtifacts {
+			closeWithRAG()
+		}
+	}()
 	withRAGEngine.SetKnowledgeBase(kb)
 
-	var err error
 	_, err = noRAGEngine.EvaluateJointRisk(ctx, agentcore.WorkflowRequest{
 		CollectorID: item.CollectorID,
 		Window:      window,
@@ -826,12 +838,14 @@ func runWorkflowCaseDetailed(ctx context.Context, kb rag.KnowledgeBase, item Inc
 		out.Failures = append(out.Failures, "no-rag query baseline unexpectedly returned retrieved documents")
 	}
 	out.Passed = len(out.Failures) == 0
+	keepArtifacts = true // the caller still needs message files to score integrity
 	return WorkflowCaseExecution{
 		Case:            item,
 		Result:          out,
 		Report:          withRAGRCA,
 		DurableRun:      durableRun,
 		WorkflowMetrics: withRAGEngine.Metrics(),
+		cleanup:         closeWithRAG,
 	}, nil
 }
 

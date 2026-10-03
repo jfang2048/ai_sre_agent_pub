@@ -496,6 +496,30 @@ type V2Environment struct {
 	ScoringConfigPath         string          `json:"scoring_config_path"`
 	Timestamp                 time.Time       `json:"timestamp"`
 	ModelPricing              *V2ModelPricing `json:"model_pricing,omitempty"`
+	Provenance                V2Provenance    `json:"provenance"`
+}
+
+// V2Provenance identifies the evidence and evaluator used by a benchmark.
+// It describes repository sources, not a signed attestation of the executable.
+// Runtime implementation code is intentionally excluded so candidate runtime
+// changes can be compared against an unchanged benchmark contract.
+type V2Provenance struct {
+	SchemaVersion          string              `json:"schema_version"`
+	CaseDefinitionsSHA256  string              `json:"case_definitions_sha256"`
+	IncidentInputsSHA256   string              `json:"incident_inputs_sha256"`
+	ScoringConfigSHA256    string              `json:"scoring_config_sha256"`
+	KnowledgeCorpusSHA256  string              `json:"knowledge_corpus_sha256"`
+	EvaluatorSHA256        string              `json:"evaluator_sha256"`
+	RegressionPolicySHA256 string              `json:"regression_policy_sha256"`
+	EvaluatorSource        string              `json:"evaluator_source"`
+	KnowledgeFiles         []V2FileFingerprint `json:"knowledge_files"`
+	EvaluatorFiles         []V2FileFingerprint `json:"evaluator_files"`
+}
+
+// V2FileFingerprint uses repository-relative paths and never embeds contents.
+type V2FileFingerprint struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // V2ModelPricing is optional model pricing used to derive EstimatedCostUSD.

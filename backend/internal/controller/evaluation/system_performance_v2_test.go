@@ -817,13 +817,10 @@ func TestComparisonTableAndPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writeFileHelper(repoRoot+"/regression_policy.json", raw))
 
-	baseline := SystemPerformanceReportV2{
-		SchemaVersion: "system-performance/v2",
-		GeneratedAt:   time.Now().UTC(),
-		Aggregate:     perfectAggregate(),
-		Scorecard:     V2Scorecard{OverallScore: 0.9},
-		Cases:         []V2CaseResult{},
-	}
+	baseline := comparableV2Report()
+	baseline.GeneratedAt = time.Now().UTC()
+	baseline.Aggregate = perfectAggregate()
+	baseline.Scorecard = V2Scorecard{OverallScore: 0.9}
 	baselineRaw, err := json.Marshal(baseline)
 	require.NoError(t, err)
 	baselinePath := repoRoot + "/baseline.json"

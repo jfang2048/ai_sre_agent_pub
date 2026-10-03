@@ -37,6 +37,8 @@ Probe-core coverage is exercised through the Go-side IPC boundary and live-binar
 make test
 make test-ui
 make test-stability
+make validate-monitoring
+make validate-effectiveness
 ```
 
 Use the smallest command that covers the failure mode. Do not start with the most expensive path unless the change really touches durability, queueing, or cross-component behavior.
@@ -49,6 +51,8 @@ Use the smallest command that covers the failure mode. Do not start with the mos
 - **stability tests fail**: queue growth, replay behavior, or long-run backpressure is not bounded.
 
 ## 中文提示
+
+- 想证明系统有没有用，从[有效性验证](../docs/effectiveness-validation.zh-CN.md)开始：监测链路、任务正确性、真实环境效果分别需要证据。
 
 - 日常改动先跑最小的包级测试，再决定要不要加更重的 suite。
 - 改 workflow、artifact、replay、queue 相关逻辑时，`make test-stability` 才有意义。

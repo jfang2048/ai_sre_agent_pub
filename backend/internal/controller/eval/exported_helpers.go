@@ -27,7 +27,8 @@ func BuildKnowledgeBase(ctx context.Context, repoRoot string) (rag.KnowledgeBase
 }
 
 // RunWorkflowCaseDetailed executes one workflow case and exposes the resulting
-// real runtime artifacts for higher-level evaluation modules.
+// real runtime artifacts for higher-level evaluation modules. Call Close on the
+// returned execution after scoring to release its isolated stores and artifacts.
 func RunWorkflowCaseDetailed(ctx context.Context, kb rag.KnowledgeBase, item IncidentCase, opts WorkflowCaseRunOptions) (WorkflowCaseExecution, error) {
 	return runWorkflowCaseDetailed(ctx, kb, item, opts)
 }

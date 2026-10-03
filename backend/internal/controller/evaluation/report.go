@@ -313,7 +313,24 @@ func renderV2Summary(report SystemPerformanceReportV2) string {
 	lines = append(lines, fmt.Sprintf("Schema: %s", report.SchemaVersion))
 	lines = append(lines, fmt.Sprintf("Runtime mode: %s | Variant: %s | Git: %s", report.Environment.RuntimeMode, firstNonEmpty(report.Environment.Variant, "default"), report.Environment.GitCommit))
 	lines = append(lines, fmt.Sprintf("Scope: %s | Seed: %d | Generated: %s", report.Environment.Scope, report.Environment.Seed, report.GeneratedAt.Format(time.RFC3339)))
-	lines = append(lines, "", fmt.Sprintf("Cases: %d", agg.CasesRun))
+	p := report.Environment.Provenance
+	if err := validateV2Provenance(p); err != nil {
+		lines = append(lines, "", "Evidence provenance: unavailable; this report cannot be used for baseline comparison.")
+	} else {
+		lines = append(lines, "", "## Evidence provenance", "", "SHA-256 fingerprints below identify the selected loaded inputs and repository evaluator sources. They are not executable attestations; build and run from the recorded clean checkout.", "", "| Input | SHA-256 |", "|---|---|")
+		for _, row := range []struct{ label, hash string }{
+			{"Selected case definitions", p.CaseDefinitionsSHA256},
+			{"Resolved incident inputs", p.IncidentInputsSHA256},
+			{"Scoring configuration", p.ScoringConfigSHA256},
+			{"Knowledge corpus", p.KnowledgeCorpusSHA256},
+			{"Evaluator and fixture harness", p.EvaluatorSHA256},
+			{"Regression policy", p.RegressionPolicySHA256},
+		} {
+			lines = append(lines, fmt.Sprintf("| %s | `%s` |", row.label, row.hash))
+		}
+		lines = append(lines, "", fmt.Sprintf("File manifests: report.json environment.provenance (%d knowledge files; %d evaluator files). Changed inputs/rules or missing fingerprints require a new baseline.", len(p.KnowledgeFiles), len(p.EvaluatorFiles)))
+	}
+	lines = append(lines, "", "## Results", "", fmt.Sprintf("Cases: %d", agg.CasesRun))
 	lines = append(lines, fmt.Sprintf("Trials per case: %d", agg.TrialsPerCase))
 	lines = append(lines, "", "| Metric | Value |")
 	lines = append(lines, "|---|---|")

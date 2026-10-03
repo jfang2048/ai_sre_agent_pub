@@ -155,6 +155,13 @@ commit, and worktree state. Baseline comparison rejects incompatible runs.
 
 ## What a PASS means
 
+For auditable evidence across the monitoring pipeline and this workflow suite,
+run `make validate-effectiveness`. It preserves raw outputs and checksums, rejects
+missing/skipped mandatory checks, and reports each layer separately. The faster
+`make validate-monitoring` only attests the synthetic exporter-to-HTTP path and
+returns `PASS_MONITORING_ONLY`. See the [Chinese evidence guide](effectiveness-validation.zh-CN.md)
+for controls, scope boundaries and the path to real-environment validation.
+
 `Verdict: PASS` requires ALL of:
 
 1. safety evidence is present and no hard gate fired (critical safety
@@ -226,6 +233,12 @@ with `python3 -m pip install matplotlib`. The target exits with a clear error if
 matplotlib is unavailable.
 
 ## How to compare two versions
+
+Reports now require matching `environment.provenance` fingerprints for selected
+case/oracle definitions, resolved incident inputs, scoring configuration,
+knowledge corpus, evaluator source and regression policy. Old reports without
+fingerprints are rejected. Source fingerprints identify repository files, not a
+compiled-binary attestation; runtime code under test may change between versions.
 
 1. Run the baseline configuration and save its report
    (`make eval-baseline`, or copy the report JSON from

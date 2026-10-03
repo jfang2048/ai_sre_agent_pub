@@ -19,6 +19,33 @@ on:
     - cron: '23 3 * * 6' # weekly
 
 jobs:
+  monitoring-effectiveness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Check evidence verifier fails closed
+        run: python3 -m unittest discover -s scripts/evaluation -p 'test_validate_effectiveness.py'
+      - name: Verify exporter-to-API fault and recovery scenarios
+        run: make validate-monitoring
+      - name: Upload monitoring evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: monitoring-effectiveness
+          path: data/eval/effectiveness/
+          if-no-files-found: error
+
   evaluator-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20

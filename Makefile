@@ -14,7 +14,7 @@
         run run-collector run-controller run-both run-multinode \
         rag-status rag-query rag-index rag-rebuild rag-update rag-demo \
         test test-controller test-agent-workflow test-agent-replay test-all test-cover test-race test-stability test-screenshot-tools test-publish-privacy test-dataset-fetch bench \
-        eval-fast eval-regression eval-benchmark eval-system-fast eval-system-regression eval-system-benchmark eval-release eval-baseline eval-report \
+        eval-fast eval-regression eval-benchmark eval-system-fast eval-system-regression eval-system-benchmark eval-release eval-baseline eval-report validate-effectiveness validate-monitoring \
         predictive-test predictive-bench low-overhead-benchmark chaos-test \
         fmt fmt-check vet lint harness-boundary-check ci verify-version verify-readme-screenshots capture-keys validate-manifests \
         gpu-platform-validate gpu-platform-smoke gpu-platform-evidence-template \
@@ -292,6 +292,14 @@ eval-system-benchmark:
 
 ## eval-release: Run both component-level and end-to-end regression gates
 eval-release: eval-regression eval-system-regression
+
+## validate-effectiveness: Produce auditable monitoring and full-scenario workflow evidence (one run/case)
+validate-effectiveness:
+	@python3 scripts/evaluation/validate_effectiveness.py
+
+## validate-monitoring: Prove the synthetic exporter-to-API monitoring path without a GPU or model key
+validate-monitoring:
+	@python3 scripts/evaluation/validate_effectiveness.py --monitoring-only
 
 ## eval-baseline: Save the latest evaluation v2 report as the comparison baseline
 eval-baseline:

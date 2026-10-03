@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,7 @@ func comparableV2Report() SystemPerformanceReportV2 {
 			Scope:         "regression",
 			TrialsPerCase: 3,
 			Seed:          42,
+			Provenance:    testV2Provenance(defaultV2ScoringConfig()),
 		},
 		Config: defaultV2ScoringConfig(),
 		Cases: []V2CaseResult{
@@ -43,6 +45,11 @@ func TestValidateComparableV2Reports(t *testing.T) {
 		{"dirty worktree", func(r *SystemPerformanceReportV2) { r.Environment.WorktreeDirty = true }, "worktree_dirty"},
 		{"cases", func(r *SystemPerformanceReportV2) { r.Cases[1].ID = "case-c" }, "case_ids"},
 		{"scoring", func(r *SystemPerformanceReportV2) { r.Config.PassingThreshold = 0.99 }, "scoring_config"},
+		{"missing provenance", func(r *SystemPerformanceReportV2) { r.Environment.Provenance = V2Provenance{} }, "provenance"},
+		{"missing incident fingerprint", func(r *SystemPerformanceReportV2) { r.Environment.Provenance.IncidentInputsSHA256 = "" }, "incident_inputs_sha256"},
+		{"changed inputs with same case IDs", func(r *SystemPerformanceReportV2) {
+			r.Environment.Provenance.IncidentInputsSHA256 = strings.Repeat("a", 64)
+		}, "incident_inputs_sha256"},
 	}
 
 	for _, tt := range tests {
@@ -53,6 +60,16 @@ func TestValidateComparableV2Reports(t *testing.T) {
 			require.ErrorContains(t, err, tt.want)
 		})
 	}
+	// Runtime implementation commits and variant labels are allowed to change;
+	// evaluation inputs/rules must remain identical.
+	candidate := comparableV2Report()
+	candidate.Environment.GitCommit = "candidate-commit"
+	candidate.Environment.Variant = "candidate-runtime"
+	require.NoError(t, validateComparableV2Reports(candidate, base))
+
+	missing := comparableV2Report()
+	missing.Environment.Provenance = V2Provenance{}
+	require.ErrorContains(t, validateComparableV2Reports(base, missing), "baseline")
 }
 
 func TestCompareV2ReportsRejectsIncomparableBaseline(t *testing.T) {

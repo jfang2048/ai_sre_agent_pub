@@ -97,6 +97,10 @@ func RunSystemPerformanceV2(ctx context.Context, opts SystemPerformanceV2Options
 	for _, item := range incidentCases {
 		incidentByID[item.ID] = item
 	}
+	provenance, err := captureV2Provenance(repoRoot, cases, incidentByID, cfg)
+	if err != nil {
+		return SystemPerformanceReportV2{}, fmt.Errorf("capture evaluation provenance: %w", err)
+	}
 	kb, cleanup, err := eval.BuildKnowledgeBase(ctx, repoRoot)
 	if err != nil {
 		return SystemPerformanceReportV2{}, err
@@ -123,6 +127,7 @@ func RunSystemPerformanceV2(ctx context.Context, opts SystemPerformanceV2Options
 			ScoringConfigPath:         filepath.ToSlash(filepath.Join("eval_data", "scoring_v2.json")),
 			Timestamp:                 time.Now().UTC(),
 			ModelPricing:              cfg.ModelPricing,
+			Provenance:                provenance,
 		},
 		Config: cfg,
 	}
@@ -151,6 +156,7 @@ func RunSystemPerformanceV2(ctx context.Context, opts SystemPerformanceV2Options
 			}
 			executions = append(executions, execution)
 			trialMetrics = append(trialMetrics, extractV2Trial(contract, execution, cfg))
+			execution.Close()
 		}
 		caseResult := aggregateV2Case(contract, trialMetrics, executions, cfg)
 		caseResult.TrialsIndependent = trialSeedSupported
@@ -180,6 +186,16 @@ func RunSystemPerformanceV2(ctx context.Context, opts SystemPerformanceV2Options
 		verdict = "FAIL"
 	}
 	report.Verdict = verdict
+	// A long-running benchmark must not silently combine evidence from before
+	// and after an on-disk corpus, harness or policy edit. Cases/config above are
+	// already held in memory and are the exact values passed to the evaluator.
+	finalProvenance, err := captureV2Provenance(repoRoot, cases, incidentByID, cfg)
+	if err != nil {
+		return SystemPerformanceReportV2{}, fmt.Errorf("verify evaluation provenance: %w", err)
+	}
+	if changed := differingV2Provenance(provenance, finalProvenance); len(changed) > 0 {
+		return SystemPerformanceReportV2{}, fmt.Errorf("evaluation inputs changed during run: %s", strings.Join(changed, ", "))
+	}
 
 	if strings.TrimSpace(opts.ComparePath) != "" {
 		comparison, err := compareV2Reports(report, opts.ComparePath, repoRoot)

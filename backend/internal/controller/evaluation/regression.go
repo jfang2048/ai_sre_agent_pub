@@ -74,6 +74,13 @@ func compareV2Reports(current SystemPerformanceReportV2, baselinePath, repoRoot 
 	if err != nil {
 		return nil, err
 	}
+	policyHash, err := v2JSONFingerprint(policy)
+	if err != nil {
+		return nil, err
+	}
+	if policyHash != current.Environment.Provenance.RegressionPolicySHA256 {
+		return nil, fmt.Errorf("regression policy changed since current report was evaluated")
+	}
 
 	comparison := &V2Comparison{
 		BaselinePath:        publicBaselinePath(baselinePath, repoRoot),
@@ -182,6 +189,18 @@ func publicBaselinePath(path, repoRoot string) string {
 // Git commits may differ by design; the evaluator, case set, runtime, sampling
 // plan, and scoring policy must not.
 func validateComparableV2Reports(current, baseline SystemPerformanceReportV2) error {
+	for _, item := range []struct {
+		name   string
+		report SystemPerformanceReportV2
+	}{{"current", current}, {"baseline", baseline}} {
+		if err := validateV2Provenance(item.report.Environment.Provenance); err != nil {
+			return fmt.Errorf("incomparable evaluation reports: %s %w", item.name, err)
+		}
+		digest, err := v2JSONFingerprint(item.report.Config)
+		if err != nil || digest != item.report.Environment.Provenance.ScoringConfigSHA256 {
+			return fmt.Errorf("incomparable evaluation reports: %s scoring_config differs from provenance", item.name)
+		}
+	}
 	var mismatches []string
 	if current.SchemaVersion == "" || baseline.SchemaVersion == "" || current.SchemaVersion != baseline.SchemaVersion {
 		mismatches = append(mismatches, "schema_version")
@@ -207,6 +226,7 @@ func validateComparableV2Reports(current, baseline SystemPerformanceReportV2) er
 	if !reflect.DeepEqual(current.Config, baseline.Config) {
 		mismatches = append(mismatches, "scoring_config")
 	}
+	mismatches = append(mismatches, differingV2Provenance(current.Environment.Provenance, baseline.Environment.Provenance)...)
 	if len(mismatches) > 0 {
 		return fmt.Errorf("incomparable evaluation reports: mismatched %s", strings.Join(mismatches, ", "))
 	}

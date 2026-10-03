@@ -192,6 +192,15 @@ type WorkflowCaseExecution struct {
 	Report          agentcore.RCAWorkflowReport       `json:"report"`
 	DurableRun      *agentcore.DurableRun             `json:"durable_run,omitempty"`
 	WorkflowMetrics agentcore.WorkflowMetricsSnapshot `json:"workflow_metrics,omitempty"`
+	cleanup         func()
+}
+
+// Close releases the trial's isolated stores and artifacts after scoring.
+// Copies of an execution share the same idempotent cleanup function.
+func (e WorkflowCaseExecution) Close() {
+	if e.cleanup != nil {
+		e.cleanup()
+	}
 }
 
 // Report is the aggregate evaluation output.

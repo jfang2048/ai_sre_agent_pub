@@ -83,8 +83,12 @@ func RunSystemPerformance(ctx context.Context, opts SystemPerformanceOptions) (S
 				return SystemPerformanceReport{}, err
 			}
 			executions = append(executions, execution)
+			defer execution.Close() // also release earlier trials if a later one fails
 		}
 		caseResult := evaluateSystemPerformanceCase(item, executions)
+		for _, execution := range executions {
+			execution.Close()
+		}
 		report.Cases = append(report.Cases, caseResult)
 		if !caseResult.Passed {
 			report.FailedCaseIDs = append(report.FailedCaseIDs, caseResult.ID)
