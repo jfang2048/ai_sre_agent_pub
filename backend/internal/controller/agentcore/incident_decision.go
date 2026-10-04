@@ -704,8 +704,18 @@ func hasHighTriggeredSignal(signals []JointRiskSignal, needles ...string) bool {
 
 func databaseProcessName(name string) bool {
 	value := strings.ToLower(strings.TrimSpace(name))
-	for _, token := range []string{"postgres", "postgresql", "mysql", "mariadb", "mongod", "mongodb", "cockroach", "database"} {
-		if strings.Contains(value, token) {
+	tokens := strings.FieldsFunc(value, func(r rune) bool { return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') })
+	products := map[string]struct{}{
+		"postgres": {}, "postgresql": {}, "postmaster": {}, "mysql": {}, "mysqld": {},
+		"mariadb": {}, "mariadbd": {}, "mongod": {}, "mongodb": {}, "cockroach": {}, "cockroachdb": {}, "database": {},
+	}
+	for _, token := range tokens {
+		if token == "exporter" {
+			return false
+		}
+	}
+	for _, token := range tokens {
+		if _, ok := products[token]; ok {
 			return true
 		}
 	}

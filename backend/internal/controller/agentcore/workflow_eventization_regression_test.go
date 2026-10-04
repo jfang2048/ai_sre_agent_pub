@@ -84,6 +84,10 @@ func TestProcessAttributionRequiresCorroboratingPressure(t *testing.T) {
 
 		state.logsData.Snippets = []string{"postgres checkpoint completed"}
 		require.Empty(t, processAttributedHypotheses(state), "database process presence alone must not imply connection saturation")
+
+		state.logsData.Snippets = []string{"payment timeout while waiting on checkout database connection"}
+		state.metricsData.Node.ProcessResources["postgres"] = &ingest.ProcessResourceSample{Name: "postgres_exporter", CategoryTotals: map[string]float64{"disk_io": 100}}
+		require.Empty(t, processAttributedHypotheses(state), "database metrics exporters are not the database process")
 	})
 
 	t.Run("low CPU severity does not promote process usage", func(t *testing.T) {
