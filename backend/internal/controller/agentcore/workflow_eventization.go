@@ -47,9 +47,11 @@ func riskSeriesSpecs() []riskSeriesSpec {
 
 func riskSignalProfiles() map[string]riskSignalProfile {
 	return map[string]riskSignalProfile{
-		"cpu_pressure":        {medium: 65, high: 88, weight: 0.16, scope: "node", category: "runtime"},
-		"memory_pressure":     {medium: 72, high: 90, weight: 0.14, scope: "node", category: "runtime"},
-		"memory_leak_rate":    {medium: 0.04, high: 0.16, weight: 0.12, scope: "process", category: "runtime"},
+		"cpu_pressure":    {medium: 65, high: 88, weight: 0.16, scope: "node", category: "runtime"},
+		"memory_pressure": {medium: 72, high: 90, weight: 0.14, scope: "node", category: "runtime"},
+		// memory_leak_rate is computed from memory usage in percentage points
+		// per minute, so keep its thresholds in the same unit.
+		"memory_leak_rate":    {medium: 1, high: 4, weight: 0.12, scope: "process", category: "runtime"},
 		"io_latency":          {medium: 20, high: 80, weight: 0.18, scope: "node", category: "hardware"},
 		"service_latency":     {medium: 180, high: 400, weight: 0.16, scope: "service", category: "service"},
 		"io_pressure":         {medium: 5, high: 20, weight: 0.12, scope: "node", category: "runtime"},
@@ -130,8 +132,14 @@ func trailingPersistence(points []RiskSeriesPoint, threshold float64, baseline f
 
 func classifySeriesTrend(latest, baseline, slopePerMinute, accel float64, breaches, persistence int, profile riskSignalProfile) (string, bool) {
 	delta := percentChange(baseline, latest)
+	// A historical spike that has returned below the actionable threshold is
+	// a recovery signal, not an active incident. In particular, don't let old
+	// threshold breaches keep a transient event triggered after it settles.
+	if latest < profile.medium && slopePerMinute <= 0 {
+		return "recovering", false
+	}
 	switch {
-	case latest >= profile.high || (breaches >= 2 && persistence >= 2) || (delta >= 25 && slopePerMinute > 0):
+	case latest >= profile.high || (latest >= profile.medium && breaches >= 2 && persistence >= 2) || (latest >= profile.medium && delta >= 25 && slopePerMinute > 0):
 		if accel > 0 && persistence >= 2 {
 			return "worsening", true
 		}
@@ -149,7 +157,7 @@ func classifySeriesTrend(latest, baseline, slopePerMinute, accel float64, breach
 
 func trendSeverity(series RiskSeries, profile riskSignalProfile) string {
 	switch {
-	case series.Latest >= profile.high || series.ThresholdBreaches >= 3:
+	case series.Latest >= profile.high:
 		return "high"
 	case series.Triggered || series.DeltaPercent >= 20 || series.PersistencePoints >= 2:
 		return "medium"

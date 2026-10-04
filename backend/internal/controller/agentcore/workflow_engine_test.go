@@ -170,7 +170,7 @@ func TestBuildRCAWorkflowProducesStructuredHypothesesAndEvidence(t *testing.T) {
 	require.NotEmpty(t, report.ChangeLinks)
 	require.NotEmpty(t, report.BehavioralAssessments)
 	require.NotEmpty(t, report.AdaptiveBaselines)
-	require.NotEmpty(t, report.SuspectedRootCauseEntity)
+	require.Empty(t, report.SuspectedRootCauseEntity, "low-confidence hypotheses must remain unclaimed as root causes")
 	require.NotEmpty(t, report.StructuredReport.CausalPath)
 	require.NotEmpty(t, report.StructuredReport.EvidenceProvenance)
 	require.NotEmpty(t, report.StructuredReport.Uncertainty)

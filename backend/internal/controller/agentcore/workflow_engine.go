@@ -4789,7 +4789,7 @@ func buildRCARecommendations(state *workflowState) []WorkflowRecommendation {
 		))
 	}
 
-	if len(state.incident.ImpactedScope) > 0 && incidentSeverity(state.incident.GroupedSignals, state.incident.Severity) != "low" {
+	if len(state.incident.ImpactedScope) > 0 && state.incident.Confidence >= 0.55 && incidentSeverity(state.incident.GroupedSignals, state.incident.Severity) != "low" {
 		recs = append(recs, recommendationFromFields(
 			"rca-contain-1",
 			"probable_containment",
@@ -4868,6 +4868,9 @@ func buildRCARecommendations(state *workflowState) []WorkflowRecommendation {
 		))
 	}
 	for i, hit := range state.retrievedRunbooks {
+		if state.incident.Confidence < 0.55 && severityRank(incidentSeverity(state.incident.GroupedSignals, state.incident.Severity)) < severityRank("high") {
+			break
+		}
 		if i >= 2 {
 			break
 		}
@@ -5444,7 +5447,7 @@ func (e *WorkflowEngine) stepFinalizeRCA(ctx context.Context, state *workflowSta
 			PlanSteps:     append([]AgentPlanStep{}, state.planSteps...),
 			PlanRevisions: append([]AgentPlanRevision{}, state.planRevisions...),
 		},
-		SuspectedRootCauseEntity: firstNonEmpty(state.causal.SuspectedRootCauseEntity, structured.SuspectedRootCauseEntity),
+		SuspectedRootCauseEntity: structured.SuspectedRootCauseEntity,
 		CausalPath:               append([]string(nil), structured.CausalPath...),
 		ImpactPath:               append([]string(nil), state.causal.ImpactPath...),
 		ImpactScope:              append([]string(nil), structured.ImpactScope...),
@@ -5550,7 +5553,10 @@ func buildStructuredRCAReport(state *workflowState) RCAStructuredReport {
 		confidence = state.hypotheses[0].Confidence
 	}
 	confidence = applyTelemetryConfidenceLimit(confidence, state.telemetryQuality)
-	suspectedEntity := firstNonEmpty(state.causal.SuspectedRootCauseEntity, mostLikely)
+	suspectedEntity := ""
+	if state.incident.Confidence >= 0.5 && confidence >= 0.5 {
+		suspectedEntity = firstNonEmpty(state.causal.SuspectedRootCauseEntity, mostLikely)
+	}
 	supporting := []string{}
 	for _, trend := range state.trendAssessments {
 		if !trend.Triggered {
@@ -6358,7 +6364,7 @@ func buildRiskSignals(collectorID string, series []RiskSeries, security security
 		accScore := clamp01(item.Acceleration / maxFloat(math.Abs(item.Baseline)*0.15, 1.0))
 		rawScore := t.weight * (0.55*thrScore + 0.30*deltaScore + 0.15*accScore)
 		score := rawScore
-		triggered := item.Triggered || thrScore > 0 || deltaScore >= 0.4
+		triggered := item.Triggered || thrScore > 0 || (item.Latest >= t.medium && deltaScore >= 0.4)
 		classification := ""
 		suppressionFactor := 0.0
 		suppressionReason := ""
@@ -6871,6 +6877,8 @@ func hypothesisTitleFromSignal(signal string) string {
 		return "cpu scheduling contention"
 	case strings.Contains(low, "memory"):
 		return "memory pressure and reclaim"
+	case strings.Contains(low, "service latency"):
+		return "service latency degradation"
 	case strings.Contains(low, "latency") || strings.Contains(low, "io"):
 		return "storage io bottleneck"
 	case strings.Contains(low, "retransmit") || strings.Contains(low, "softnet"):
@@ -6890,7 +6898,7 @@ func checksForHypothesis(title string) []string {
 	case strings.Contains(low, "cpu"):
 		return []string{"inspect run queue and blocked tasks", "verify hottest processes and throttling", "compare recent deployment CPU requests"}
 	case strings.Contains(low, "memory"):
-		return []string{"inspect top RSS processes", "check swap/oom counters", "verify memory limits and working set"}
+		return []string{"inspect top RSS processes", "cat /proc/pressure/memory", "capture heap profile for the leading process", "check swap/oom counters", "verify memory limits and working set"}
 	case strings.Contains(low, "storage") || strings.Contains(low, "io"):
 		return []string{"inspect disk queue depth and latency", "identify io-heavy processes", "check writeback/page-cache pressure"}
 	case strings.Contains(low, "network"):

@@ -30,6 +30,25 @@ func rankFinalHypotheses(state *workflowState) {
 		recordHypothesisConfidence(state, index, boost, reason)
 		state.hypotheses[index].EvidenceIDs = dedupeStrings(append(state.hypotheses[index].EvidenceIDs, evidenceIDs...))
 	}
+	// Keep candidate confidence consistent with the incident-level evidence.
+	// A weak overall synthesis must not turn one noisy trend or retrieval hit
+	// into a high-confidence root-cause claim.
+	if len(state.riskSignals) > 0 && state.incident.Confidence < 0.5 {
+		strongest := 0.0
+		for _, hypothesis := range state.hypotheses {
+			strongest = maxFloat(strongest, hypothesis.Confidence)
+		}
+		factor := 1.0
+		if strongest > 0.49 {
+			factor = 0.49 / strongest
+		}
+		for index := range state.hypotheses {
+			target := state.hypotheses[index].Confidence * factor
+			if target < state.hypotheses[index].Confidence {
+				recordHypothesisConfidence(state, index, target-state.hypotheses[index].Confidence, "overall incident evidence remains below the confidence threshold")
+			}
+		}
+	}
 	sort.SliceStable(state.hypotheses, func(i, j int) bool {
 		if state.hypotheses[i].Confidence == state.hypotheses[j].Confidence {
 			return state.hypotheses[i].Title < state.hypotheses[j].Title

@@ -592,17 +592,17 @@ func updateHypothesesFromToolResult(state *workflowState, step AgentPlanStep, re
 			bump := 0.0
 			title := strings.ToLower(state.hypotheses[i].Title)
 			switch {
-			case strings.Contains(title, "cpu") && hasMetricLike(state, "cpu"):
+			case strings.Contains(title, "cpu") && hasTriggeredRiskSignalLike(state, "cpu"):
 				bump = 0.08
-			case strings.Contains(title, "memory") && hasMetricLike(state, "memory"):
+			case strings.Contains(title, "memory") && hasTriggeredRiskSignalLike(state, "memory"):
 				bump = 0.08
 			case strings.Contains(title, "storage"), strings.Contains(title, "io"):
-				if hasMetricLike(state, "io") || hasMetricLike(state, "disk") {
+				if hasTriggeredRiskSignalLike(state, "io", "disk") {
 					bump = 0.08
 				}
-			case strings.Contains(title, "network") && (hasMetricLike(state, "net") || hasMetricLike(state, "retrans")):
+			case strings.Contains(title, "network") && hasTriggeredRiskSignalLike(state, "network", "retrans", "softnet"):
 				bump = 0.08
-			case strings.Contains(title, "gpu") && len(state.gpu.Metrics) > 0:
+			case strings.Contains(title, "gpu") && hasTriggeredRiskSignalLike(state, "gpu"):
 				bump = 0.10
 			}
 			if bump > 0 {
@@ -866,6 +866,26 @@ func dedupeHypotheses(in []RCAHypothesis) []RCAHypothesis {
 		out = append(out, item)
 	}
 	return out
+}
+
+func hasTriggeredRiskSignalLike(state *workflowState, needles ...string) bool {
+	if state == nil {
+		return false
+	}
+	for _, signal := range state.riskSignals {
+		if !signal.Triggered || signal.Score <= 0 {
+			continue
+		}
+		id := strings.ToLower(strings.TrimSpace(signal.ID))
+		name := strings.ToLower(strings.TrimSpace(signal.Name))
+		for _, needle := range needles {
+			needle = strings.ToLower(strings.TrimSpace(needle))
+			if needle != "" && (strings.Contains(id, needle) || strings.Contains(name, needle)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func hasMetricLike(state *workflowState, needle string) bool {
