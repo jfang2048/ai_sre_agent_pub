@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/causalgraph"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +45,115 @@ func TestMemoryLeakRateThresholdsMatchPercentagePointsPerMinute(t *testing.T) {
 
 func TestServiceLatencyIsNotMappedToStorageRootCause(t *testing.T) {
 	require.Equal(t, "service latency degradation", hypothesisTitleFromSignal("Service latency p95"))
+	require.Equal(t, "service latency degradation", hypothesisTitleFromSignal("service_latency_p95_ms"))
 	require.Equal(t, "storage io bottleneck", hypothesisTitleFromSignal("IO latency p99"))
+	require.Equal(t, "network congestion or packet loss", hypothesisTitleFromSignal("TCP retransmit ratio"))
+	require.Equal(t, "network congestion or packet loss", hypothesisTitleFromSignal("retransmit_ratio"))
+}
+
+func TestProcessAttributionRequiresCorroboratingPressure(t *testing.T) {
+	t.Run("high CPU process is attributed when host CPU is high", func(t *testing.T) {
+		state := &workflowState{
+			metricsData: metricsToolData{Node: &ingest.NodeSnapshot{ProcessResources: map[string]*ingest.ProcessResourceSample{
+				"checkout-api": {Name: "checkout-api", SignalValues: map[string]float64{"rca_cpu_process_percent": 96}, CategoryTotals: map[string]float64{"cpu": 96}},
+			}}},
+			riskSignals: []JointRiskSignal{{ID: "cpu_pressure", Triggered: true, Severity: "high", Score: 0.9}},
+			logsData:    logsToolData{Snippets: []string{"checkout-api saturating cpu with run queue growth"}},
+		}
+
+		hypotheses := processAttributedHypotheses(state)
+		require.Len(t, hypotheses, 1)
+		require.Equal(t, "cpu scheduling contention in checkout-api", hypotheses[0].Title)
+		require.GreaterOrEqual(t, hypotheses[0].Confidence, 0.9)
+		require.Equal(t, "ev-process-cpu-checkout-api", processAttributionEvidence(state)[0].ID)
+	})
+
+	t.Run("database process needs both storage pressure and wait evidence", func(t *testing.T) {
+		state := &workflowState{
+			metricsData: metricsToolData{Node: &ingest.NodeSnapshot{ProcessResources: map[string]*ingest.ProcessResourceSample{
+				"postgres": {Name: "postgres", CategoryTotals: map[string]float64{"disk_io": 100}},
+			}}},
+			riskSignals: []JointRiskSignal{{ID: "io_latency", Triggered: true, Severity: "high", Score: 0.9}},
+			logsData:    logsToolData{Snippets: []string{"payment request timeout while waiting for checkout database connection"}},
+		}
+
+		hypotheses := processAttributedHypotheses(state)
+		require.Len(t, hypotheses, 1)
+		require.Equal(t, "database connection saturation in postgres", hypotheses[0].Title)
+		require.Equal(t, "ev-process-database-postgres", processAttributionEvidence(state)[0].ID)
+
+		state.logsData.Snippets = []string{"postgres checkpoint completed"}
+		require.Empty(t, processAttributedHypotheses(state), "database process presence alone must not imply connection saturation")
+	})
+
+	t.Run("low CPU severity does not promote process usage", func(t *testing.T) {
+		state := &workflowState{
+			metricsData: metricsToolData{Node: &ingest.NodeSnapshot{ProcessResources: map[string]*ingest.ProcessResourceSample{
+				"checkout-api": {Name: "checkout-api", SignalValues: map[string]float64{"rca_cpu_process_percent": 96}, CategoryTotals: map[string]float64{"cpu": 96}},
+			}}},
+			riskSignals: []JointRiskSignal{{ID: "cpu_pressure", Triggered: true, Severity: "medium", Score: 0.9}},
+		}
+
+		require.Empty(t, processAttributedHypotheses(state))
+	})
+}
+
+func TestDirectProcessAttributionOutranksCorrelatedHostSymptoms(t *testing.T) {
+	state := &workflowState{
+		engine: &WorkflowEngine{cfg: WorkflowConfig{MaxHypotheses: 8}},
+		riskSignals: []JointRiskSignal{
+			{ID: "cpu_pressure", Name: "CPU usage", Triggered: true, Severity: "high", Weight: 1, Score: 0.9},
+			{ID: "io_latency", Name: "IO latency", Triggered: true, Severity: "high", Weight: 1, Score: 0.95},
+		},
+		hypotheses: []RCAHypothesis{
+			{ID: "h-process-cpu-checkout-api", Title: "cpu scheduling contention in checkout-api", Confidence: 0.84},
+			{ID: "h-service-latency", Title: "service latency degradation", Confidence: 0.93},
+			{ID: "h-storage", Title: "storage io bottleneck", Confidence: 0.90},
+		},
+	}
+
+	rerankHypotheses(state)
+	require.Equal(t, "cpu scheduling contention in checkout-api", state.hypotheses[0].Title)
+}
+
+func TestFinalRankingUsesProcessEvidenceToBreakSymptomTie(t *testing.T) {
+	state := &workflowState{
+		incident:    IncidentSynthesis{Confidence: 0.40},
+		riskSignals: []JointRiskSignal{{ID: "cpu_pressure", Triggered: true}},
+		hypotheses: []RCAHypothesis{
+			{ID: "h-process-cpu-checkout-api", Title: "cpu scheduling contention in checkout-api", Confidence: 0.30, EvidenceIDs: []string{"ev-process-cpu-checkout-api"}},
+			{ID: "h-service-latency", Title: "service latency degradation", Confidence: 0.48},
+		},
+		evidence: []RCAEvidence{{ID: "ev-process-cpu-checkout-api", Kind: "process_resource", Entity: "checkout-api", Summary: "checkout-api process CPU usage 96%"}},
+	}
+
+	rankFinalHypotheses(state)
+	require.Equal(t, "cpu scheduling contention in checkout-api", state.hypotheses[0].Title)
+	require.LessOrEqual(t, state.hypotheses[0].Confidence, 0.49)
+}
+
+func TestFinalRankingRequiresMultiDomainRolloutBeforePromotingDistributedCause(t *testing.T) {
+	state := &workflowState{
+		incident: IncidentSynthesis{Confidence: 0.40},
+		riskSignals: []JointRiskSignal{
+			{ID: "cpu_pressure", Triggered: true},
+			{ID: "io_latency", Triggered: true},
+			{ID: "retransmit_ratio", Triggered: true},
+		},
+		changeLinks: []RCAChangeLink{{Category: "deployment", Summary: "recent rollout"}},
+		hypotheses: []RCAHypothesis{
+			{ID: "h-distributed", Title: "distributed resource contention", Confidence: 0.32},
+			{ID: "h-network", Title: "network congestion or packet loss", Confidence: 0.48},
+			{ID: "h-service", Title: "service latency degradation", Confidence: 0.45},
+		},
+	}
+
+	require.True(t, hasLowConfidenceMultiDomainRollout(state))
+	rankFinalHypotheses(state)
+	require.Equal(t, "distributed resource contention across cpu and storage", state.hypotheses[0].Title)
+
+	state.changeLinks = nil
+	require.False(t, hasLowConfidenceMultiDomainRollout(state), "resource co-occurrence without rollout evidence must not promote distributed contention")
 }
 
 func TestMemoryHypothesisIncludesSpecificReadOnlyValidationSteps(t *testing.T) {

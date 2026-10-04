@@ -1294,9 +1294,15 @@ func mergeLLMIntoState(state *workflowState) {
 		found := false
 		for i := range state.hypotheses {
 			if strings.EqualFold(state.hypotheses[i].Title, lh.Title) {
-				// Boost confidence from LLM
+				// Preserve a deterministic floor for candidates backed by direct
+				// process attribution; the LLM may add detail but must not wash out
+				// measured process evidence by averaging it with an unsupported low score.
 				old := state.hypotheses[i].Confidence
-				state.hypotheses[i].Confidence = clamp01((state.hypotheses[i].Confidence + lh.Confidence) / 2)
+				if strings.HasPrefix(state.hypotheses[i].ID, "h-process-cpu-") || strings.HasPrefix(state.hypotheses[i].ID, "h-database-process-") {
+					state.hypotheses[i].Confidence = clamp01(maxFloat(old, lh.Confidence))
+				} else {
+					state.hypotheses[i].Confidence = clamp01((old + lh.Confidence) / 2)
+				}
 				state.hypotheses[i].Description = lh.Description
 				state.hypothesisUpdates = append(state.hypothesisUpdates, HypothesisUpdate{
 					Timestamp:     time.Now().UTC(),

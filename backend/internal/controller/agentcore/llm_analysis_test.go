@@ -54,6 +54,18 @@ func TestBuildContextBundle(t *testing.T) {
 	}
 }
 
+func TestMergeLLMIntoStatePreservesDirectProcessEvidenceFloor(t *testing.T) {
+	state := &workflowState{
+		hypotheses:  []RCAHypothesis{{ID: "h-process-cpu-checkout-api", Title: "cpu scheduling contention in checkout-api", Confidence: 0.96}},
+		llmAnalysis: &LLMAnalysisResult{RCAHypotheses: []LLMHypothesis{{Title: "cpu scheduling contention in checkout-api", Confidence: 0.10, Description: "weak model confidence"}}},
+	}
+
+	mergeLLMIntoState(state)
+
+	require.Len(t, state.hypotheses, 1)
+	require.InDelta(t, 0.96, state.hypotheses[0].Confidence, 1e-9)
+}
+
 func TestBuildContextBundleForRCA(t *testing.T) {
 	store := ingest.NewMemoryStore()
 	index := logindex.NewIndex(logindex.DefaultConfig())

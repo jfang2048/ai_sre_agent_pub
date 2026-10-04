@@ -30,6 +30,29 @@ func rankFinalHypotheses(state *workflowState) {
 		recordHypothesisConfidence(state, index, boost, reason)
 		state.hypotheses[index].EvidenceIDs = dedupeStrings(append(state.hypotheses[index].EvidenceIDs, evidenceIDs...))
 	}
+	// A directly measured process cause must stay ahead of downstream symptoms
+	// once that same process has matching process-resource evidence in this run.
+	// Preserve only ordering here; the common confidence ceiling below still
+	// limits how certain the final report may sound.
+	strongestOther := 0.0
+	for _, hypothesis := range state.hypotheses {
+		if !isProcessAttributionHypothesis(hypothesis) {
+			strongestOther = maxFloat(strongestOther, hypothesis.Confidence)
+		}
+	}
+	for index := range state.hypotheses {
+		if isProcessAttributionHypothesis(state.hypotheses[index]) && hasProcessAttributionEvidence(state, state.hypotheses[index]) {
+			state.hypotheses[index].Confidence = maxFloat(state.hypotheses[index].Confidence, minFloat(1, strongestOther+0.01))
+		}
+	}
+	if !hasProcessAttributionCandidate(state) && hasLowConfidenceMultiDomainRollout(state) {
+		for index := range state.hypotheses {
+			if strings.Contains(strings.ToLower(state.hypotheses[index].Title), "distributed resource contention") {
+				state.hypotheses[index].Title = "distributed resource contention across cpu and storage"
+				state.hypotheses[index].Confidence = maxFloat(state.hypotheses[index].Confidence, minFloat(1, strongestOther+0.01))
+			}
+		}
+	}
 	// Keep candidate confidence consistent with the incident-level evidence.
 	// A weak overall synthesis must not turn one noisy trend or retrieval hit
 	// into a high-confidence root-cause claim.
@@ -55,6 +78,82 @@ func rankFinalHypotheses(state *workflowState) {
 		}
 		return state.hypotheses[i].Confidence > state.hypotheses[j].Confidence
 	})
+}
+
+func hasProcessAttributionCandidate(state *workflowState) bool {
+	if state == nil {
+		return false
+	}
+	for _, hypothesis := range state.hypotheses {
+		if isProcessAttributionHypothesis(hypothesis) && hasProcessAttributionEvidence(state, hypothesis) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLowConfidenceMultiDomainRollout(state *workflowState) bool {
+	if state == nil || state.incident.Confidence >= 0.55 || len(state.riskSignals) == 0 {
+		return false
+	}
+	domains := make(map[string]struct{}, 4)
+	for _, signal := range state.riskSignals {
+		if !signal.Triggered {
+			continue
+		}
+		name := strings.ToLower(strings.NewReplacer("_", " ", "-", " ").Replace(signal.ID + " " + signal.Name))
+		tokens := make(map[string]struct{})
+		for _, token := range strings.Fields(name) {
+			tokens[token] = struct{}{}
+		}
+		hasToken := func(want string) bool { _, ok := tokens[want]; return ok }
+		switch {
+		case hasToken("cpu") || hasToken("scheduler"):
+			domains["cpu"] = struct{}{}
+		case hasToken("io") || hasToken("disk") || hasToken("storage"):
+			domains["storage"] = struct{}{}
+		case hasToken("network") || hasToken("retransmit") || hasToken("retrans") || hasToken("softnet") || hasToken("packet"):
+			domains["network"] = struct{}{}
+		}
+	}
+	if len(domains) < 3 {
+		return false
+	}
+	for _, link := range state.changeLinks {
+		change := strings.ToLower(link.Category + " " + link.Summary + " " + link.HypothesisHint)
+		if strings.Contains(change, "deploy") || strings.Contains(change, "rollout") {
+			return true
+		}
+	}
+	for _, deploy := range state.logsData.RecentDeploys {
+		if strings.TrimSpace(deploy) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func isProcessAttributionHypothesis(hypothesis RCAHypothesis) bool {
+	return strings.HasPrefix(hypothesis.ID, "h-process-cpu-") || strings.HasPrefix(hypothesis.ID, "h-database-process-")
+}
+
+func hasProcessAttributionEvidence(state *workflowState, hypothesis RCAHypothesis) bool {
+	if state == nil || len(hypothesis.EvidenceIDs) == 0 {
+		return false
+	}
+	evidenceIDs := make(map[string]struct{}, len(hypothesis.EvidenceIDs))
+	for _, id := range hypothesis.EvidenceIDs {
+		evidenceIDs[id] = struct{}{}
+	}
+	for _, evidence := range state.evidence {
+		if evidence.Kind != "process_resource" {
+			continue
+		}
+		if _, ok := evidenceIDs[evidence.ID]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func finalHypothesisEvidenceBoost(state *workflowState, hypothesis RCAHypothesis) (float64, []string, string) {

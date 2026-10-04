@@ -4496,6 +4496,7 @@ func (e *WorkflowEngine) stepCollectEvidence(_ context.Context, state *workflowS
 			break
 		}
 	}
+	evidence = append(evidence, processAttributionEvidence(state)...)
 
 	for idx, co := range state.cooccurrences {
 		evidence = append(evidence, RCAEvidence{
@@ -6805,6 +6806,11 @@ func assignEvidenceToHypotheses(hypotheses []RCAHypothesis, evidence []RCAEviden
 		contradicting := make([]string, 0, 4)
 		title := strings.ToLower(hypotheses[idx].Title)
 		for _, item := range evidence {
+			if strings.HasPrefix(hypotheses[idx].ID, "h-process-cpu-") && item.ID == "ev-process-cpu-"+strings.TrimPrefix(hypotheses[idx].ID, "h-process-cpu-") ||
+				strings.HasPrefix(hypotheses[idx].ID, "h-database-process-") && item.ID == "ev-process-database-"+strings.TrimPrefix(hypotheses[idx].ID, "h-database-process-") {
+				ids = append(ids, item.ID)
+				continue
+			}
 			summary := strings.ToLower(item.Summary)
 			snippet := strings.ToLower(item.Snippet)
 			metric := strings.ToLower(item.MetricName)
@@ -6871,21 +6877,30 @@ func dedupeRecommendations(in []WorkflowRecommendation) []WorkflowRecommendation
 }
 
 func hypothesisTitleFromSignal(signal string) string {
-	low := strings.ToLower(signal)
+	low := strings.ToLower(strings.TrimSpace(signal))
+	normalized := strings.NewReplacer("_", " ", "-", " ").Replace(low)
+	tokens := make(map[string]struct{})
+	for _, token := range strings.Fields(normalized) {
+		tokens[token] = struct{}{}
+	}
+	hasToken := func(token string) bool {
+		_, ok := tokens[token]
+		return ok
+	}
 	switch {
-	case strings.Contains(low, "cpu"):
+	case hasToken("cpu") || strings.Contains(low, "cpu"):
 		return "cpu scheduling contention"
-	case strings.Contains(low, "memory"):
+	case hasToken("memory") || strings.Contains(low, "memory"):
 		return "memory pressure and reclaim"
-	case strings.Contains(low, "service latency"):
+	case strings.Contains(normalized, "service latency"):
 		return "service latency degradation"
-	case strings.Contains(low, "latency") || strings.Contains(low, "io"):
-		return "storage io bottleneck"
-	case strings.Contains(low, "retransmit") || strings.Contains(low, "softnet"):
+	case hasToken("network") || strings.Contains(low, "retransmit") || strings.Contains(low, "softnet"):
 		return "network congestion or packet loss"
-	case strings.Contains(low, "log"):
+	case hasToken("storage") || hasToken("disk") || hasToken("io") || hasToken("i/o") || strings.Contains(low, "latency") && (strings.Contains(low, "disk") || strings.Contains(low, "device")):
+		return "storage io bottleneck"
+	case hasToken("log") || strings.Contains(low, "error burst"):
 		return "service-level error burst"
-	case strings.Contains(low, "security"):
+	case hasToken("security"):
 		return "security exposure or permission drift"
 	default:
 		return "distributed resource contention"

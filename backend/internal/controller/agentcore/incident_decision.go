@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 )
 
 func SynthesizeIncident(state *workflowState) IncidentSynthesis {
@@ -545,6 +547,9 @@ func generateDeterministicHypotheses(state *workflowState) []RCAHypothesis {
 			fmt.Sprintf("%s inferred from %s trend acceleration %.3f and baseline delta %.1f%%", title, signal.Name, signal.Acceleration, signal.DeltaPercent),
 		)
 	}
+	for _, hypothesis := range processAttributedHypotheses(state) {
+		hypotheses = append(hypotheses, hypothesis)
+	}
 	cluster := strings.ToLower(strings.TrimSpace(state.incident.CandidateRootCauseCluster))
 	switch {
 	case strings.Contains(cluster, "gpu"):
@@ -579,6 +584,171 @@ func generateDeterministicHypotheses(state *workflowState) []RCAHypothesis {
 		appendHypothesis("h-security", "security or permission misconfiguration", clamp01(0.45+state.security.Score*0.4), "security findings align with the incident window and impacted scope")
 	}
 	return dedupeHypotheses(hypotheses)
+}
+
+// processAttributedHypotheses promotes a root-cause candidate only when host
+// pressure is corroborated by a specific process and, for databases, matching
+// wait/connection evidence in the incident logs.
+func processAttributedHypotheses(state *workflowState) []RCAHypothesis {
+	if state == nil || state.metricsData.Node == nil {
+		return nil
+	}
+	var out []RCAHypothesis
+	for _, process := range topProcessResources(state.metricsData.Node, 10) {
+		if process == nil {
+			continue
+		}
+		name := processDisplayName(process)
+		if name == "" {
+			continue
+		}
+		if cpuPressure := strongestTriggeredSignal(state.riskSignals, "cpu"); cpuPressure != nil &&
+			(cpuPressure.Severity == "high" || cpuPressure.Severity == "critical") {
+			cpuPercent := processSignalMax(process, "rca_cpu_process_percent", "node_process_cpu_percent")
+			if cpuPercent >= 70 {
+				confidence := 0.84
+				if logsCorroborateProcess(state.logsData.Snippets, name, "cpu", "run queue", "scheduler") {
+					confidence = 0.93
+				}
+				out = append(out, RCAHypothesis{
+					ID:          "h-process-cpu-" + sanitizeID(name),
+					Title:       "cpu scheduling contention in " + name,
+					Confidence:  confidence,
+					Description: fmt.Sprintf("CPU pressure is high and process %s is using %.1f%% CPU; process-level attribution distinguishes this workload from correlated host symptoms.", name, cpuPercent),
+				})
+			}
+		}
+
+		if !databaseProcessName(name) || !hasHighTriggeredSignal(state.riskSignals, "io", "disk") ||
+			!logsCorroborateDatabaseWait(state.logsData.Snippets) {
+			continue
+		}
+		out = append(out, RCAHypothesis{
+			ID:          "h-database-process-" + sanitizeID(name),
+			Title:       "database connection saturation in " + name,
+			Confidence:  0.90,
+			Description: fmt.Sprintf("Database process %s is present with high storage pressure, while incident logs report connection or request waits/timeouts; downstream service latency may be a propagation symptom.", name),
+		})
+	}
+	return out
+}
+
+func processAttributionEvidence(state *workflowState) []RCAEvidence {
+	if state == nil || state.metricsData.Node == nil {
+		return nil
+	}
+	var evidence []RCAEvidence
+	for _, process := range topProcessResources(state.metricsData.Node, 10) {
+		if process == nil {
+			continue
+		}
+		name := processDisplayName(process)
+		if name == "" {
+			continue
+		}
+		if cpuPercent := processSignalMax(process, "rca_cpu_process_percent", "node_process_cpu_percent"); cpuPercent >= 70 {
+			evidence = append(evidence, RCAEvidence{
+				ID: fmt.Sprintf("ev-process-cpu-%s", sanitizeID(name)), Kind: "process_resource", Source: "metrics_query",
+				Scope: "process", Entity: name, Summary: fmt.Sprintf("process %s CPU usage %.1f%%", name, cpuPercent),
+				MetricName: "node_process_cpu_percent", Value: cpuPercent, Timestamp: process.LastSeen,
+			})
+		}
+		if databaseProcessName(name) {
+			ioRate := processSignalMax(process, "rca_io_process_bytes_per_second", "node_process_io_bytes_per_second",
+				"rca_io_process_read_bytes_per_second", "node_process_io_read_bytes_per_second",
+				"rca_io_process_write_bytes_per_second", "node_process_io_write_bytes_per_second")
+			evidence = append(evidence, RCAEvidence{
+				ID: fmt.Sprintf("ev-process-database-%s", sanitizeID(name)), Kind: "process_resource", Source: "metrics_query",
+				Scope: "process", Entity: name, Summary: fmt.Sprintf("database process %s observed with %.1f bytes per second of IO", name, ioRate),
+				MetricName: "node_process_io_bytes_per_second", Value: ioRate, Timestamp: process.LastSeen,
+			})
+		}
+	}
+	return evidence
+}
+
+func processSignalMax(process *ingest.ProcessResourceSample, names ...string) float64 {
+	if process == nil {
+		return 0
+	}
+	var value float64
+	for _, name := range names {
+		value = maxFloat(value, process.SignalValues[name])
+	}
+	return value
+}
+
+func strongestTriggeredSignal(signals []JointRiskSignal, needle string) *JointRiskSignal {
+	var strongest *JointRiskSignal
+	for i := range signals {
+		signal := &signals[i]
+		if !signal.Triggered || !strings.Contains(strings.ToLower(signal.ID+" "+signal.Name), needle) {
+			continue
+		}
+		if strongest == nil || signal.Score > strongest.Score {
+			strongest = signal
+		}
+	}
+	return strongest
+}
+
+func hasHighTriggeredSignal(signals []JointRiskSignal, needles ...string) bool {
+	for _, needle := range needles {
+		if signal := strongestTriggeredSignal(signals, needle); signal != nil &&
+			(signal.Severity == "high" || signal.Severity == "critical") {
+			return true
+		}
+	}
+	return false
+}
+
+func databaseProcessName(name string) bool {
+	value := strings.ToLower(strings.TrimSpace(name))
+	for _, token := range []string{"postgres", "postgresql", "mysql", "mariadb", "mongod", "mongodb", "cockroach", "database"} {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func logsCorroborateProcess(snippets []string, process string, needles ...string) bool {
+	process = strings.ToLower(strings.TrimSpace(process))
+	for _, snippet := range snippets {
+		text := strings.ToLower(snippet)
+		if process != "" && !strings.Contains(text, process) {
+			continue
+		}
+		for _, needle := range needles {
+			if strings.Contains(text, needle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func logsCorroborateDatabaseWait(snippets []string) bool {
+	for _, snippet := range snippets {
+		text := strings.ToLower(snippet)
+		tokens := strings.FieldsFunc(text, func(r rune) bool { return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') })
+		hasToken := func(want string) bool {
+			for _, token := range tokens {
+				if token == want {
+					return true
+				}
+			}
+			return false
+		}
+		mentionsDatabase := strings.Contains(text, "database") || strings.Contains(text, "postgres") ||
+			strings.Contains(text, "mysql") || strings.Contains(text, "connection pool") || hasToken("db")
+		mentionsWait := strings.Contains(text, "connection") || strings.Contains(text, "pool") ||
+			strings.Contains(text, "waiting") || strings.Contains(text, "timeout")
+		if mentionsDatabase && mentionsWait {
+			return true
+		}
+	}
+	return false
 }
 
 func updateHypothesesFromToolResult(state *workflowState, step AgentPlanStep, result workflowToolResult) {
@@ -663,6 +833,13 @@ func rerankHypotheses(state *workflowState) {
 		return
 	}
 	storageWeight, cpuWeight := dominantResourceSignalWeights(state)
+	directProcessAttribution := false
+	for _, hypothesis := range state.hypotheses {
+		if strings.HasPrefix(hypothesis.ID, "h-process-cpu-") || strings.HasPrefix(hypothesis.ID, "h-database-process-") {
+			directProcessAttribution = true
+			break
+		}
+	}
 	for i := range state.hypotheses {
 		title := strings.ToLower(strings.TrimSpace(state.hypotheses[i].Title))
 		for _, link := range state.changeLinks {
@@ -674,14 +851,19 @@ func rerankHypotheses(state *workflowState) {
 			state.hypotheses[i].Confidence = clamp01(state.hypotheses[i].Confidence + 0.08)
 		}
 		switch {
-		case storageWeight > 0 && (strings.Contains(title, "storage") || strings.Contains(title, " io ") || strings.HasSuffix(title, " io") || strings.Contains(title, "disk")):
+		case !directProcessAttribution && storageWeight > 0 && (strings.Contains(title, "storage") || strings.Contains(title, " io ") || strings.HasSuffix(title, " io") || strings.Contains(title, "disk")):
 			boost := 0.04
 			if storageWeight >= maxFloat(cpuWeight*0.85, 0.18) {
 				boost = 0.10
 			}
 			state.hypotheses[i].Confidence = clamp01(state.hypotheses[i].Confidence + boost)
-		case cpuWeight > 0 && strings.Contains(title, "cpu scheduling") && storageWeight >= cpuWeight*1.05 && storageWeight >= 0.18:
+		case !directProcessAttribution && cpuWeight > 0 && strings.Contains(title, "cpu scheduling") && !strings.Contains(title, " in ") && storageWeight >= cpuWeight*1.05 && storageWeight >= 0.18:
 			state.hypotheses[i].Confidence = clamp01(state.hypotheses[i].Confidence - 0.08)
+		}
+		// Direct, entity-level corroboration should outrank correlated host
+		// symptoms. The normal telemetry ceiling below still limits certainty.
+		if strings.HasPrefix(state.hypotheses[i].ID, "h-process-cpu-") || strings.HasPrefix(state.hypotheses[i].ID, "h-database-process-") {
+			state.hypotheses[i].Confidence = maxFloat(state.hypotheses[i].Confidence, 0.96)
 		}
 	}
 	ceiling := telemetryConfidenceCeiling(state.telemetryQuality)
