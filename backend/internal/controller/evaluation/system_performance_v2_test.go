@@ -178,6 +178,54 @@ func TestMatchRCAGroundTruthWrongPrimaryClaim(t *testing.T) {
 	require.Equal(t, 0.5, recallAt3, "top-3 contains the memory entity")
 }
 
+func TestRCAClaimPrecisionPenalizesUnfoundedAlternatives(t *testing.T) {
+	gt := memoryGroundTruth().RootCause
+	correct := []rcaEntityClaim{{Text: "memory pressure", Rank: 1}}
+	withAlternatives := append([]rcaEntityClaim(nil), correct...)
+	for _, text := range []string{"network congestion", "cpu contention", "disk saturation"} {
+		withAlternatives = append(withAlternatives, rcaEntityClaim{Text: text, Rank: len(withAlternatives) + 1})
+	}
+	basePrecision, _, baseAt1, _, _, _, _, _ := matchRCAGroundTruth(correct, nil, gt)
+	precision, _, at1, _, _, _, _, _ := matchRCAGroundTruth(withAlternatives, nil, gt)
+	require.Equal(t, 1.0, basePrecision)
+	require.Equal(t, 0.25, precision, "unrelated alternatives must remain visible in precision")
+	require.Equal(t, baseAt1, at1, "top-answer recall alone must not hide candidate noise")
+}
+
+func TestDiagnosisTrialRetainsClaimsAndCausalPath(t *testing.T) {
+	execution := executionFixture()
+	execution.Report.Hypotheses = append(execution.Report.Hypotheses,
+		agentcore.RCAHypothesis{ID: "h2", Rank: 2, Title: "network congestion"})
+	trial := extractV2Trial(v2CaseFor(TaskTypeDiagnose, memoryGroundTruth()), execution, defaultV2ScoringConfig())
+	require.Equal(t, "memory pressure and reclaim", trial.TopRootCause)
+	require.Contains(t, trial.RankedRootCauseClaims, V2RootCauseClaim{Text: "network congestion", Rank: 2})
+	require.Equal(t, execution.Report.CausalPath, trial.CausalPath)
+	require.Less(t, trial.RootCauseEntityPrecision, 1.0)
+
+	execution.Report.CausalPath = nil
+	execution.Report.StructuredReport.CausalPath = nil
+	trial = extractV2Trial(v2CaseFor(TaskTypeDiagnose, memoryGroundTruth()), execution, defaultV2ScoringConfig())
+	require.Empty(t, trial.CausalPath, "missing propagation evidence must remain explicit")
+	require.NotNil(t, trial.PropagationChainScore)
+	require.Zero(t, *trial.PropagationChainScore)
+}
+
+func TestDiagnosisSummaryShowsWeaknessDespitePass(t *testing.T) {
+	zero := 0.0
+	report := SystemPerformanceReportV2{
+		Cases: []V2CaseResult{{
+			ID: "example_diagnose", TaskType: TaskTypeDiagnose, Passed: true,
+			TrialsDetail: []V2TrialMetrics{{
+				TopRootCause: "memory pressure", RankedRootCauseClaims: []V2RootCauseClaim{{Text: "memory pressure", Rank: 1}, {Text: "network congestion", Rank: 2}},
+				RootCauseEntityPrecision: 0.5, PropagationChainScore: &zero,
+			}},
+		}},
+	}
+	summary := renderV2Summary(report)
+	require.Contains(t, summary, "A passed case can therefore have low precision")
+	require.Contains(t, summary, "| example_diagnose | memory pressure | 2 | 50.0% | 0 | 0.0% |")
+}
+
 func TestMatchRCAGroundTruthCollectorIDIsNotAnEntity(t *testing.T) {
 	execution := executionFixture()
 	execution.Report.SuspectedRootCauseEntity = "eval-memory-leak" // artifact, not a claim

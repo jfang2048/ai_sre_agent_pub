@@ -22,8 +22,8 @@ type rcaEntityClaim struct {
 }
 
 // extractRCAClaims pulls the agent's ranked root-cause claims from a workflow
-// report. The primary claims (rank 1..n) are what the agent presents as its
-// answer; supporting claims include every hypothesis and causal-path entry.
+// report. Ranked claims include the top answer and every alternative
+// hypothesis; the separate corpus includes supporting evidence and paths.
 // Fields that merely repeat the collector id are dropped — they are artifacts,
 // not entity claims.
 func extractRCAClaims(execution eval.WorkflowCaseExecution) (primary []rcaEntityClaim, supporting []string) {
@@ -178,9 +178,8 @@ func groundTruthAliases(gt V2RootCauseGroundTruth) []string {
 // root-cause family and count toward precision but not toward entity recall.
 //
 // Recall counts ground-truth entities found anywhere in the agent's ranked
-// claims; precision counts agent primary claims that match an entity, an
-// alias, or an affected service. Recall@k counts entities found by the first
-// k ranked claims.
+// claims; precision penalizes every unmatched alternative hypothesis as well
+// as an incorrect top answer. Recall@k counts entities found in ranks <= k.
 func matchRCAGroundTruth(claims []rcaEntityClaim, corpus []string, gt V2RootCauseGroundTruth) (precision, recall, recallAt1, recallAt3, recallAt5, f1 float64, gtMatched, gtTotal int) {
 	if len(gt.Entities) == 0 && len(gt.Aliases) == 0 {
 		return 0, 0, 0, 0, 0, 0, 0, 0

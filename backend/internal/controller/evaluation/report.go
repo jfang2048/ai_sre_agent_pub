@@ -364,6 +364,26 @@ func renderV2Summary(report SystemPerformanceReportV2) string {
 	lines = append(lines, fmt.Sprintf("Failure Mode Rate: %s | Fatal Failure Rate: %s", rate(agg.FailureModeRate), rate(agg.FatalFailureRate)))
 	lines = append(lines, "", fmt.Sprintf("Overall Score: %.1f / 100", scorecard.OverallScore*100))
 	lines = append(lines, fmt.Sprintf("Verdict: %s", report.Verdict))
+	lines = append(lines, "", "## Diagnosis audit", "", "Precision counts every ranked alternative, not only the top answer. A passed case can therefore have low precision. The complete claims and causal path for each trial are in report.json.", "", "| Case | Top answer | Claims | Precision | Path stages | Chain score |", "|---|---|---:|---:|---:|---:|")
+	for _, item := range report.Cases {
+		if item.TaskType != TaskTypeDiagnose {
+			continue
+		}
+		for trialIndex, trial := range item.TrialsDetail {
+			pathScore := "N/A"
+			if trial.PropagationChainScore != nil {
+				pathScore = rate(*trial.PropagationChainScore)
+			}
+			caseName := item.ID
+			if len(item.TrialsDetail) > 1 {
+				caseName = fmt.Sprintf("%s #%d", item.ID, trialIndex+1)
+			}
+			lines = append(lines, fmt.Sprintf("| %s | %s | %d | %s | %d | %s |",
+				strings.ReplaceAll(caseName, "|", "\\|"),
+				strings.ReplaceAll(trial.TopRootCause, "|", "\\|"),
+				len(trial.RankedRootCauseClaims), rate(trial.RootCauseEntityPrecision), len(trial.CausalPath), pathScore))
+		}
+	}
 
 	if len(report.Gates.Fired) > 0 {
 		lines = append(lines, "", "Hard gates fired:", "```")

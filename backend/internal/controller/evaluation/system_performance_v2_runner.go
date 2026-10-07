@@ -293,6 +293,11 @@ func extractV2Trial(contract V2Case, execution eval.WorkflowCaseExecution, cfg V
 
 	trial.Measured = map[string]bool{v2MetricTaskOutcome: true, v2MetricCollaboration: true}
 	if contract.TaskType == TaskTypeDiagnose && len(groundTruthAliases(gt.RootCause)) > 0 {
+		trial.TopRootCause = firstNonEmpty(execution.Report.StructuredReport.MostLikelyCause, execution.Result.TopRootCause)
+		trial.RankedRootCauseClaims = make([]V2RootCauseClaim, 0, len(claims))
+		for _, claim := range claims {
+			trial.RankedRootCauseClaims = append(trial.RankedRootCauseClaims, V2RootCauseClaim{Text: claim.Text, Rank: claim.Rank})
+		}
 		precision, recall, recallAt1, recallAt3, recallAt5, f1, _, _ := matchRCAGroundTruth(claims, corpus, gt.RootCause)
 		trial.RootCauseEntityPrecision = precision
 		trial.RootCauseEntityRecall = recall
@@ -307,6 +312,7 @@ func extractV2Trial(contract V2Case, execution eval.WorkflowCaseExecution, cfg V
 		if len(agentChain) == 0 {
 			agentChain = execution.Report.StructuredReport.CausalPath
 		}
+		trial.CausalPath = append([]string(nil), agentChain...)
 		_, trial.PropagationChainScore = propagationChainScore(gt.RootCause.PropagationChain, agentChain)
 		trial.Measured[v2MetricDiagnosisQuality] = true
 	}

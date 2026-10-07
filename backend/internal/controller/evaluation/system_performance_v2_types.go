@@ -157,12 +157,23 @@ type V2CollaborationMetrics struct {
 	ArtifactCoverage                      float64 `json:"artifact_coverage"`
 }
 
+// V2RootCauseClaim preserves the rank used by the RCA scorer.
+type V2RootCauseClaim struct {
+	Text string `json:"text"`
+	Rank int    `json:"rank"`
+}
+
 // V2TrialMetrics is one trial's raw measurement for one case.
 type V2TrialMetrics struct {
 	TaskSuccess        bool `json:"task_success"`
 	ClaimedIncident    bool `json:"claimed_incident"`
 	UnnecessaryActions int  `json:"unnecessary_actions"`
 	FalsePositive      bool `json:"false_positive"`
+	// Diagnosis output is retained alongside its scores so a reviewer can
+	// inspect what was claimed, including alternatives and an absent path.
+	TopRootCause          string             `json:"top_root_cause,omitempty"`
+	RankedRootCauseClaims []V2RootCauseClaim `json:"ranked_root_cause_claims,omitempty"`
+	CausalPath            []string           `json:"causal_path,omitempty"`
 
 	RootCauseEntityPrecision float64  `json:"root_cause_entity_precision"`
 	RootCauseEntityRecall    float64  `json:"root_cause_entity_recall"`
