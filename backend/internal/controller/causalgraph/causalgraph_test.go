@@ -26,3 +26,42 @@ func TestAnalyzeRanksChangeAheadOfSymptoms(t *testing.T) {
 	require.Equal(t, []string{"trainer rollout", "trainer-service", "gpu latency spike"}, result.CausePath)
 	require.NotEmpty(t, result.ImpactPath)
 }
+
+func TestAnalyzeDoesNotTreatObservationAnchorAsRootCause(t *testing.T) {
+	result := Analyze(Input{
+		Nodes: []Node{
+			{ID: "collector", Kind: "topology", Label: "collector-a", Score: 0.2},
+			{ID: "process", Kind: "process", Label: "checkout-api", Score: 0.3},
+			{ID: "cpu", Kind: "signal", Label: "CPU usage", Score: 0.5, Role: "symptom"},
+		},
+		Edges: []Edge{
+			{Source: "collector", Target: "process", Kind: "runs", Weight: 0.5},
+			{Source: "collector", Target: "cpu", Kind: "emits", Weight: 0.5},
+		},
+		SymptomNodes: []string{"cpu"},
+	})
+
+	require.Equal(t, "checkout-api", result.SuspectedRootCauseEntity)
+	require.Empty(t, result.CausePath, "a collector-to-metric link is not a causal explanation")
+	for _, candidate := range result.Candidates {
+		require.NotEqual(t, "collector-a", candidate.Label)
+		require.NotEqual(t, "CPU usage", candidate.Label)
+	}
+}
+
+func TestAnalyzeKeepsEvidenceBackedTopologyPath(t *testing.T) {
+	result := Analyze(Input{
+		Nodes: []Node{
+			{ID: "database", Kind: "topology", Label: "database", Score: 0.7},
+			{ID: "payment", Kind: "topology", Label: "payment service", Score: 0.3},
+			{ID: "timeout", Kind: "signal", Label: "request timeout", Score: 0.5, Role: "symptom"},
+		},
+		Edges: []Edge{
+			{Source: "database", Target: "payment", Kind: "dependency", Weight: 0.8},
+			{Source: "payment", Target: "timeout", Kind: "emits", Weight: 0.8},
+		},
+		SymptomNodes: []string{"timeout"},
+	})
+
+	require.Equal(t, []string{"database", "payment service", "request timeout"}, result.CausePath)
+}

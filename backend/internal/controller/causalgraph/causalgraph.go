@@ -77,6 +77,12 @@ func Analyze(in Input) Analysis {
 
 	candidates := make([]Candidate, 0, len(in.Nodes))
 	for _, node := range in.Nodes {
+		if _, observed := symptoms[node.ID]; observed {
+			continue // an observed symptom is an endpoint, not its own cause
+		}
+		if isObservationAnchor(node, outbound[node.ID]) {
+			continue
+		}
 		score, reasons, symptomScore := rankNode(node, outbound[node.ID], inbound[node.ID], symptoms)
 		if score <= 0 {
 			continue
@@ -113,6 +119,23 @@ func Analyze(in Input) Analysis {
 		analysis.ImpactPath = append([]string(nil), candidates[0].ImpactPath...)
 	}
 	return analysis
+}
+
+// isObservationAnchor excludes an unqualified collector/service container from
+// root-cause ranking when its only relationships are "runs" and "emits".
+// Those edges locate observations; they do not say the container caused them.
+// A causal outgoing edge leaves the node eligible for causal ranking. The
+// anchor may still appear as an intermediate vertex in another cause's path.
+func isObservationAnchor(node Node, outbound []Edge) bool {
+	if !strings.EqualFold(node.Kind, "topology") || strings.EqualFold(node.Role, "cause") || len(outbound) == 0 {
+		return false
+	}
+	for _, edge := range outbound {
+		if edge.Kind != "emits" && edge.Kind != "runs" {
+			return false
+		}
+	}
+	return true
 }
 
 func rankNode(node Node, outbound, inbound []Edge, symptoms map[string]struct{}) (float64, []string, float64) {
