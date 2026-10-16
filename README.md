@@ -299,6 +299,9 @@ restart, Git version switching, Kubernetes mutations, credential changes, and
 other production-impacting operations belong to an operator, with the AI
 preparing evidence and an auditable action proposal. A returned action token is
 not evidence of independent human approval.
+The read-only `operator_preflight` tool packages target identity, telemetry
+freshness, service health, revision, and impact scope, while naming missing
+checks that an operator must complete before a change.
 
 Controller code gates the remaining execution surface:
 

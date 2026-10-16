@@ -229,6 +229,7 @@ func NewWorkflowEngineFromConfig(cfg WorkflowConfig, store *ingest.MemoryStore, 
 		&storageHealthTool{store: store},
 		&networkBlastRadiusTool{provider: topology, store: store},
 		&actionOutcomeTool{memory: engine.memoryStore},
+		&operatorPreflightTool{store: store, topology: topology, maxAge: cfg.MaxTelemetryAge},
 		&profilingTriggerTool{cfg: cfg},
 		&remediationActionTool{cfg: cfg},
 	)

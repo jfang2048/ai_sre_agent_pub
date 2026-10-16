@@ -332,6 +332,15 @@ func describeWorkflowTool(tool workflowTool) WorkflowToolDescriptor {
 		desc.SupportsRollback = false
 		desc.SideEffects = "none"
 		desc.SafetyClass = "read_only"
+	case ToolOperatorPreflight:
+		desc.Purpose = "Assemble a bounded, read-only operator preflight from collector identity, freshness, service health, revision, and topology."
+		desc.InputSchema = `{"collector_id":"string"}`
+		desc.OutputSchema = `{"collector_id":"string","observed_at":"time","fresh":"bool","identity":"kubernetesResourceToolData","revision":"containerRevisionToolData","health":"serviceHealthToolData","impact":"networkBlastRadiusToolData","evidence_gaps":"[]string"}`
+		desc.ReadOnly = true
+		desc.SupportsDryRun = true
+		desc.SupportsRollback = false
+		desc.SideEffects = "none"
+		desc.SafetyClass = "read_only"
 	case ToolSecurityGraph:
 		desc.Purpose = "Build a process-to-port/IP/path graph from runtime events for security and RCA correlation."
 		desc.InputSchema = `{"collector_id":"string"}`
@@ -761,6 +770,11 @@ func decodeWorkflowToolPayload(name ToolName, payload string) (any, bool) {
 		return nil, false
 	}
 	switch name {
+	case ToolOperatorPreflight:
+		var result operatorPreflightData
+		if err := json.Unmarshal([]byte(payload), &result); err == nil && result.Summary != "" {
+			return result, true
+		}
 	case ToolRemediation:
 		var result ActionResult
 		if err := json.Unmarshal([]byte(payload), &result); err == nil && result.Type != "" {

@@ -233,7 +233,7 @@ func workflowToolCapabilityFamily(name ToolName) string {
 		return "runtime_security"
 	case ToolKnowledge, ToolRAGQuery, ToolHistoricalIncident, ToolRunbookRetrieval, ToolSimilarCase, ToolActionOutcome:
 		return "knowledge"
-	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth:
+	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolOperatorPreflight:
 		return "service_health"
 	case ToolKubernetesResource:
 		return "kubernetes"
@@ -290,6 +290,8 @@ func workflowToolEvidenceProduced(name ToolName) []string {
 		return []string{"memory_pressure", "oom_hint"}
 	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth:
 		return []string{"service_health", "network_health", "dns_health"}
+	case ToolOperatorPreflight:
+		return []string{"target_identity", "telemetry_freshness", "service_baseline", "revision_context", "impact_scope", "evidence_gaps"}
 	case ToolGPU:
 		return []string{"gpu_pressure", "gpu_process_attribution"}
 	case ToolKubernetesResource:
@@ -390,7 +392,7 @@ func workflowToolConfidenceImpact(name ToolName) float64 {
 
 func workflowToolExpectedInformationGain(name ToolName) float64 {
 	switch name {
-	case ToolMetrics, ToolLogs, ToolChangeQuery, ToolServiceHealth:
+	case ToolMetrics, ToolLogs, ToolChangeQuery, ToolServiceHealth, ToolOperatorPreflight:
 		return 0.70
 	case ToolKnowledge, ToolHistoricalIncident, ToolRunbookRetrieval, ToolSimilarCase:
 		return 0.62
@@ -407,6 +409,8 @@ func workflowToolExpectedInformationGain(name ToolName) float64 {
 
 func workflowToolInformationProfile(name ToolName) string {
 	switch name {
+	case ToolOperatorPreflight:
+		return "operator baseline with explicit freshness and evidence gaps"
 	case ToolMetrics, ToolLogs, ToolChangeQuery, ToolServiceHealth:
 		return "high-value discriminator for primary hypothesis narrowing"
 	case ToolKnowledge, ToolHistoricalIncident, ToolRunbookRetrieval, ToolSimilarCase, ToolActionOutcome:
@@ -434,7 +438,7 @@ func workflowToolPreferredQueryHints(name ToolName) []string {
 		return []string{"prefer impacted entity scope", "expand one hop before full blast radius"}
 	case ToolKnowledge, ToolRAGQuery, ToolHistoricalIncident, ToolRunbookRetrieval, ToolSimilarCase, ToolActionOutcome:
 		return []string{"use incident summary plus top evidence gaps", "prefer top_k <= 5", "include scene family when available"}
-	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth:
+	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolOperatorPreflight:
 		return []string{"shape query to current service or node scope", "use network/dns/latency signal hints"}
 	case ToolSecurity, ToolSecurityGraph, ToolProcessLineage, ToolEBPFQuery:
 		return []string{"prefer suspicious process or runtime-event scope", "limit to contradiction-relevant filters first"}
@@ -449,7 +453,7 @@ func workflowToolPreferredQueryHints(name ToolName) []string {
 
 func workflowToolFreshnessSensitivity(name ToolName) string {
 	switch name {
-	case ToolMetrics, ToolLogs, ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolSecurity, ToolEBPFQuery, ToolGPU, ToolStorageHealth:
+	case ToolMetrics, ToolLogs, ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolOperatorPreflight, ToolSecurity, ToolEBPFQuery, ToolGPU, ToolStorageHealth:
 		return "high"
 	case ToolChangeQuery, ToolDeploymentHistory, ToolConfigState, ToolContainerRevision, ToolTopology, ToolNetworkBlastRadius:
 		return "medium"
@@ -460,7 +464,7 @@ func workflowToolFreshnessSensitivity(name ToolName) string {
 
 func workflowToolScopeSensitivity(name ToolName) string {
 	switch name {
-	case ToolMetrics, ToolLogs, ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolMemoryPressure, ToolStorageHealth, ToolGPU:
+	case ToolMetrics, ToolLogs, ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth, ToolOperatorPreflight, ToolMemoryPressure, ToolStorageHealth, ToolGPU:
 		return "collector_or_service"
 	case ToolChangeQuery, ToolDeploymentHistory, ToolConfigState, ToolContainerRevision, ToolKubernetesResource:
 		return "workload_or_revision"

@@ -237,6 +237,8 @@ func toolLikelyFollowupFamilies(name ToolName) []ToolCapabilityFamily {
 		return []ToolCapabilityFamily{ToolCapabilityFamilyTelemetry, ToolCapabilityFamilyLogs}
 	case ToolConnectivityCheck, ToolDNSCheck, ToolServiceHealth:
 		return []ToolCapabilityFamily{ToolCapabilityFamilyServiceHealth, ToolCapabilityFamilyTopology}
+	case ToolOperatorPreflight:
+		return []ToolCapabilityFamily{ToolCapabilityFamilyServiceHealth, ToolCapabilityFamilyKubernetes, ToolCapabilityFamilyTopology}
 	case ToolKubernetesResource:
 		return []ToolCapabilityFamily{ToolCapabilityFamilyKubernetes, ToolCapabilityFamilyChange}
 	default:

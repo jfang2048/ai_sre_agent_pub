@@ -53,7 +53,7 @@ func suggestedToolsForFocus(focus string, targetType ValidationTargetType) []Too
 	case ValidationTargetChangeCorrelation:
 		return []ToolName{ToolChangeQuery, ToolDeploymentHistory, ToolConfigState, ToolLogs}
 	case ValidationTargetRemediation:
-		return []ToolName{ToolMetrics, ToolServiceHealth, ToolLogs, ToolConnectivityCheck}
+		return []ToolName{ToolOperatorPreflight, ToolMetrics, ToolServiceHealth, ToolLogs, ToolConnectivityCheck}
 	case ValidationTargetContradiction:
 		switch focus {
 		case "change":
@@ -495,6 +495,14 @@ func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarge
 			return -0.08, ValidationVerdictInsufficientEvidence, "config state is present but does not explain the current scope", nil, nil
 		}
 		return 0.16, ValidationVerdictPartiallySupported, data.Summary, dedupeStrings(supporting), nil
+	case ToolOperatorPreflight:
+		data, ok := result.Data.(operatorPreflightData)
+		if !ok {
+			return -0.05, ValidationVerdictInsufficientEvidence, "operator preflight payload unavailable", nil, nil
+		}
+		// A readiness packet helps the operator but does not prove the RCA or
+		// claim that the proposed action has restored the service.
+		return 0, ValidationVerdictInsufficientEvidence, data.Summary, nil, nil
 	case ToolMetrics, ToolServiceHealth, ToolMemoryPressure, ToolStorageHealth, ToolConnectivityCheck, ToolDNSCheck, ToolNetworkBlastRadius, ToolGPU:
 		return assessOperationalObservation(target, tool, result, supporting)
 	case ToolLogs:

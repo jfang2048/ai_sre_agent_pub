@@ -561,6 +561,7 @@ const (
 	ToolStorageHealth      ToolName = "storage_health_query"
 	ToolNetworkBlastRadius ToolName = "network_blast_radius_query"
 	ToolActionOutcome      ToolName = "prior_action_outcome_retrieval"
+	ToolOperatorPreflight  ToolName = "operator_preflight"
 )
 
 // WorkflowToolDescriptor is an explicit, versioned tool registry entry.

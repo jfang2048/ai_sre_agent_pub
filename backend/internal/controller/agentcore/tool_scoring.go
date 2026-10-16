@@ -117,6 +117,12 @@ func generateToolCandidates(state *workflowState, context ToolSelectionContext) 
 	contracts := state.engine.tools.contracts.List()
 	candidates := make([]ToolCandidate, 0, len(contracts))
 	for _, contract := range contracts {
+		// The preflight packet is useful only for an intervention proposal.
+		// Keep it out of ordinary RCA and adaptive evidence searches, where
+		// it would consume budget without proving or refuting a hypothesis.
+		if contract.Name == ToolOperatorPreflight && (context.Target == nil || context.Target.Type != ValidationTargetRemediation) {
+			continue
+		}
 		if err := validateToolContract(contract); err != nil {
 			continue
 		}

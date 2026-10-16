@@ -372,7 +372,7 @@ func suggestedToolsForTargetFamilies(targetType ValidationTargetType, families [
 		}
 	}
 	if targetType == ValidationTargetRemediation {
-		add(ToolServiceHealth, ToolActionOutcome, ToolNetworkBlastRadius)
+		add(ToolOperatorPreflight, ToolServiceHealth, ToolActionOutcome, ToolNetworkBlastRadius)
 	}
 	for _, family := range families {
 		switch family {
