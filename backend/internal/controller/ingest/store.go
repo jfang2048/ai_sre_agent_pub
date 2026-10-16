@@ -38,6 +38,7 @@ type NodeSnapshot struct {
 	LastBatchID      string                        `json:"last_batch_id"`
 	LastCollectionAt time.Time                     `json:"last_collection_at,omitempty"`
 	LastIngestAt     time.Time                     `json:"last_ingest_at,omitempty"`
+	LastMetricAt     time.Time                     `json:"last_metric_at,omitempty"`
 	IngestLagMs      float64                       `json:"ingest_lag_ms"`
 	Metrics          map[string]float64            `json:"metrics"`
 	Processes        []*telemetryv1.ProcessSample  `json:"processes"`
@@ -45,6 +46,13 @@ type NodeSnapshot struct {
 	UpdatedAt        time.Time                     `json:"updated_at"`
 	MetricCount      int                           `json:"metric_count"`
 	LogCount         int                           `json:"log_count"`
+
+	// ServiceMetricObservedAt preserves service sample time independently of ingest
+	// and heartbeat time. Only a bounded set of health signals is retained.
+	ServiceMetricObservedAt   map[string]time.Time `json:"service_metric_observed_at,omitempty"`
+	ServiceMetricScopeKey     string               `json:"service_metric_scope_key,omitempty"`
+	ServiceMetricScopeMixed   bool                 `json:"service_metric_scope_mixed,omitempty"`
+	ServiceMetricNameRepeated bool                 `json:"service_metric_name_repeated,omitempty"`
 
 	// ProcessNetwork captures per-PID network pressure derived from RCA metrics
 	// (connections, queued bytes, approximate throughput). This is kept lightweight
@@ -628,12 +636,24 @@ func (s *MemoryStore) UpsertCollector(info *telemetryv1.CollectorInfo, heartbeat
 	defer s.mu.Unlock()
 
 	node := s.ensureNode(info.CollectorId)
+	previousScope := ""
+	if len(node.ServiceMetricObservedAt) > 0 {
+		previousScope, _ = serviceHealthMetricScopeKey(node, &telemetryv1.Metric{})
+	}
 	node.CollectorID = info.CollectorId
 	node.Hostname = info.Hostname
 	node.Version = info.Version
 	node.OS = info.Os
 	node.Arch = info.Arch
 	node.Labels = labelsToMap(info.Labels)
+	if len(node.ServiceMetricObservedAt) > 0 {
+		currentScope, _ := serviceHealthMetricScopeKey(node, &telemetryv1.Metric{})
+		if previousScope != currentScope {
+			// Existing samples were taken under a different collector identity.
+			// A new metrics batch must re-establish the scope before validation.
+			node.ServiceMetricScopeMixed = true
+		}
+	}
 	node.LastSeen = heartbeat
 	node.UpdatedAt = heartbeat
 	s.markDirtyLocked(heartbeat)
@@ -658,6 +678,10 @@ func (s *MemoryStore) StoreMetrics(collectorID string, metrics []*telemetryv1.Me
 	carriedProbeCoreModules := cloneProbeCoreModuleMap(node.ProbeCoreModules)
 
 	node.Metrics = make(map[string]float64, len(metrics)+len(carriedMetrics))
+	node.ServiceMetricObservedAt = make(map[string]time.Time, 6)
+	node.ServiceMetricScopeKey = ""
+	node.ServiceMetricScopeMixed = false
+	node.ServiceMetricNameRepeated = false
 	if partialCollectorUpdate {
 		for name, value := range carriedMetrics {
 			node.Metrics[name] = value
@@ -696,6 +720,27 @@ func (s *MemoryStore) StoreMetrics(collectorID string, metrics []*telemetryv1.Me
 	for _, metric := range metrics {
 		if metric == nil || metric.Name == "" {
 			continue
+		}
+		if isServiceHealthMetric(metric.Name) {
+			if _, alreadySeen := node.ServiceMetricObservedAt[metric.Name]; alreadySeen {
+				// Flat metric storage would otherwise keep only the last series.
+				node.ServiceMetricNameRepeated = true
+			}
+			scopeKey, scoped := serviceHealthMetricScopeKey(node, metric)
+			if !scoped {
+				node.ServiceMetricScopeMixed = true
+			} else if node.ServiceMetricScopeKey == "" {
+				node.ServiceMetricScopeKey = scopeKey
+			} else if node.ServiceMetricScopeKey != scopeKey {
+				node.ServiceMetricScopeMixed = true
+			}
+			observedAt := time.Time{}
+			if metric.TimestampUnixNano > 0 {
+				observedAt = time.Unix(0, metric.TimestampUnixNano).UTC()
+			}
+			if previous, exists := node.ServiceMetricObservedAt[metric.Name]; !exists || observedAt.Before(previous) {
+				node.ServiceMetricObservedAt[metric.Name] = observedAt
+			}
 		}
 
 		if captureRuntimeEBPFMetric(node, metric, receivedAt) {
@@ -751,6 +796,7 @@ func (s *MemoryStore) StoreMetrics(collectorID string, metrics []*telemetryv1.Me
 	node.MetricCount = len(metrics)
 	node.UpdatedAt = receivedAt
 	node.LastIngestAt = receivedAt
+	node.LastMetricAt = receivedAt
 	node.ProcessGraphSnapshot = buildProcessGraphSnapshot(node)
 	pruneProcessResources(node)
 	sampleAt := receivedAt
@@ -759,6 +805,78 @@ func (s *MemoryStore) StoreMetrics(collectorID string, metrics []*telemetryv1.Me
 	}
 	s.recordMetricHistory(collectorID, sampleAt, receivedAt, node.Metrics)
 	s.markDirtyLocked(receivedAt)
+}
+
+func isServiceHealthMetric(name string) bool {
+	switch name {
+	case "service_latency_p95_ms", "service_latency_p99_ms", "service_error_rate", "service_request_error_rate", "process_restart_count", "container_restart_count":
+		return true
+	default:
+		return false
+	}
+}
+
+func serviceHealthMetricScopeKey(node *NodeSnapshot, metric *telemetryv1.Metric) (string, bool) {
+	if node == nil || metric == nil {
+		return "", false
+	}
+	namespace, ok := serviceScopeValue(node.Labels, metric.Labels, "namespace", "k8s_namespace")
+	if !ok {
+		return "", false
+	}
+	service, ok := serviceScopeValue(node.Labels, metric.Labels, "service", "app")
+	if !ok {
+		return "", false
+	}
+	workload, ok := serviceScopeValue(node.Labels, metric.Labels, "workload", "k8s_workload")
+	if !ok {
+		return "", false
+	}
+	podUID, ok := serviceScopeValue(node.Labels, metric.Labels, "pod_uid", "k8s_pod_uid", "pod_id")
+	if !ok {
+		return "", false
+	}
+	podName, ok := serviceScopeValue(node.Labels, metric.Labels, "pod", "pod_name", "k8s_pod_name")
+	if !ok {
+		return "", false
+	}
+	return "collector=" + strconv.Quote(node.CollectorID) +
+		"|namespace=" + strconv.Quote(namespace) +
+		"|service=" + strconv.Quote(service) +
+		"|workload=" + strconv.Quote(workload) +
+		"|pod_uid=" + strconv.Quote(podUID) +
+		"|pod_name=" + strconv.Quote(podName), true
+}
+
+func serviceScopeValue(collectorLabels map[string]string, metricLabels []*telemetryv1.Label, names ...string) (string, bool) {
+	var selected string
+	add := func(value string) bool {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return true
+		}
+		if selected != "" && selected != value {
+			return false
+		}
+		selected = value
+		return true
+	}
+	for _, name := range names {
+		if !add(collectorLabels[name]) {
+			return "", false
+		}
+	}
+	for _, label := range metricLabels {
+		if label == nil {
+			continue
+		}
+		for _, name := range names {
+			if label.Key == name && !add(label.Value) {
+				return "", false
+			}
+		}
+	}
+	return selected, true
 }
 
 func captureProbeCoreMetric(node *NodeSnapshot, metric *telemetryv1.Metric) {
@@ -2415,6 +2533,12 @@ func cloneNode(node *NodeSnapshot) *NodeSnapshot {
 			metrics[k] = v
 		}
 		clone.Metrics = metrics
+	}
+	if node.ServiceMetricObservedAt != nil {
+		clone.ServiceMetricObservedAt = make(map[string]time.Time, len(node.ServiceMetricObservedAt))
+		for name, observedAt := range node.ServiceMetricObservedAt {
+			clone.ServiceMetricObservedAt[name] = observedAt
+		}
 	}
 	if node.Processes != nil {
 		clone.Processes = make([]*telemetryv1.ProcessSample, 0, len(node.Processes))

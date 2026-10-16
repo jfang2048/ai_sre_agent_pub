@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/changeintel"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/ingest"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -185,7 +187,9 @@ func TestValidationAgentContradictionSearchMarksHealthyObservationContradicted(t
 	engine := &WorkflowEngine{
 		cfg: cfg,
 		tools: newWorkflowToolManager(zap.NewNop(),
-			&staticWorkflowTool{name: ToolServiceHealth, summary: "service healthy and returned no strong matches"},
+			&staticWorkflowTool{name: ToolServiceHealth, summary: "service healthy", data: serviceHealthToolData{
+				CollectorID: "collector-a", Available: true, Fresh: true, Healthy: true, Summary: "service healthy",
+			}},
 		),
 	}
 	state := &workflowState{
@@ -214,6 +218,209 @@ func TestValidationAgentContradictionSearchMarksHealthyObservationContradicted(t
 	require.Equal(t, ValidationVerdictContradicted, report.Results[0].Verdict)
 	require.NotEmpty(t, report.ContradictionSummary)
 	require.NotEmpty(t, report.Results[0].ContradictingEvidenceIDs)
+}
+
+func TestRemediationBaselineCannotConfirmActionOutcome(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	cfg.ValidationMaxIterations = 1
+	cfg.ValidationMaxToolCalls = 1
+	engine := &WorkflowEngine{
+		cfg: cfg,
+		tools: newWorkflowToolManager(zap.NewNop(), &staticWorkflowTool{
+			name: ToolServiceHealth, summary: "current checkout errors 10%",
+			data: serviceHealthToolData{CollectorID: "collector-a", Available: true, Fresh: true, Healthy: false, ErrorRate: 0.10, Summary: "current checkout errors 10%"},
+		}),
+	}
+	state := &workflowState{engine: engine, workflowID: "wf-remediation-baseline", workflowType: "rca", collectorID: "collector-a", window: 5 * time.Minute}
+	handoff := AnalysisHandoff{SuggestedValidationTargets: []ValidationTarget{{
+		ID: "target-remediation", Type: ValidationTargetRemediation, Title: "verify checkout rollback", PostAction: true,
+		SuggestedTools: []ToolName{ToolServiceHealth},
+	}}}
+
+	report := newValidationActionAgent(cfg, zap.NewNop()).RunDecoded(context.Background(), state, handoff)
+	require.Len(t, report.Results, 1)
+	require.Equal(t, ValidationVerdictInsufficientEvidence, report.Results[0].Verdict)
+	require.Empty(t, report.Results[0].SupportingEvidenceIDs)
+	require.Contains(t, report.Results[0].EvidenceGaps, "no executed action or before/after comparison")
+	require.NotEmpty(t, report.UnresolvedUncertainty)
+}
+
+func TestValidationHealthObservationRequiresTypedSameScopeEvidence(t *testing.T) {
+	tests := []struct {
+		name string
+		data any
+	}{
+		{name: "summary only"},
+		{name: "other collector", data: serviceHealthToolData{CollectorID: "collector-b", Available: true, Fresh: true, Healthy: false, ErrorRate: 0.10, Summary: "errors 10%"}},
+		{name: "telemetry unavailable", data: serviceHealthToolData{CollectorID: "collector-a", Healthy: true, Summary: "service health unavailable"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultWorkflowConfig()
+			cfg.ValidationMaxIterations = 1
+			cfg.ValidationMaxToolCalls = 1
+			engine := &WorkflowEngine{cfg: cfg, tools: newWorkflowToolManager(zap.NewNop(), &staticWorkflowTool{name: ToolServiceHealth, summary: "service health summary", data: tt.data})}
+			state := &workflowState{engine: engine, workflowID: "wf-health-" + tt.name, workflowType: "rca", collectorID: "collector-a", window: 5 * time.Minute}
+			handoff := AnalysisHandoff{SuggestedValidationTargets: []ValidationTarget{{ID: "target-health", Type: ValidationTargetHypothesis, Title: "DNS is root cause", Focus: "network", SuggestedTools: []ToolName{ToolServiceHealth}}}}
+
+			report := newValidationActionAgent(cfg, zap.NewNop()).RunDecoded(context.Background(), state, handoff)
+			require.Len(t, report.Results, 1)
+			require.Equal(t, ValidationVerdictInsufficientEvidence, report.Results[0].Verdict)
+			require.Empty(t, report.Results[0].SupportingEvidenceIDs)
+		})
+	}
+}
+
+func TestValidationHealthObservationUsesRealToolCallProvenance(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	cfg.ValidationMaxIterations = 1
+	cfg.ValidationMaxToolCalls = 1
+	engine := &WorkflowEngine{cfg: cfg, tools: newWorkflowToolManager(zap.NewNop(), &staticWorkflowTool{
+		name: ToolServiceHealth, summary: "current checkout errors 10%",
+		data: serviceHealthToolData{CollectorID: "collector-a", Available: true, Fresh: true, Healthy: false, ErrorRate: 0.10, Summary: "current checkout errors 10%"},
+	})}
+	state := &workflowState{engine: engine, workflowID: "wf-health-provenance", workflowType: "rca", collectorID: "collector-a", window: 5 * time.Minute}
+	handoff := AnalysisHandoff{SuggestedValidationTargets: []ValidationTarget{{ID: "target-dns", Type: ValidationTargetHypothesis, Title: "DNS is root cause", Focus: "network", SuggestedTools: []ToolName{ToolServiceHealth}}}}
+
+	report := newValidationActionAgent(cfg, zap.NewNop()).RunDecoded(context.Background(), state, handoff)
+	require.Len(t, report.Results, 1)
+	require.Len(t, state.toolCalls, 1)
+	require.Equal(t, ValidationVerdictPartiallySupported, report.Results[0].Verdict)
+	require.Equal(t, []string{state.toolCalls[0].ID}, report.Results[0].SupportingEvidenceIDs)
+	require.NotEqual(t, ValidationVerdictConfirmed, report.Results[0].Verdict)
+}
+
+func TestSceneValidationCannotConfirmItselfFromTargetFamily(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	cfg.ValidationMaxIterations = 1
+	cfg.ValidationMaxToolCalls = 1
+	engine := &WorkflowEngine{cfg: cfg, tools: newWorkflowToolManager(zap.NewNop(), &staticWorkflowTool{
+		name: ToolServiceHealth, summary: "latency scene was suggested",
+		data: serviceHealthToolData{CollectorID: "collector-a", Summary: "service health unavailable"},
+	})}
+	state := &workflowState{engine: engine, workflowID: "wf-scene-missing", workflowType: "rca", collectorID: "collector-a", window: 5 * time.Minute}
+	handoff := AnalysisHandoff{SuggestedValidationTargets: []ValidationTarget{{
+		ID: "target-scene", Type: ValidationTargetSceneClassification, SceneFamily: SceneFamilyDatabaseLikeLatencyPath,
+		Title: "database-like latency", ToolFamilies: []string{"service_health"}, SuggestedTools: []ToolName{ToolServiceHealth},
+	}}}
+
+	report := newValidationActionAgent(cfg, zap.NewNop()).RunDecoded(context.Background(), state, handoff)
+	require.Len(t, report.Results, 1)
+	require.Equal(t, ValidationVerdictInsufficientEvidence, report.Results[0].Verdict)
+	require.Empty(t, report.Results[0].SupportingEvidenceIDs)
+}
+
+func TestSceneValidationRequiresObservedFamilySignal(t *testing.T) {
+	now := time.Now().UTC()
+	cases := []struct {
+		name   string
+		family SceneFamily
+		tool   ToolName
+		data   any
+		want   ValidationVerdict
+	}{
+		{
+			name: "gpu node without gpu telemetry", family: SceneFamilyGPUInference, tool: ToolGPU,
+			data: gpuToolData{Bottleneck: "no dominant gpu bottleneck"}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "idle gpu metrics", family: SceneFamilyGPUInference, tool: ToolGPU,
+			data: gpuToolData{Metrics: map[string]float64{"node_gpu_utilization_sm_avg_percent": 10}, Bottleneck: "no dominant gpu bottleneck"}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "gpu pressure", family: SceneFamilyGPUInference, tool: ToolGPU,
+			data: gpuToolData{Metrics: map[string]float64{"node_gpu_utilization_sm_avg_percent": 95}, Bottleneck: "gpu compute saturation"}, want: ValidationVerdictPartiallySupported,
+		},
+		{
+			name: "gpu saturation alone is not collective evidence", family: SceneFamilyGPUTrainingOrCollective, tool: ToolGPU,
+			data: gpuToolData{Metrics: map[string]float64{"node_gpu_utilization_sm_avg_percent": 95}, Bottleneck: "gpu compute saturation"}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "multiple gpu processes are not collective evidence", family: SceneFamilyGPUTrainingOrCollective, tool: ToolGPU,
+			data: gpuToolData{TopProcesses: []string{"worker-a", "worker-b"}}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "collective signal", family: SceneFamilyGPUTrainingOrCollective, tool: ToolGPU,
+			data: gpuToolData{Metrics: map[string]float64{"node_gpu_collective_wait_percent": 20}}, want: ValidationVerdictPartiallySupported,
+		},
+		{
+			name: "stale cpu pressure", family: SceneFamilyResourceContention, tool: ToolMetrics,
+			data: metricsToolData{CollectorID: "collector-a", Node: &ingest.NodeSnapshot{CollectorID: "collector-a", LastMetricAt: now.Add(-10 * time.Minute), Metrics: map[string]float64{"node_cpu_usage_percent": 93}}}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "current cpu pressure", family: SceneFamilyResourceContention, tool: ToolMetrics,
+			data: metricsToolData{CollectorID: "collector-a", Node: &ingest.NodeSnapshot{CollectorID: "collector-a", LastMetricAt: now, Metrics: map[string]float64{"node_cpu_usage_percent": 93}}}, want: ValidationVerdictPartiallySupported,
+		},
+		{
+			name: "kubernetes label without workload identity", family: SceneFamilyKubernetesWorkload, tool: ToolKubernetesResource,
+			data: kubernetesResourceToolData{CollectorID: "collector-a", Service: "checkout"}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "kubernetes workload identity", family: SceneFamilyKubernetesWorkload, tool: ToolKubernetesResource,
+			data: kubernetesResourceToolData{CollectorID: "collector-a", Namespace: "shop", Workload: "checkout"}, want: ValidationVerdictPartiallySupported,
+		},
+		{
+			name: "generic runtime event", family: SceneFamilyBareMetalKernelOrIRQ, tool: ToolEBPFQuery,
+			data: ebpfToolData{CollectorID: "collector-a", RuntimeEvents: []ingest.RuntimeSecurityEvent{{Category: "process", Type: "exec"}}}, want: ValidationVerdictInsufficientEvidence,
+		},
+		{
+			name: "kernel irq event", family: SceneFamilyBareMetalKernelOrIRQ, tool: ToolEBPFQuery,
+			data: ebpfToolData{CollectorID: "collector-a", RuntimeEvents: []ingest.RuntimeSecurityEvent{{Category: "kernel", Type: "softirq_pressure"}}}, want: ValidationVerdictPartiallySupported,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, verdict, _, supporting, _ := assessSceneValidationObservation(ValidationTarget{SceneFamily: tt.family}, tt.tool, workflowToolResult{Summary: "scene check", Data: tt.data}, []string{"tool-call-1"}, "collector-a")
+			require.Equal(t, tt.want, verdict)
+			if tt.want == ValidationVerdictPartiallySupported {
+				require.Equal(t, []string{"tool-call-1"}, supporting)
+			} else {
+				require.Empty(t, supporting)
+			}
+		})
+	}
+}
+
+func TestGPUOperationalObservationNeedsActualAnomaly(t *testing.T) {
+	target := ValidationTarget{Type: ValidationTargetHypothesis, ID: "gpu-pressure"}
+	for _, data := range []gpuToolData{
+		{Summary: "gpu telemetry unavailable", Bottleneck: "no dominant gpu bottleneck"},
+		{Summary: "gpu idle", Metrics: map[string]float64{"node_gpu_utilization_sm_avg_percent": 10}, Bottleneck: "no dominant gpu bottleneck"},
+	} {
+		_, verdict, _, supporting, _ := assessOperationalObservation(target, ToolGPU, workflowToolResult{Summary: data.Summary, Data: data}, []string{"tool-call-1"}, "collector-a")
+		require.Equal(t, ValidationVerdictInsufficientEvidence, verdict)
+		require.Empty(t, supporting)
+	}
+}
+
+func TestCorrelatedChangeDoesNotConfirmUnrelatedRootCause(t *testing.T) {
+	event := changeintel.CorrelatedChange{
+		Event:       changeintel.ChangeEvent{ChangeID: "change-1", Category: "deployment", CollectorID: "collector-a"},
+		ChangeScore: 0.9,
+	}
+	data := changeToolData{CollectorID: "collector-a", Events: []changeintel.CorrelatedChange{event}, Strongest: &event, Summary: "deployment near incident"}
+	for _, tc := range []struct {
+		name   string
+		target ValidationTarget
+		want   ValidationVerdict
+	}{
+		{name: "unrelated hypothesis", target: ValidationTarget{Type: ValidationTargetHypothesis, Title: "DNS resolver failure"}, want: ValidationVerdictPartiallySupported},
+		{name: "change correlation target", target: ValidationTarget{Type: ValidationTargetChangeCorrelation, ChangeCategories: []string{"deployment"}}, want: ValidationVerdictConfirmed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, verdict, _, _, _ := assessValidationObservation(AnalysisHandoff{}, tc.target, ToolChangeQuery, workflowToolResult{Summary: data.Summary, Data: data}, "tool-call-1", "collector-a")
+			require.Equal(t, tc.want, verdict)
+		})
+	}
+	_, verdict, _, supporting, _ := assessValidationObservation(AnalysisHandoff{}, ValidationTarget{Type: ValidationTargetChangeCorrelation}, ToolChangeQuery, workflowToolResult{Summary: data.Summary, Data: data}, "tool-call-1", "collector-b")
+	require.Equal(t, ValidationVerdictInsufficientEvidence, verdict)
+	require.Empty(t, supporting)
+}
+
+func TestOOMHintCannotConfirmUnrelatedRootCause(t *testing.T) {
+	data := memoryPressureToolData{CollectorID: "collector-a", Summary: "OOM observed", OOMHints: []string{"process killed"}}
+	_, verdict, _, _, _ := assessValidationObservation(AnalysisHandoff{}, ValidationTarget{Type: ValidationTargetHypothesis, Title: "DNS failure"}, ToolMemoryPressure, workflowToolResult{Summary: data.Summary, Data: data}, "tool-call-1", "collector-a")
+	require.Equal(t, ValidationVerdictPartiallySupported, verdict)
 }
 
 func TestValidationAgentRecommendationValidationUsesHistoricalAndRunbookEvidence(t *testing.T) {
@@ -454,33 +661,36 @@ func TestValidationExecutionAllowedUsesExplicitCategories(t *testing.T) {
 }
 
 func TestBuildPostActionValidationSummaryComparesBeforeAndAfterSnapshots(t *testing.T) {
+	base := time.Now().UTC().Add(-30 * time.Second)
 	before := &ValidationEvidenceSnapshot{
 		Label:      "before_action",
-		CapturedAt: time.Now().UTC(),
+		CapturedAt: base,
 		RiskScore:  0.82,
 		LogErrors:  18,
 		ServiceHealth: serviceHealthToolData{
-			Healthy:   false,
-			LatencyMS: 1600,
-			ErrorRate: 0.12,
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(-time.Second),
+			Available: true, Fresh: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: false, LatencyMS: 1600, ErrorRate: 0.12,
 		},
 		TriggeredSignals: []string{"cpu_usage", "service_latency"},
 	}
 	after := &ValidationEvidenceSnapshot{
 		Label:      "after_action",
-		CapturedAt: time.Now().UTC(),
+		CapturedAt: base.Add(10 * time.Second),
 		RiskScore:  0.34,
 		LogErrors:  4,
 		ServiceHealth: serviceHealthToolData{
-			Healthy:   true,
-			LatencyMS: 420,
-			ErrorRate: 0.01,
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(8 * time.Second),
+			Available: true, Fresh: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: true, LatencyMS: 420, ErrorRate: 0.01,
 		},
 		TriggeredSignals: []string{"cpu_usage"},
 	}
+	require.True(t, after.ServiceHealth.ObservedAt.Before(after.CapturedAt), "the valid post-action sample arrived during the verification window")
 
-	summary := buildPostActionValidationSummary(before, after)
+	summary := buildPostActionValidationSummary(before, after, base.Add(5*time.Second))
 	require.Equal(t, ValidationVerdictConfirmed, summary.Verdict)
+	require.True(t, base.Add(5*time.Second).Equal(summary.ActionCompletedAt))
 	require.NotNil(t, summary.Comparison)
 	require.NotNil(t, summary.Delta)
 	require.True(t, summary.Comparison.Comparable)
@@ -490,6 +700,59 @@ func TestBuildPostActionValidationSummaryComparesBeforeAndAfterSnapshots(t *test
 	require.True(t, summary.Comparison.TriggeredSignals.Improved)
 	require.True(t, summary.Delta.HealthImproved)
 	require.Less(t, summary.Delta.RiskDelta, 0.0)
+}
+
+func TestPostActionComparisonRequiresSameCollectorAndNewSample(t *testing.T) {
+	base := time.Now().UTC().Add(-30 * time.Second)
+	before := &ValidationEvidenceSnapshot{
+		CapturedAt: base,
+		RiskScore:  0.8,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(-time.Second),
+			Available: true, Fresh: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: false, LatencyMS: 1500, ErrorRate: 0.1,
+		},
+	}
+	after := &ValidationEvidenceSnapshot{
+		CapturedAt: base.Add(10 * time.Second),
+		RiskScore:  0.4,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-b", ScopeKey: "scope-b", ObservedAt: base.Add(8 * time.Second),
+			Available: true, Fresh: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: true, LatencyMS: 200, ErrorRate: 0.01,
+		},
+	}
+	for _, tc := range []struct {
+		name    string
+		change  func(*ValidationEvidenceSnapshot)
+		missing string
+	}{
+		{name: "different collector", missing: "service_scope"},
+		{name: "different service on same collector", change: func(snapshot *ValidationEvidenceSnapshot) {
+			snapshot.ServiceHealth.CollectorID = before.ServiceHealth.CollectorID
+		}, missing: "service_scope"},
+		{name: "same old sample", change: func(snapshot *ValidationEvidenceSnapshot) {
+			snapshot.ServiceHealth.CollectorID = before.ServiceHealth.CollectorID
+			snapshot.ServiceHealth.ScopeKey = before.ServiceHealth.ScopeKey
+			snapshot.ServiceHealth.ObservedAt = before.ServiceHealth.ObservedAt
+		}, missing: "post_action_service_sample"},
+		{name: "sample collected during action", change: func(snapshot *ValidationEvidenceSnapshot) {
+			snapshot.ServiceHealth.CollectorID = before.ServiceHealth.CollectorID
+			snapshot.ServiceHealth.ScopeKey = before.ServiceHealth.ScopeKey
+			snapshot.ServiceHealth.ObservedAt = base.Add(3 * time.Second)
+		}, missing: "post_action_service_sample"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			afterCopy := *after
+			if tc.change != nil {
+				tc.change(&afterCopy)
+			}
+			summary := buildPostActionValidationSummary(before, &afterCopy, base.Add(5*time.Second))
+			require.Equal(t, ValidationVerdictPartiallySupported, summary.Verdict)
+			require.False(t, summary.Comparison.ServiceHealthy.Available)
+			require.Contains(t, summary.Comparison.MissingData, tc.missing)
+		})
+	}
 }
 
 func TestSummarizeValidationEffectFallsBackToRiskOnlyWhenSnapshotsMissing(t *testing.T) {
@@ -503,7 +766,7 @@ func TestSummarizeValidationEffectFallsBackToRiskOnlyWhenSnapshotsMissing(t *tes
 		Note:              "post-action snapshots unavailable",
 	})
 
-	require.Equal(t, ValidationVerdictConfirmed, summary.Verdict)
+	require.Equal(t, ValidationVerdictPartiallySupported, summary.Verdict)
 	require.Equal(t, "action-1", summary.ActionID)
 	require.Equal(t, "probable_containment", summary.ExecutionCategory)
 	require.Equal(t, "risk_only", summary.FallbackMode)
@@ -514,4 +777,71 @@ func TestSummarizeValidationEffectFallsBackToRiskOnlyWhenSnapshotsMissing(t *tes
 	require.Contains(t, summary.Comparison.MissingData, "before_snapshot")
 	require.Contains(t, summary.Comparison.MissingData, "after_snapshot")
 	require.Less(t, summary.Delta.RiskDelta, 0.0)
+}
+
+func TestPostActionComparisonDoesNotTreatMissingHealthAsMeasured(t *testing.T) {
+	before := &ValidationEvidenceSnapshot{RiskScore: 0.80, LogErrors: 10}
+	after := &ValidationEvidenceSnapshot{RiskScore: 0.40, LogErrors: 0}
+	comparison := buildValidationEffectComparison(validationEffectInput{Before: before, After: after}, before.RiskScore, after.RiskScore)
+	require.False(t, comparison.ServiceHealthy.Available)
+	require.False(t, comparison.ServiceLatencyMS.Available)
+	require.False(t, comparison.ServiceErrorRate.Available)
+	require.Contains(t, comparison.MissingData, "service_health")
+	require.Contains(t, comparison.MissingData, "service_latency")
+	require.Contains(t, comparison.MissingData, "service_error_rate")
+	summary := summarizeValidationEffect(validationEffectInput{Before: before, After: after, Resolved: true})
+	require.Equal(t, ValidationVerdictPartiallySupported, summary.Verdict)
+}
+
+func TestPostActionLatencyImprovementWithoutCompleteHealthIsNotConfirmed(t *testing.T) {
+	base := time.Now().UTC().Add(-30 * time.Second)
+	before := &ValidationEvidenceSnapshot{
+		CapturedAt: base,
+		RiskScore:  0.8,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(-time.Second),
+			Fresh: true, Available: true, LatencyAvailable: true,
+			LatencyMS: 1600,
+		},
+	}
+	after := &ValidationEvidenceSnapshot{
+		CapturedAt: base.Add(10 * time.Second),
+		RiskScore:  0.4,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(8 * time.Second),
+			Fresh: true, LatencyAvailable: true,
+			LatencyMS: 200,
+		},
+	}
+	summary := buildPostActionValidationSummary(before, after, base.Add(5*time.Second))
+	require.True(t, summary.Comparison.ServiceLatencyMS.Improved)
+	require.False(t, summary.Comparison.ServiceHealthy.Available)
+	require.Equal(t, ValidationVerdictPartiallySupported, summary.Verdict)
+}
+
+func TestPostActionImprovementWithoutRecoveryIsNotConfirmed(t *testing.T) {
+	base := time.Now().UTC().Add(-30 * time.Second)
+	before := &ValidationEvidenceSnapshot{
+		CapturedAt: base,
+		RiskScore:  0.8,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(-time.Second),
+			Fresh: true, Available: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: false, LatencyMS: 2000, ErrorRate: 0.01,
+		},
+	}
+	after := &ValidationEvidenceSnapshot{
+		CapturedAt: base.Add(10 * time.Second),
+		RiskScore:  0.4,
+		ServiceHealth: serviceHealthToolData{
+			CollectorID: "collector-a", ScopeKey: "scope-a", ObservedAt: base.Add(8 * time.Second),
+			Fresh: true, Available: true, LatencyAvailable: true, ErrorRateAvailable: true,
+			Healthy: false, LatencyMS: 1500, ErrorRate: 0.01,
+		},
+	}
+	summary := buildPostActionValidationSummary(before, after, base.Add(5*time.Second))
+	require.True(t, summary.Comparison.ServiceLatencyMS.Improved)
+	require.True(t, summary.Comparison.ServiceHealthy.Available)
+	require.False(t, summary.Comparison.ServiceHealthy.After)
+	require.Equal(t, ValidationVerdictPartiallySupported, summary.Verdict)
 }

@@ -254,6 +254,7 @@ type PostActionValidationSummary struct {
 	Verdict                  ValidationVerdict           `json:"verdict"`
 	Summary                  string                      `json:"summary"`
 	ActionID                 string                      `json:"action_id,omitempty"`
+	ActionCompletedAt        time.Time                   `json:"action_completed_at,omitempty"`
 	ExecutionCategory        string                      `json:"execution_category,omitempty"`
 	FallbackMode             string                      `json:"fallback_mode,omitempty"`
 	BeforeRisk               float64                     `json:"before_risk,omitempty"`

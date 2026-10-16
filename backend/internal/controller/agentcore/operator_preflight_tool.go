@@ -64,19 +64,6 @@ func (t *operatorPreflightTool) Run(ctx context.Context, req workflowToolRequest
 		return workflowToolResult{Summary: data.Summary, Data: data}, nil
 	}
 
-	data.ObservedAt = node.UpdatedAt
-	maxAge := t.maxAge
-	if maxAge <= 0 {
-		maxAge = 2 * time.Minute
-	}
-	if !node.UpdatedAt.IsZero() {
-		data.AgeSeconds = maxFloat(time.Since(node.UpdatedAt).Seconds(), 0)
-		data.Fresh = !node.UpdatedAt.After(time.Now().Add(30*time.Second)) && data.AgeSeconds <= maxAge.Seconds()
-	}
-	if !data.Fresh {
-		data.EvidenceGaps = append(data.EvidenceGaps, "collector snapshot is missing a timestamp or is stale")
-	}
-
 	identity, err := (&kubernetesResourceTool{store: t.store}).Run(ctx, req)
 	if err != nil {
 		return workflowToolResult{}, err
@@ -87,11 +74,20 @@ func (t *operatorPreflightTool) Run(ctx context.Context, req workflowToolRequest
 		return workflowToolResult{}, err
 	}
 	data.Revision, _ = revision.Data.(containerRevisionToolData)
-	health, err := (&serviceHealthTool{store: t.store}).Run(ctx, req)
+	health, err := (&serviceHealthTool{store: t.store, maxAge: t.maxAge}).Run(ctx, req)
 	if err != nil {
 		return workflowToolResult{}, err
 	}
 	data.Health, _ = health.Data.(serviceHealthToolData)
+	data.ObservedAt = data.Health.ObservedAt
+	if !data.ObservedAt.IsZero() {
+		data.AgeSeconds = maxFloat(time.Since(data.ObservedAt).Seconds(), 0)
+	}
+	data.Fresh = data.Health.Fresh
+	data.HealthAvailable = data.Health.Available
+	if !data.Fresh {
+		data.EvidenceGaps = append(data.EvidenceGaps, "service metric snapshot is missing a timestamp or is stale")
+	}
 	if t.topology != nil {
 		impact, err := (&networkBlastRadiusTool{provider: t.topology, store: t.store}).Run(ctx, req)
 		if err != nil {
@@ -110,16 +106,9 @@ func (t *operatorPreflightTool) Run(ctx context.Context, req workflowToolRequest
 	if data.Revision.Revision == "" && data.Revision.Image == "" {
 		data.EvidenceGaps = append(data.EvidenceGaps, "deployed revision or image unavailable")
 	}
-	for _, name := range []string{"service_latency_p95_ms", "service_latency_p99_ms", "service_error_rate", "service_request_error_rate", "process_restart_count", "container_restart_count"} {
-		if _, ok := node.Metrics[name]; ok {
-			data.HealthAvailable = true
-			break
-		}
-	}
 	if !data.HealthAvailable {
 		data.Health.Healthy = false
-		data.Health.Summary = "service health metrics unavailable"
-		data.EvidenceGaps = append(data.EvidenceGaps, "service health metrics unavailable")
+		data.EvidenceGaps = append(data.EvidenceGaps, "service health metrics unavailable or incomplete")
 	}
 	if data.Identity.Namespace != "" || data.Identity.Workload != "" {
 		data.EvidenceGaps = append(data.EvidenceGaps, "live replicas and disruption budget require separate operator verification")

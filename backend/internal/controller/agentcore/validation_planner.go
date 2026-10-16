@@ -118,9 +118,6 @@ func buildValidationTargetPlan(state *workflowState, targetType ValidationTarget
 	if targetType == ValidationTargetRecommendation {
 		target.ReadOnly = true
 	}
-	if targetType == ValidationTargetRemediation {
-		target.PostAction = true
-	}
 	return target
 }
 

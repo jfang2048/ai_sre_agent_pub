@@ -57,6 +57,32 @@ func TestCloneNodeCopiesProcessNetwork(t *testing.T) {
 	assert.Equal(t, 3, s.ProcessNetwork["1"].Connections)
 }
 
+func TestServiceMetricSampleTimesTrackOldestPresentSampleWithoutAliasing(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now().UTC()
+	old := now.Add(-10 * time.Minute)
+	store.StoreMetrics("c-1", []*telemetryv1.Metric{
+		{Name: "service_latency_p95_ms", Value: 200, TimestampUnixNano: now.UnixNano()},
+		{Name: "service_latency_p95_ms", Value: 250, TimestampUnixNano: old.UnixNano()},
+		{Name: "service_error_rate", Value: 0.01},
+	}, now)
+	snapshot := store.Node("c-1")
+	assert.NotEmpty(t, snapshot.ServiceMetricScopeKey)
+	assert.False(t, snapshot.ServiceMetricScopeMixed)
+	assert.True(t, snapshot.ServiceMetricNameRepeated)
+	assert.True(t, old.Equal(snapshot.ServiceMetricObservedAt["service_latency_p95_ms"]))
+	assert.True(t, snapshot.ServiceMetricObservedAt["service_error_rate"].IsZero())
+	snapshot.ServiceMetricObservedAt["service_latency_p95_ms"] = now
+	assert.True(t, old.Equal(store.Node("c-1").ServiceMetricObservedAt["service_latency_p95_ms"]))
+
+	store.StoreMetrics("c-1", []*telemetryv1.Metric{{Name: "service_latency_p95_ms", Value: 100, TimestampUnixNano: now.UnixNano()}}, now)
+	assert.True(t, now.Equal(store.Node("c-1").ServiceMetricObservedAt["service_latency_p95_ms"]))
+	assert.False(t, store.Node("c-1").ServiceMetricNameRepeated)
+	store.StoreMetrics("c-1", []*telemetryv1.Metric{{Name: "node_cpu_usage_percent", Value: 50}}, now)
+	assert.Empty(t, store.Node("c-1").ServiceMetricObservedAt)
+	assert.Empty(t, store.Node("c-1").ServiceMetricScopeKey)
+}
+
 func TestCloneNodeCopiesProcessesAndLogsWithoutAliasing(t *testing.T) {
 	src := &NodeSnapshot{
 		CollectorID: "c-1",

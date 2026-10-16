@@ -218,7 +218,7 @@ func NewWorkflowEngineFromConfig(cfg WorkflowConfig, store *ingest.MemoryStore, 
 		&memoryPressureTool{store: store},
 		&connectivityCheckTool{store: store},
 		&dnsCheckTool{index: idx, store: store},
-		&serviceHealthTool{store: store},
+		&serviceHealthTool{store: store, maxAge: cfg.MaxTelemetryAge},
 		&securityCheckTool{store: store, index: idx},
 		&ebpfQueryTool{store: store},
 		&gpuQueryTool{store: store},
@@ -3350,7 +3350,7 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 			}
 
 			// Re-evaluate risk to verify remediation
-			verification := e.verifyRemediationEffect(ctx, state)
+			verification := e.verifyRemediationEffect(ctx, state, step.CompletedAt)
 			state.postActionEffect = &verification
 			if verification.Verdict == ValidationVerdictConfirmed {
 				step.Verified = true
@@ -3827,7 +3827,7 @@ func verifyPlanStep(step AgentPlanStep, result workflowToolResult, state *workfl
 	}
 }
 
-func (e *WorkflowEngine) verifyRemediationEffect(ctx context.Context, state *workflowState) PostActionValidationSummary {
+func (e *WorkflowEngine) verifyRemediationEffect(ctx context.Context, state *workflowState, actionCompletedAt time.Time) PostActionValidationSummary {
 	before := state.beforeActionState
 	beforeRisk := maxFloat(state.incident.Confidence, topHypothesisConfidence(state.hypotheses))
 	if before != nil {
@@ -3855,6 +3855,7 @@ func (e *WorkflowEngine) verifyRemediationEffect(ctx context.Context, state *wor
 
 	input := validationEffectInput{
 		ActionID:          "",
+		ActionCompletedAt: actionCompletedAt,
 		ExecutionCategory: "",
 		Before:            before,
 		After:             after,
@@ -3914,6 +3915,7 @@ func (e *WorkflowEngine) stepCompensate(ctx context.Context, state *workflowStat
 			rollbackAction.RollbackCommand = rollbackAction.Command
 		}
 		res := e.playbookRunner.ExecuteRollback(ctx, *rollbackAction, e.cfg.DryRun)
+		rollbackCompletedAt := time.Now().UTC()
 		if res.Status == ActionResultExecuted {
 			e.logger.Info("compensation successful", zap.String("step_id", step.ID), zap.String("output", res.Output))
 			afterRollback, _ := captureValidationEvidenceSnapshot(ctx, state, "after_rollback")
@@ -3922,6 +3924,7 @@ func (e *WorkflowEngine) stepCompensate(ctx context.Context, state *workflowStat
 			}
 			rollbackSummary := summarizeValidationEffect(validationEffectInput{
 				ActionID:          step.ID + "-rollback",
+				ActionCompletedAt: rollbackCompletedAt,
 				ExecutionCategory: normalizeValidationCategory(firstNonEmpty(step.Query["validation_category"], "probable_containment")),
 				Before:            beforeRollback,
 				After:             afterRollback,
@@ -5040,7 +5043,7 @@ func (e *WorkflowEngine) stepPostActionValidation(ctx context.Context, state *wo
 
 	summary := state.postActionEffect
 	if summary == nil {
-		effect := e.verifyRemediationEffect(ctx, state)
+		effect := e.verifyRemediationEffect(ctx, state, step.CompletedAt)
 		summary = &effect
 	}
 	state.postActionEffect = summary

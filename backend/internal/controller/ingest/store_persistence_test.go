@@ -27,6 +27,9 @@ func TestMemoryStorePersistenceRoundTrip(t *testing.T) {
 	}, now)
 	store.StoreMetrics("collector-a", []*telemetryv1.Metric{
 		{Name: "node_cpu_usage_percent", Value: 77.7},
+		{Name: "service_error_rate", Value: 0.04, TimestampUnixNano: now.UnixNano(), Labels: []*telemetryv1.Label{{Key: "service", Value: "checkout"}}},
+		{Name: "service_error_rate", Value: 0.01, TimestampUnixNano: now.UnixNano(), Labels: []*telemetryv1.Label{{Key: "service", Value: "checkout"}}},
+		{Name: "service_latency_p95_ms", Value: 1200, TimestampUnixNano: now.UnixNano(), Labels: []*telemetryv1.Label{{Key: "service", Value: "payments"}}},
 	}, now)
 	store.StoreBatchMeta("collector-a", &telemetryv1.TelemetryBatch{
 		BatchId:          "batch-a",
@@ -42,6 +45,10 @@ func TestMemoryStorePersistenceRoundTrip(t *testing.T) {
 	require.NotNil(t, node)
 	require.Equal(t, "node-a", node.Hostname)
 	require.Equal(t, 77.7, node.Metrics["node_cpu_usage_percent"])
+	require.True(t, now.Equal(node.ServiceMetricObservedAt["service_error_rate"]))
+	require.Contains(t, node.ServiceMetricScopeKey, "checkout")
+	require.True(t, node.ServiceMetricScopeMixed, "mixed scopes must survive persistence")
+	require.True(t, node.ServiceMetricNameRepeated, "duplicate series must survive persistence")
 	require.Equal(t, "batch-a", node.LastBatchID)
 	history := reloaded.MetricHistory("collector-a", time.Time{}, 100)
 	require.Len(t, history, 1)

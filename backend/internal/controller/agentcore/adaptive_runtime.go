@@ -1271,11 +1271,13 @@ func normalizeToolResult(tool ToolName, result workflowToolResult, toolCallID st
 		out.NarrowsHypothesisSpace = len(data.Hints) > 0
 	case serviceHealthToolData:
 		out.StructuredFindings = compactStrings(data.Summary)
-		out.ConfidenceContribution = 0.09
+		if data.Available && data.Fresh {
+			out.ConfidenceContribution = 0.09
+		}
 		out.AffectedScope = compactStrings(data.CollectorID)
 		out.LikelyNextToolFamilies = []string{"metrics", "change"}
 		out.LikelyNextChecks = compactStrings("compare service latency/error rate before remediation", "verify impacted scope")
-		out.NarrowsHypothesisSpace = true
+		out.NarrowsHypothesisSpace = data.Available && data.Fresh
 	case memoryPressureToolData:
 		out.StructuredFindings = append([]string(nil), data.PressureSignals...)
 		out.ConfidenceContribution = 0.09

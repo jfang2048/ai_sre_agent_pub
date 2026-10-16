@@ -272,7 +272,7 @@ func describeWorkflowTool(tool workflowTool) WorkflowToolDescriptor {
 	case ToolServiceHealth:
 		desc.Purpose = "Summarize service latency, error rate, restart, and request health around the active workload."
 		desc.InputSchema = `{"collector_id":"string","scope":"string"}`
-		desc.OutputSchema = `{"collector_id":"string","summary":"string","healthy":"bool","latency_ms":"float64","error_rate":"float64"}`
+		desc.OutputSchema = `{"collector_id":"string","scope_key":"string","scope_ambiguous":"bool","name_repeated":"bool","summary":"string","observed_at":"time","fresh":"bool","available":"bool","latency_available":"bool","error_rate_available":"bool","healthy":"bool","latency_ms":"float64","error_rate":"float64"}`
 		desc.ReadOnly = true
 		desc.SupportsDryRun = true
 		desc.SupportsRollback = false
@@ -907,12 +907,20 @@ type dnsCheckToolData struct {
 }
 
 type serviceHealthToolData struct {
-	CollectorID string
-	Summary     string
-	Healthy     bool
-	LatencyMS   float64
-	ErrorRate   float64
-	RestartLike bool
+	CollectorID        string
+	ScopeKey           string
+	ScopeAmbiguous     bool
+	NameRepeated       bool
+	Summary            string
+	ObservedAt         time.Time
+	Fresh              bool
+	Available          bool
+	LatencyAvailable   bool
+	ErrorRateAvailable bool
+	Healthy            bool
+	LatencyMS          float64
+	ErrorRate          float64
+	RestartLike        bool
 }
 
 type kubernetesResourceToolData struct {
@@ -1687,7 +1695,8 @@ func (t *dnsCheckTool) Run(_ context.Context, req workflowToolRequest) (workflow
 }
 
 type serviceHealthTool struct {
-	store *ingest.MemoryStore
+	store  *ingest.MemoryStore
+	maxAge time.Duration
 }
 
 func (t *serviceHealthTool) Name() ToolName  { return ToolServiceHealth }
@@ -1702,7 +1711,6 @@ func (t *serviceHealthTool) Run(_ context.Context, req workflowToolRequest) (wor
 	data := serviceHealthToolData{
 		CollectorID: strings.TrimSpace(req.CollectorID),
 		Summary:     "service health unavailable",
-		Healthy:     true,
 	}
 	if t == nil || t.store == nil {
 		return workflowToolResult{Summary: data.Summary, Data: data}, nil
@@ -1712,11 +1720,72 @@ func (t *serviceHealthTool) Run(_ context.Context, req workflowToolRequest) (wor
 		return workflowToolResult{Summary: data.Summary, Data: data}, nil
 	}
 	data.CollectorID = node.CollectorID
+	data.ScopeKey = node.ServiceMetricScopeKey
+	data.NameRepeated = node.ServiceMetricNameRepeated
+	data.ScopeAmbiguous = node.ServiceMetricScopeMixed || data.NameRepeated
+	if data.ScopeAmbiguous || data.ScopeKey == "" {
+		data.Summary = "service health unavailable: metric scope is mixed, missing, or flattened across repeated names"
+		return workflowToolResult{Summary: data.Summary, Data: data}, nil
+	}
+	// The batch receipt and heartbeat can be fresh while individual samples are
+	// old. Use the oldest present health signal, and never fill a missing sample
+	// timestamp from the batch metadata.
+	missingSampleTime := false
+	for _, name := range []string{
+		"service_latency_p95_ms", "service_latency_p99_ms",
+		"service_error_rate", "service_request_error_rate",
+		"process_restart_count", "container_restart_count",
+	} {
+		if _, present := node.Metrics[name]; !present {
+			continue
+		}
+		observedAt, recorded := node.ServiceMetricObservedAt[name]
+		if !recorded || observedAt.IsZero() {
+			missingSampleTime = true
+			continue
+		}
+		if data.ObservedAt.IsZero() || observedAt.Before(data.ObservedAt) {
+			data.ObservedAt = observedAt
+		}
+	}
+	if missingSampleTime {
+		data.ObservedAt = time.Time{}
+	}
+	if !data.ObservedAt.IsZero() && !node.LastMetricAt.IsZero() && node.LastMetricAt.Before(data.ObservedAt) {
+		data.ObservedAt = node.LastMetricAt
+	}
+	if !data.ObservedAt.IsZero() && !node.LastCollectionAt.IsZero() && node.LastCollectionAt.Before(data.ObservedAt) {
+		data.ObservedAt = node.LastCollectionAt
+	}
+	maxAge := t.maxAge
+	if maxAge <= 0 {
+		maxAge = 2 * time.Minute
+	}
+	age := time.Since(data.ObservedAt)
+	data.Fresh = !missingSampleTime && !node.LastMetricAt.IsZero() && !data.ObservedAt.IsZero() && age >= -30*time.Second && age <= maxAge
+	if !data.Fresh {
+		data.Summary = "service health unavailable: metric sample is missing or stale"
+		return workflowToolResult{Summary: data.Summary, Data: data}, nil
+	}
 	data.LatencyMS = maxFloat(metricValue(node.Metrics, "service_latency_p95_ms"), metricValue(node.Metrics, "service_latency_p99_ms"))
 	data.ErrorRate = maxFloat(metricValue(node.Metrics, "service_error_rate"), metricValue(node.Metrics, "service_request_error_rate"))
 	restarts := maxFloat(metricValue(node.Metrics, "process_restart_count"), metricValue(node.Metrics, "container_restart_count"))
 	data.RestartLike = restarts > 0
-	data.Healthy = data.ErrorRate < 0.03 && data.LatencyMS < 1000 && !data.RestartLike
+	_, p95 := node.Metrics["service_latency_p95_ms"]
+	_, p99 := node.Metrics["service_latency_p99_ms"]
+	_, errors := node.Metrics["service_error_rate"]
+	_, requestErrors := node.Metrics["service_request_error_rate"]
+	data.LatencyAvailable = p95 || p99
+	data.ErrorRateAvailable = errors || requestErrors
+	unhealthy := data.ErrorRate >= 0.03 || data.LatencyMS >= 1000 || data.RestartLike
+	// One observed bad signal can establish a symptom. A green verdict needs
+	// both latency and error-rate coverage; absent metrics are not zeroes.
+	data.Available = unhealthy || (data.LatencyAvailable && data.ErrorRateAvailable)
+	if !data.Available {
+		data.Summary = "service health unavailable: latency/error telemetry incomplete"
+		return workflowToolResult{Summary: data.Summary, Data: data}, nil
+	}
+	data.Healthy = !unhealthy
 	data.Summary = fmt.Sprintf("service healthy=%t latency_ms=%.1f error_rate=%.3f restart_like=%t", data.Healthy, data.LatencyMS, data.ErrorRate, data.RestartLike)
 	return workflowToolResult{Summary: data.Summary, Data: data}, nil
 }

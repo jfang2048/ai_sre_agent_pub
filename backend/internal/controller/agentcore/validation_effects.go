@@ -11,6 +11,7 @@ import (
 
 type validationEffectInput struct {
 	ActionID          string
+	ActionCompletedAt time.Time
 	ExecutionCategory string
 	Before            *ValidationEvidenceSnapshot
 	After             *ValidationEvidenceSnapshot
@@ -104,8 +105,8 @@ func captureValidationEvidenceSnapshot(ctx context.Context, state *workflowState
 	return snapshot, nil
 }
 
-func buildPostActionValidationSummary(before, after *ValidationEvidenceSnapshot) PostActionValidationSummary {
-	return summarizeValidationEffect(validationEffectInput{Before: before, After: after})
+func buildPostActionValidationSummary(before, after *ValidationEvidenceSnapshot, actionCompletedAt time.Time) PostActionValidationSummary {
+	return summarizeValidationEffect(validationEffectInput{Before: before, After: after, ActionCompletedAt: actionCompletedAt})
 }
 
 func summarizeValidationEffect(in validationEffectInput) PostActionValidationSummary {
@@ -113,6 +114,7 @@ func summarizeValidationEffect(in validationEffectInput) PostActionValidationSum
 		Verdict:           ValidationVerdictInsufficientEvidence,
 		Summary:           firstNonEmpty(strings.TrimSpace(in.Note), "post-action verification did not collect comparable snapshots"),
 		ActionID:          strings.TrimSpace(in.ActionID),
+		ActionCompletedAt: in.ActionCompletedAt,
 		ExecutionCategory: normalizeValidationCategory(in.ExecutionCategory),
 		FallbackMode:      strings.TrimSpace(in.FallbackMode),
 		BeforeSnapshot:    in.Before,
@@ -186,9 +188,33 @@ func buildValidationEffectComparison(in validationEffectInput, beforeRisk, after
 	comparison.RiskScore = compareFloatMetric(beforeRisk, afterRisk, riskAvailable, true, 0.01, "lower risk is better")
 
 	if in.Before != nil && in.After != nil {
-		comparison.ServiceHealthy = compareBoolMetric(in.Before.ServiceHealth.Healthy, in.After.ServiceHealth.Healthy, true, true, "healthy service state is better")
-		comparison.ServiceLatencyMS = compareFloatMetric(in.Before.ServiceHealth.LatencyMS, in.After.ServiceHealth.LatencyMS, true, true, 1.0, "lower latency is better")
-		comparison.ServiceErrorRate = compareFloatMetric(in.Before.ServiceHealth.ErrorRate, in.After.ServiceHealth.ErrorRate, true, true, 0.001, "lower error rate is better")
+		beforeHealth, afterHealth := in.Before.ServiceHealth, in.After.ServiceHealth
+		sameScope := beforeHealth.CollectorID != "" && beforeHealth.CollectorID == afterHealth.CollectorID &&
+			beforeHealth.ScopeKey != "" && beforeHealth.ScopeKey == afterHealth.ScopeKey &&
+			!beforeHealth.ScopeAmbiguous && !afterHealth.ScopeAmbiguous
+		orderedSamples := !in.ActionCompletedAt.IsZero() && !in.Before.CapturedAt.IsZero() &&
+			in.Before.CapturedAt.Before(in.ActionCompletedAt) && in.After.CapturedAt.After(in.ActionCompletedAt) &&
+			!beforeHealth.ObservedAt.IsZero() && beforeHealth.ObservedAt.Before(in.ActionCompletedAt) &&
+			afterHealth.ObservedAt.After(in.ActionCompletedAt)
+		healthComparable := sameScope && orderedSamples && beforeHealth.Fresh && afterHealth.Fresh
+		if !sameScope {
+			missing = append(missing, "service_scope")
+		}
+		if !orderedSamples {
+			missing = append(missing, "post_action_service_sample")
+		}
+		comparison.ServiceHealthy = compareBoolMetric(beforeHealth.Healthy, afterHealth.Healthy, healthComparable && beforeHealth.Available && afterHealth.Available, true, "healthy service state is better")
+		comparison.ServiceLatencyMS = compareFloatMetric(beforeHealth.LatencyMS, afterHealth.LatencyMS, healthComparable && beforeHealth.LatencyAvailable && afterHealth.LatencyAvailable, true, 1.0, "lower latency is better")
+		comparison.ServiceErrorRate = compareFloatMetric(beforeHealth.ErrorRate, afterHealth.ErrorRate, healthComparable && beforeHealth.ErrorRateAvailable && afterHealth.ErrorRateAvailable, true, 0.001, "lower error rate is better")
+		if !comparison.ServiceHealthy.Available {
+			missing = append(missing, "service_health")
+		}
+		if !comparison.ServiceLatencyMS.Available {
+			missing = append(missing, "service_latency")
+		}
+		if !comparison.ServiceErrorRate.Available {
+			missing = append(missing, "service_error_rate")
+		}
 		comparison.LogErrors = compareIntMetric(safeconv.Uint64ToInt64(in.Before.LogErrors), safeconv.Uint64ToInt64(in.After.LogErrors), true, true, "fewer log errors are better")
 		comparison.LogWarnings = compareIntMetric(safeconv.Uint64ToInt64(in.Before.LogWarnings), safeconv.Uint64ToInt64(in.After.LogWarnings), true, true, "fewer log warnings are better")
 		comparison.TriggeredSignals = compareIntMetric(int64(len(in.Before.TriggeredSignals)), int64(len(in.After.TriggeredSignals)), true, true, "fewer triggered signals are better")
@@ -301,15 +327,25 @@ func effectComparisonConfirmed(comparison *ValidationEffectComparison, resolved 
 	if comparison == nil || !comparison.Comparable {
 		return false
 	}
+	// An improved single metric cannot establish recovery while the post-action
+	// service state is still missing the telemetry needed for a health verdict.
+	if !comparison.ServiceHealthy.Available || !comparison.ServiceHealthy.After {
+		return false
+	}
 	improvements := countEffectImprovements(comparison)
 	if improvements == 0 {
 		return false
 	}
-	criticalImprovement := comparison.RiskScore.Improved && (comparison.ServiceHealthy.Improved || comparison.LogErrors.Improved || comparison.ServiceErrorRate.Improved || comparison.TriggeredSignals.Improved)
+	// Risk scores and log counts are supporting signals. A verified recovery
+	// also needs a measured service outcome from both sides of the action.
+	serviceImproved := comparison.ServiceHealthy.Improved || comparison.ServiceLatencyMS.Improved || comparison.ServiceErrorRate.Improved
+	if !serviceImproved {
+		return false
+	}
 	if resolved && comparison.RiskScore.Improved && !effectComparisonContradicted(comparison) {
 		return true
 	}
-	return criticalImprovement && countEffectRegressions(comparison) == 0
+	return comparison.RiskScore.Improved && countEffectRegressions(comparison) == 0
 }
 
 func effectComparisonContradicted(comparison *ValidationEffectComparison) bool {

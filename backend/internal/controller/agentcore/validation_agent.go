@@ -260,6 +260,14 @@ func (a *ValidationActionAgent) validateTarget(ctx context.Context, state *workf
 		ContradictingEvidenceIDs: append([]string(nil), target.ContradictingEvidenceIDs...),
 	}
 	target = normalizeValidationTargetPlan(state, handoff, target)
+	result.EvidenceGaps = dedupeStrings(append(result.EvidenceGaps, target.EvidenceGaps...))
+	if target.Type == ValidationTargetRemediation {
+		// This loop runs before guarded execution. Current symptoms and a
+		// preflight packet cannot establish the outcome of a proposed action.
+		result.SupportingEvidenceIDs = nil
+		result.ContradictingEvidenceIDs = nil
+		result.EvidenceGaps = dedupeStrings(append(result.EvidenceGaps, "no executed action or before/after comparison"))
+	}
 	selectionContext := buildToolSelectionContext(state, "validation_action_react_loop", &target)
 	candidates := generateToolCandidates(state, selectionContext)
 	if len(candidates) == 0 {
@@ -317,7 +325,12 @@ func (a *ValidationActionAgent) validateTarget(ctx context.Context, state *workf
 		if len(state.toolCalls) > 0 {
 			record.ToolCallID = state.toolCalls[len(state.toolCalls)-1].ID
 		}
-		delta, verdict, observation, supporting, contradicting := assessValidationObservation(handoff, target, tool, toolResult)
+		if tool == ToolOperatorPreflight {
+			if preflight, ok := toolResult.Data.(operatorPreflightData); ok {
+				result.EvidenceGaps = dedupeStrings(append(result.EvidenceGaps, preflight.EvidenceGaps...))
+			}
+		}
+		delta, verdict, observation, supporting, contradicting := assessValidationObservation(handoff, target, tool, toolResult, record.ToolCallID, state.collectorID)
 		record.Observation = observation
 		record.Verdict = verdict
 		record.ConfidenceDelta = delta
@@ -448,17 +461,29 @@ func validationToolReason(target ValidationTarget, tool ToolName) string {
 	}
 }
 
-func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarget, tool ToolName, result workflowToolResult) (float64, ValidationVerdict, string, []string, []string) {
-	supporting := []string{fmt.Sprintf("ev-%s", sanitizeID(target.ID))}
+func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarget, tool ToolName, result workflowToolResult, toolCallID, collectorID string) (float64, ValidationVerdict, string, []string, []string) {
+	if target.Type == ValidationTargetRemediation {
+		return 0, ValidationVerdictInsufficientEvidence, truncateString(firstNonEmpty(result.Summary, "pre-action baseline collected")+"; action outcome requires an executed action and before/after comparison", 220), nil, nil
+	}
+	if result.Data == nil {
+		return 0, ValidationVerdictInsufficientEvidence, "structured tool evidence unavailable; summary alone cannot validate the target", nil, nil
+	}
+	var supporting []string
+	if strings.TrimSpace(toolCallID) != "" {
+		supporting = []string{toolCallID}
+	}
 	contradicting := []string{}
 	if target.Type == ValidationTargetSceneClassification {
-		return assessSceneValidationObservation(handoff, target, tool, result, supporting)
+		return assessSceneValidationObservation(target, tool, result, supporting, collectorID)
 	}
 	switch tool {
 	case ToolChangeQuery, ToolDeploymentHistory:
 		data, ok := result.Data.(changeToolData)
 		if !ok {
 			return -0.08, ValidationVerdictInsufficientEvidence, "change evidence payload unavailable", nil, nil
+		}
+		if collectorID == "" || data.CollectorID != collectorID {
+			return -0.08, ValidationVerdictInsufficientEvidence, "change evidence is outside the requested collector scope", nil, nil
 		}
 		if len(data.Events) == 0 {
 			if target.Type == ValidationTargetChangeCorrelation || slicesContainsString(target.ToolFamilies, "change") {
@@ -478,7 +503,7 @@ func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarge
 		}
 		verdict := ValidationVerdictPartiallySupported
 		delta := 0.16
-		if matched > 0 && (data.Strongest == nil || data.Strongest.ChangeScore >= 0.65) {
+		if target.Type == ValidationTargetChangeCorrelation && matched > 0 && data.Strongest != nil && data.Strongest.ChangeScore >= 0.65 {
 			verdict = ValidationVerdictConfirmed
 			delta = 0.24
 		}
@@ -504,7 +529,7 @@ func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarge
 		// claim that the proposed action has restored the service.
 		return 0, ValidationVerdictInsufficientEvidence, data.Summary, nil, nil
 	case ToolMetrics, ToolServiceHealth, ToolMemoryPressure, ToolStorageHealth, ToolConnectivityCheck, ToolDNSCheck, ToolNetworkBlastRadius, ToolGPU:
-		return assessOperationalObservation(target, tool, result, supporting)
+		return assessOperationalObservation(target, tool, result, supporting, collectorID)
 	case ToolLogs:
 		data, ok := result.Data.(logsToolData)
 		if !ok {
@@ -555,22 +580,97 @@ func assessValidationObservation(handoff AnalysisHandoff, target ValidationTarge
 			return 0.14, ValidationVerdictPartiallySupported, truncateString(result.Summary, 220), dedupeStrings(supporting), nil
 		}
 	}
-	return 0.0, ValidationVerdictInsufficientEvidence, truncateString(firstNonEmpty(result.Summary, "validation check completed"), 220), dedupeStrings(supporting), nil
+	return 0.0, ValidationVerdictInsufficientEvidence, truncateString(firstNonEmpty(result.Summary, "validation check completed"), 220), nil, nil
 }
 
-func assessSceneValidationObservation(handoff AnalysisHandoff, target ValidationTarget, tool ToolName, result workflowToolResult, supporting []string) (float64, ValidationVerdict, string, []string, []string) {
-	summary := strings.ToLower(strings.TrimSpace(result.Summary))
-	scene := strings.ToLower(strings.TrimSpace(string(target.SceneFamily)))
-	switch {
-	case scene == "":
-		return -0.04, ValidationVerdictInsufficientEvidence, "scene family was not set on the validation target", nil, nil
-	case strings.Contains(summary, sceneKeyword(scene)) || slicesContainsString(target.ToolFamilies, sceneFamilyPrimaryFamily(target.SceneFamily)):
-		return 0.18, ValidationVerdictPartiallySupported, truncateString(firstNonEmpty(result.Summary, "scene-oriented evidence collected"), 220), dedupeStrings(supporting), nil
-	case looksHealthyValidationSummary(summary):
-		return -0.12, ValidationVerdictContradicted, truncateString(firstNonEmpty(result.Summary, "scene evidence contradicted by the current checks"), 220), nil, dedupeStrings(supporting)
-	default:
-		return 0.06, ValidationVerdictInsufficientEvidence, truncateString(firstNonEmpty(result.Summary, "scene evidence did not materially change confidence"), 220), dedupeStrings(supporting), nil
+func assessSceneValidationObservation(target ValidationTarget, tool ToolName, result workflowToolResult, supporting []string, collectorID string) (float64, ValidationVerdict, string, []string, []string) {
+	matched := false
+	switch target.SceneFamily {
+	case SceneFamilyResourceContention:
+		if tool == ToolMetrics {
+			data, ok := result.Data.(metricsToolData)
+			if ok && collectorID != "" && data.CollectorID == collectorID && data.Node != nil && data.Node.CollectorID == collectorID {
+				age := time.Since(data.Node.LastMetricAt)
+				if !data.Node.LastMetricAt.IsZero() && age >= -30*time.Second && age <= 2*time.Minute {
+					matched = metricValue(data.Node.Metrics, "node_cpu_usage_percent") >= 85 ||
+						metricValue(data.Node.Metrics, "node_memory_usage_percent") >= 85 ||
+						metricValue(data.Node.Metrics, "node_memory_used_percent") >= 85 ||
+						metricValue(data.Node.Metrics, "node_memory_working_set_percent") >= 85
+				}
+			}
+		}
+	case SceneFamilyChangeInduced, SceneFamilyDeploymentRollout:
+		if tool == ToolChangeQuery || tool == ToolDeploymentHistory {
+			data, ok := result.Data.(changeToolData)
+			matched = ok && data.CollectorID == collectorID && data.Strongest != nil && data.Strongest.ChangeScore >= 0.65
+		}
+	case SceneFamilyNetworkConnectivity:
+		switch tool {
+		case ToolDNSCheck:
+			data, ok := result.Data.(dnsCheckToolData)
+			matched = ok && data.CollectorID == collectorID && !data.Healthy && len(data.Hints) > 0
+		case ToolConnectivityCheck:
+			data, ok := result.Data.(connectivityCheckToolData)
+			matched = ok && data.CollectorID == collectorID && !data.Healthy && (data.RetransmitRatio > 0 || data.SoftnetDrops > 0)
+		}
+	case SceneFamilyStorageIO:
+		if tool == ToolStorageHealth {
+			data, ok := result.Data.(storageHealthToolData)
+			matched = ok && data.CollectorID == collectorID && data.Pressure
+		}
+	case SceneFamilyGPUInference:
+		if tool == ToolGPU {
+			data, ok := result.Data.(gpuToolData)
+			matched = ok && (len(data.TopProcesses) > 0 ||
+				(len(data.Metrics) > 0 && data.Bottleneck != "" && data.Bottleneck != "no dominant gpu bottleneck"))
+		}
+	case SceneFamilyGPUTrainingOrCollective:
+		if tool == ToolGPU {
+			data, ok := result.Data.(gpuToolData)
+			if ok {
+				for name, value := range data.Metrics {
+					lower := strings.ToLower(name)
+					if value > 0 && (strings.Contains(lower, "collective") || strings.Contains(lower, "nccl") || strings.Contains(lower, "allreduce")) {
+						matched = true
+						break
+					}
+				}
+			}
+		}
+	case SceneFamilyKubernetesWorkload:
+		if tool == ToolKubernetesResource {
+			data, ok := result.Data.(kubernetesResourceToolData)
+			matched = ok && collectorID != "" && data.CollectorID == collectorID && data.Namespace != "" &&
+				(data.Workload != "" || data.PodUID != "")
+		}
+	case SceneFamilyBareMetalKernelOrIRQ:
+		if tool == ToolEBPFQuery {
+			data, ok := result.Data.(ebpfToolData)
+			if ok && collectorID != "" && data.CollectorID == collectorID {
+				for _, event := range data.RuntimeEvents {
+					lower := strings.ToLower(event.Category + " " + event.Type)
+					if strings.Contains(lower, "kernel") || strings.Contains(lower, "irq") || strings.Contains(lower, "sched") {
+						matched = true
+						break
+					}
+				}
+			}
+		}
+	case SceneFamilyDatabaseLikeLatencyPath:
+		if tool == ToolServiceHealth {
+			data, ok := result.Data.(serviceHealthToolData)
+			matched = ok && data.CollectorID == collectorID && data.Available && data.Fresh && data.LatencyAvailable && data.LatencyMS >= 1000
+		}
+	case SceneFamilySecurityOrProcessAnomaly:
+		if tool == ToolSecurity {
+			data, ok := result.Data.(securityToolData)
+			matched = ok && len(data.StructuredFindings) > 0
+		}
 	}
+	if matched {
+		return 0.18, ValidationVerdictPartiallySupported, truncateString(firstNonEmpty(result.Summary, "scene-specific signal observed"), 220), dedupeStrings(supporting), nil
+	}
+	return 0, ValidationVerdictInsufficientEvidence, "tool result did not establish a scene-specific signal", nil, nil
 }
 
 func looksHealthyValidationSummary(summary string) bool {
@@ -685,52 +785,6 @@ func unresolvedValidationGaps(report ValidationActionReport) []string {
 	return dedupeStrings(out)
 }
 
-func sceneKeyword(scene string) string {
-	switch scene {
-	case string(SceneFamilyChangeInduced), string(SceneFamilyDeploymentRollout):
-		return "deploy"
-	case string(SceneFamilyNetworkConnectivity):
-		return "network"
-	case string(SceneFamilyStorageIO):
-		return "storage"
-	case string(SceneFamilyGPUInference), string(SceneFamilyGPUTrainingOrCollective):
-		return "gpu"
-	case string(SceneFamilyKubernetesWorkload):
-		return "pod"
-	case string(SceneFamilyBareMetalKernelOrIRQ):
-		return "kernel"
-	case string(SceneFamilyDatabaseLikeLatencyPath):
-		return "latency"
-	case string(SceneFamilySecurityOrProcessAnomaly):
-		return "security"
-	default:
-		return "pressure"
-	}
-}
-
-func sceneFamilyPrimaryFamily(scene SceneFamily) string {
-	switch scene {
-	case SceneFamilyChangeInduced, SceneFamilyDeploymentRollout:
-		return "change"
-	case SceneFamilyNetworkConnectivity:
-		return "network"
-	case SceneFamilyStorageIO:
-		return "storage"
-	case SceneFamilyGPUInference, SceneFamilyGPUTrainingOrCollective:
-		return "gpu"
-	case SceneFamilyKubernetesWorkload:
-		return "kubernetes"
-	case SceneFamilyBareMetalKernelOrIRQ:
-		return "runtime"
-	case SceneFamilyDatabaseLikeLatencyPath:
-		return "service_health"
-	case SceneFamilySecurityOrProcessAnomaly:
-		return "security"
-	default:
-		return "metrics"
-	}
-}
-
 func normalizeValidationTargetPlan(state *workflowState, handoff AnalysisHandoff, target ValidationTarget) ValidationTarget {
 	if len(target.ToolFamilies) == 0 {
 		target.ToolFamilies = deriveToolFamilies(state, target.Type, target.Title, target.Summary, target.SupportingEvidenceIDs, target.ChangeCategories, nil)
@@ -767,7 +821,7 @@ func plannerNoteForTarget(target ValidationTarget) string {
 	return fmt.Sprintf("families=%s gaps=%s", strings.Join(target.ToolFamilies, ","), strings.Join(target.EvidenceGaps, ","))
 }
 
-func assessOperationalObservation(target ValidationTarget, tool ToolName, result workflowToolResult, supporting []string) (float64, ValidationVerdict, string, []string, []string) {
+func assessOperationalObservation(target ValidationTarget, tool ToolName, result workflowToolResult, supporting []string, collectorID string) (float64, ValidationVerdict, string, []string, []string) {
 	if strings.TrimSpace(result.Summary) == "" {
 		return -0.04, ValidationVerdictInsufficientEvidence, "observability query returned no summary", nil, nil
 	}
@@ -787,6 +841,12 @@ func assessOperationalObservation(target ValidationTarget, tool ToolName, result
 		}
 	case ToolServiceHealth:
 		if data, ok := result.Data.(serviceHealthToolData); ok {
+			if !data.Available || !data.Fresh {
+				return -0.06, ValidationVerdictInsufficientEvidence, "service health telemetry unavailable or incomplete", nil, nil
+			}
+			if strings.TrimSpace(collectorID) == "" || strings.TrimSpace(data.CollectorID) != strings.TrimSpace(collectorID) {
+				return -0.06, ValidationVerdictInsufficientEvidence, "service health evidence is outside the requested collector scope", nil, nil
+			}
 			if baselineEvidenceTarget(target) && data.Healthy {
 				return -0.06, ValidationVerdictInsufficientEvidence, "service health is currently green, but the baseline evidence is still too thin", nil, nil
 			}
@@ -794,14 +854,16 @@ func assessOperationalObservation(target ValidationTarget, tool ToolName, result
 				return -0.16, ValidationVerdictContradicted, truncateString(data.Summary, 220), nil, dedupeStrings(supporting)
 			}
 			if !data.Healthy && (data.ErrorRate >= 0.05 || data.RestartLike || data.LatencyMS >= 1000) {
-				return 0.20, ValidationVerdictConfirmed, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
+				// A sick service confirms a symptom, not DNS, GPU, or a
+				// proposed change as its cause.
+				return 0.12, ValidationVerdictPartiallySupported, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
 			}
 			return 0.12, ValidationVerdictPartiallySupported, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
 		}
 	case ToolMemoryPressure:
 		if data, ok := result.Data.(memoryPressureToolData); ok {
 			if len(data.OOMHints) > 0 {
-				return 0.24, ValidationVerdictConfirmed, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
+				return 0.18, ValidationVerdictPartiallySupported, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
 			}
 			if target.Type == ValidationTargetContradiction && len(data.PressureSignals) == 0 && data.WorkingSetPct < 80 {
 				return -0.14, ValidationVerdictContradicted, "memory pressure is not visible in the current window", nil, dedupeStrings(supporting)
@@ -839,21 +901,19 @@ func assessOperationalObservation(target ValidationTarget, tool ToolName, result
 		}
 	case ToolGPU:
 		if data, ok := result.Data.(gpuToolData); ok {
-			if target.Type == ValidationTargetContradiction && data.Bottleneck == "" && len(data.TopProcesses) == 0 {
+			anomalousBottleneck := data.Bottleneck != "" && data.Bottleneck != "no dominant gpu bottleneck" && len(data.Metrics) > 0
+			if target.Type == ValidationTargetContradiction && !anomalousBottleneck && len(data.TopProcesses) == 0 && len(data.Metrics) > 0 {
 				return -0.10, ValidationVerdictContradicted, "gpu telemetry does not support the current hypothesis", nil, dedupeStrings(supporting)
 			}
-			if data.Bottleneck != "" || len(data.TopProcesses) > 0 {
+			if anomalousBottleneck || len(data.TopProcesses) > 0 {
 				return 0.18, ValidationVerdictPartiallySupported, truncateString(data.Summary, 220), dedupeStrings(supporting), nil
 			}
 		}
 	}
-	if target.Type == ValidationTargetContradiction && looksHealthyValidationSummary(result.Summary) {
-		return -0.16, ValidationVerdictContradicted, truncateString(result.Summary, 220), nil, dedupeStrings(supporting)
-	}
 	if baselineEvidenceTarget(target) {
 		return -0.06, ValidationVerdictInsufficientEvidence, truncateString(result.Summary, 220), nil, nil
 	}
-	return 0.12, ValidationVerdictPartiallySupported, truncateString(result.Summary, 220), dedupeStrings(supporting), nil
+	return 0, ValidationVerdictInsufficientEvidence, "tool result did not provide target-specific evidence", nil, nil
 }
 
 func baselineEvidenceTarget(target ValidationTarget) bool {
