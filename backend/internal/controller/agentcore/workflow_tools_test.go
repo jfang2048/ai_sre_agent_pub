@@ -431,6 +431,41 @@ func TestRemediationActionToolKeepsSafeReversibleActionsEligibleWhenPolicyAllows
 	require.True(t, data.ExecutionEligible)
 }
 
+func TestRemediationToolReturnsHumanHandoffForUnsafeExecutionSpec(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	cfg.DryRun = false
+	cfg.AllowSafeReversibleExec = true
+	cfg.ActionRunner.AllowUnsafe = true
+	cfg.ActionRunner.DryRun = false
+	cfg.ActionRunner.PlaybookFile = ""
+	cfg.ActionRunner.AllowedShellCommands = []string{"systemctl"}
+	runner, err := NewPlaybookRunner(cfg.ActionRunner, zap.NewNop())
+	require.NoError(t, err)
+	tool := &remediationActionTool{cfg: cfg, runner: runner}
+	contract := ValidationActionContract{
+		ID:                 "operator-handoff",
+		Intent:             "restart_service",
+		Summary:            "restart service after diagnosis",
+		ExecutionCategory:  "profiling",
+		ActuatorSafetyTier: ActuatorSafetyTierSafeReversible,
+		Target:             ActionTargetRef{Scope: "service:api"},
+		Execution:          &ActionSpec{Type: "shell", Command: "systemctl restart api", Safe: true},
+	}
+	result, err := tool.Run(context.Background(), workflowToolRequest{
+		WorkflowID: "wf-handoff", Workflow: "rca", Stage: "guarded_execution_plan",
+		Query: map[string]string{"action_contract": encodeValidationActionContract(contract)},
+	})
+	require.NoError(t, err)
+	data, ok := result.Data.(remediationToolData)
+	require.True(t, ok)
+	require.Equal(t, "proposal_only", data.Mode)
+	require.Equal(t, ActuatorSafetyTierDestructive, data.SafetyTier)
+	require.True(t, data.ProposalOnly)
+	require.False(t, data.ExecutionEligible)
+	require.NotNil(t, data.OperatorHandoff)
+	require.Equal(t, "proposal_only", workflowToolCallStatus(ToolRemediation, result, ActionPolicyDecision{}))
+}
+
 func TestValidationActionToolsReturnDeterministicSummaries(t *testing.T) {
 	now := time.Now().UTC()
 	store := ingest.NewMemoryStore()

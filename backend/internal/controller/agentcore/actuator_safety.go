@@ -49,6 +49,13 @@ func actuatorSafetyTierForContract(contract *ValidationActionContract) string {
 	if contract == nil {
 		return ActuatorSafetyTierReadOnly
 	}
+	// Execution shape takes precedence over model-supplied safety labels. The
+	// final runner independently enforces the same boundary at dispatch time.
+	if contract.Execution != nil {
+		if err := enforceActionHarness(*contract.Execution); err != nil {
+			return ActuatorSafetyTierDestructive
+		}
+	}
 	if tier := normalizeActuatorSafetyTier(firstNonEmpty(contract.ActuatorSafetyTier, contractMetadataValue(contract.Metadata, "actuator_safety_tier"))); tier != "" {
 		return tier
 	}

@@ -22,7 +22,7 @@ This repository is a reusable platform slice rather than a single-purpose
 application. Seeded local data exists for development and UI validation only; it
 is not part of the public product boundary.
 
-中文：[项目导览与事故调查示例](README.zh-CN.md) · [评估指南](docs/evaluation.zh-CN.md)
+中文：[项目导览与事故调查示例](README.zh-CN.md) · [执行护栏与人工处置](docs/action-harness.zh-CN.md) · [评估指南](docs/evaluation.zh-CN.md)
 
 ## Platform artifact scope
 
@@ -260,7 +260,7 @@ Set `SRE_AGENT_WORKFLOW_RUNTIME_MODE=hybrid_adaptive` or `SRE_AGENT_WORKFLOW_RUN
 | planner     | next objective, candidate tool/action proposals                       | runtime state, evidence gaps, hypotheses            | planner proposal + tool decision artifacts  | no                                      |
 | critic      | hidden-assumption, safety, and no-progress checks                     | planner proposal, tool contract, policy posture     | critique report + branch decision artifacts | no                                      |
 | policy gate | execution eligibility                                                 | proposal artifact, controller policy, tool contract | execution-plan / execution-intent artifact  | no                                      |
-| executor    | governed tool calls                                                   | policy-approved tool decision                       | tool-result summary / execution result      | only when posture and approval allow it |
+| executor    | governed tool calls                                                   | policy-approved tool decision                       | tool-result summary / execution result      | production mutations are handed to an operator |
 | verifier    | uncertainty, confidence, contradiction, gap, and action-effect deltas | tool result, before/after runtime state             | progress assessment + verification delta    | no                                      |
 | memory      | final incident record                                                 | full chain                                          | final incident artifact, incident memory    | no                                      |
 
@@ -281,7 +281,7 @@ The incident workflow still emits the compact incident chain:
 
 Hybrid and adaptive runs also append adaptive artifacts such as `runtime_state`, `objective_state`, `planner_proposal`, `tool_candidate_scores`, `critique_report`, `tool_decision`, `tool_result_summary`, `progress_assessment`, `branch_decision`, `execution_intent`, `stop_decision`, `verification_delta`, and `experience_memory_update`. Each artifact is compact by design. Raw telemetry stays out of the handoff. The artifact carries evidence IDs, decisions, scores, deltas, normalized tool results, and short references so downstream stages can reload details without copying large payloads through every step.
 
-New adaptive artifact fields are versioned and decoded with defaults so older evidence packages remain readable. Replay never re-executes side effects; state-changing or profiling skills remain proposal-only, dry-run, or approval-gated unless an explicit operator-approved posture changes that boundary.
+New adaptive artifact fields are versioned and decoded with defaults so older evidence packages remain readable. Replay never re-executes side effects. Production mutations remain proposal-only at the final runner boundary, including when a legacy approval token is present.
 
 The concrete schema is defined in `backend/internal/controller/agentcore/workflow_artifacts.go` and related tests.
 
@@ -293,17 +293,21 @@ Autonomous tool selection in the adaptive loop excludes state-changing tools.
 Remediation proposals use a separate governed execution path; changing runtime
 mode does not grant permission to modify production state.
 
-Execution is still gated by controller code:
+The [action harness and human handoff guide](docs/action-harness.zh-CN.md)
+describes the final validation/action agent's boundary. Host reboot, service
+restart, Git version switching, Kubernetes mutations, credential changes, and
+other production-impacting operations belong to an operator, with the AI
+preparing evidence and an auditable action proposal. A returned action token is
+not evidence of independent human approval.
+
+Controller code gates the remaining execution surface:
 
 - tool contract validation
 - actuator safety classification
-- policy status
-- approval state
-- idempotency key reuse
-- timeout and retry budgets
-- rollback requirement checks
-- post-action verification
-- optional rollback handling
+- a final runner harness that blocks Kubernetes actions and operational shell commands, including rollback
+- policy status and legacy token checks where applicable
+- idempotency keys, timeouts, and tool-call budgets for permitted fixtures
+- evidence-based post-action verification after an operator performs a production change
 
 Contracts also carry preferred query hints plus freshness and scope sensitivity. The adaptive loop uses those fields to shape query windows and scopes before each autonomous tool call.
 
@@ -312,8 +316,8 @@ The skill registry surface exposed at `/api/v1/controller/tools` includes the st
 Default posture remains conservative:
 
 - dry-run on
-- approval required
-- impactful and destructive paths blocked
+- legacy action-token checks where configured; a token is not human approval
+- production-impacting actions blocked for operator handoff
 - validation defaults to read-only
 
 ## Resource model

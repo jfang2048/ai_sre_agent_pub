@@ -595,7 +595,7 @@ func workflowToolCallStatus(name ToolName, result workflowToolResult, decision A
 	if name == ToolRemediation {
 		if data, ok := result.Data.(remediationToolData); ok {
 			switch strings.TrimSpace(data.Mode) {
-			case "proposal_only":
+			case "proposal_only", "human_operator_required":
 				return "proposal_only"
 			case "planned_only":
 				return "planned_only"
@@ -2543,6 +2543,7 @@ type remediationToolData struct {
 	DownstreamNodes   []string                 `json:"downstream_nodes,omitempty"`
 	Preconditions     []string                 `json:"preconditions,omitempty"`
 	ExecutedAction    *ActionSpec              `json:"executed_action,omitempty"`
+	OperatorHandoff   *OperatorActionHandoff   `json:"operator_handoff,omitempty"`
 }
 
 type remediationActionTool struct {
@@ -2599,7 +2600,7 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 		ActionIntent:      contract.Intent,
 		Category:          normalizeValidationCategory(firstNonEmpty(contract.ExecutionCategory, req.Query["validation_category"])),
 		ExecutionCategory: normalizeValidationCategory(firstNonEmpty(contract.ExecutionCategory, req.Query["validation_category"])),
-		SafetyTier:        firstNonEmpty(contract.ActuatorSafetyTier, safetyDecision.SafetyTier),
+		SafetyTier:        firstNonEmpty(safetyDecision.SafetyTier, contract.ActuatorSafetyTier),
 		ProposalOnly:      safetyDecision.ProposalOnly,
 		ExecutionEligible: safetyDecision.ExecutionEligible,
 		DryRun:            req.DryRun || t.cfg.DryRun,
@@ -2613,6 +2614,8 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 	}
 	if safetyDecision.ProposalOnly {
 		data.Mode = "proposal_only"
+		data.OperatorHandoff = operatorHandoffForAction(ActionSpec{Description: data.Action, Target: contract.Target.Scope})
+		enrichOperatorHandoff(data.OperatorHandoff, contract)
 		data.Summary = fmt.Sprintf("proposal-only remediation for %s on %s (%s)", firstNonEmpty(contract.Summary, contract.Intent), firstNonEmpty(contract.Target.Scope, req.CollectorID, "fleet"), safetyDecision.Reason)
 		return workflowToolResult{Summary: data.Summary, Data: data}, nil
 	}
@@ -2637,6 +2640,15 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 						data.Summary = fmt.Sprintf("executed %s for %s", firstNonEmpty(contract.Intent, contract.Summary), firstNonEmpty(contract.Target.Scope, req.CollectorID, "fleet"))
 						return workflowToolResult{Summary: data.Summary, Data: data}, nil
 					}
+					if res.Status == ActionResultBlocked && res.OperatorHandoff != nil {
+						data.Mode = "human_operator_required"
+						data.ProposalOnly = true
+						data.ExecutionEligible = false
+						data.OperatorHandoff = res.OperatorHandoff
+						enrichOperatorHandoff(data.OperatorHandoff, contract)
+						data.Summary = fmt.Sprintf("human operator required for %s on %s (%s)", firstNonEmpty(contract.Intent, contract.Summary), firstNonEmpty(contract.Target.Scope, req.CollectorID, "fleet"), res.Error)
+						return workflowToolResult{Summary: data.Summary, Data: data}, nil
+					}
 					data.Mode = "failed"
 					data.Summary = fmt.Sprintf("remediation failed: %s", firstNonEmpty(res.Error, res.Output))
 					return workflowToolResult{Summary: data.Summary, Data: data}, fmt.Errorf("remediation failed: %s", firstNonEmpty(res.Error, res.Output))
@@ -2654,6 +2666,16 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 		data.Summary += fmt.Sprintf(" | potential blast radius: %d scoped targets", data.BlastRadius)
 	}
 	return workflowToolResult{Summary: data.Summary, Data: data}, nil
+}
+
+func enrichOperatorHandoff(handoff *OperatorActionHandoff, contract *ValidationActionContract) {
+	if handoff == nil || contract == nil {
+		return
+	}
+	handoff.Preconditions = append([]string(nil), contract.Preconditions...)
+	handoff.ExpectedImpact = contract.ExpectedImpact
+	handoff.BlastRadius = append([]string(nil), contract.BlastRadiusScope...)
+	handoff.RollbackPlan = firstNonEmpty(contract.Rollback.Summary, handoff.RollbackPlan)
 }
 
 func pickCollectorFromSnapshot(nodes []*ingest.NodeSnapshot) string {

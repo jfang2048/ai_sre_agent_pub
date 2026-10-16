@@ -371,6 +371,9 @@ func suggestedToolsForTargetFamilies(targetType ValidationTargetType, families [
 			tools = append(tools, item)
 		}
 	}
+	if targetType == ValidationTargetRemediation {
+		add(ToolServiceHealth, ToolActionOutcome, ToolNetworkBlastRadius)
+	}
 	for _, family := range families {
 		switch family {
 		case "metrics":
@@ -405,7 +408,10 @@ func suggestedToolsForTargetFamilies(targetType ValidationTargetType, families [
 	case ValidationTargetRecommendation:
 		add(ToolRunbookRetrieval, ToolActionOutcome, ToolServiceHealth)
 	case ValidationTargetRemediation:
-		add(ToolServiceHealth, ToolMetrics, ToolLogs)
+		// Preflight a proposed intervention with current health, prior outcomes,
+		// revision identity, and potential downstream impact. Domain-specific
+		// tools (GPU, memory, storage, network, etc.) are added above.
+		add(ToolServiceHealth, ToolMetrics, ToolLogs, ToolActionOutcome, ToolContainerRevision, ToolNetworkBlastRadius)
 	case ValidationTargetContradiction:
 		add(ToolServiceHealth)
 	}

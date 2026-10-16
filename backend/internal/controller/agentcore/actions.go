@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
-	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,17 +69,33 @@ type ActionSpec struct {
 
 // ActionResult captures the execution outcome for one action.
 type ActionResult struct {
-	ID             string    `json:"id"`
-	Type           string    `json:"type"`
-	Status         string    `json:"status"`
-	Output         string    `json:"output,omitempty"`
-	Error          string    `json:"error,omitempty"`
-	DryRun         bool      `json:"dry_run"`
-	IdempotencyKey string    `json:"idempotency_key"`
-	IsRollback     bool      `json:"is_rollback"`
-	StartedAt      time.Time `json:"started_at"`
-	CompletedAt    time.Time `json:"completed_at"`
+	ID              string                 `json:"id"`
+	Type            string                 `json:"type"`
+	Status          string                 `json:"status"`
+	Output          string                 `json:"output,omitempty"`
+	Error           string                 `json:"error,omitempty"`
+	DryRun          bool                   `json:"dry_run"`
+	IdempotencyKey  string                 `json:"idempotency_key"`
+	IsRollback      bool                   `json:"is_rollback"`
+	OperatorHandoff *OperatorActionHandoff `json:"operator_handoff,omitempty"`
+	StartedAt       time.Time              `json:"started_at"`
+	CompletedAt     time.Time              `json:"completed_at"`
 }
+
+// OperatorActionHandoff records what a human must decide and verify. It is a
+// proposal, never an approval or evidence that a change took place.
+type OperatorActionHandoff struct {
+	Proposal       string   `json:"proposal"`
+	Scope          string   `json:"scope,omitempty"`
+	Preconditions  []string `json:"preconditions,omitempty"`
+	ExpectedImpact string   `json:"expected_impact,omitempty"`
+	BlastRadius    []string `json:"blast_radius,omitempty"`
+	RollbackPlan   string   `json:"rollback_plan,omitempty"`
+	Preflight      []string `json:"preflight"`
+	Verification   []string `json:"verification"`
+}
+
+var errHumanOperatorRequired = errors.New("human operator required")
 
 // Playbook defines a metric-based condition with one or more remediation actions.
 type Playbook struct {
@@ -125,7 +143,7 @@ func DefaultRunnerConfig() RunnerConfig {
 		AllowUnsafe:          false,
 		DefaultNamespace:     "default",
 		AllowedNamespaces:    []string{"default"},
-		AllowedShellCommands: []string{"echo", "kubectl", "systemctl"},
+		AllowedShellCommands: []string{"echo"},
 		IdempotencyTTL:       30 * time.Minute,
 		MaxParallelActions:   4,
 		ActionTimeout:        15 * time.Second,
@@ -302,9 +320,7 @@ func (r *PlaybookRunner) executeOne(ctx context.Context, raw ActionSpec, forceDr
 	}
 
 	if err := r.authorize(action); err != nil {
-		result := buildActionResult(action, key, start, ActionResultSkipped, "", err, true)
-		r.rememberResult(key, result)
-		return result
+		return buildActionResult(action, key, start, ActionResultBlocked, "", err, true)
 	}
 
 	if forceDryRun || r.cfg.DryRun {
@@ -334,6 +350,9 @@ func (r *PlaybookRunner) executeOne(ctx context.Context, raw ActionSpec, forceDr
 }
 
 func (r *PlaybookRunner) authorize(action ActionSpec) error {
+	if err := enforceActionHarness(action); err != nil {
+		return err
+	}
 	if action.RequiresApproval {
 		return fmt.Errorf("action requires explicit approval")
 	}
@@ -356,11 +375,16 @@ func (r *PlaybookRunner) authorize(action ActionSpec) error {
 }
 
 func (r *PlaybookRunner) dispatch(ctx context.Context, action ActionSpec) (string, error) {
+	// Enforce at the final dispatch boundary too; rollback and future callers
+	// must not bypass the harness by skipping authorize.
+	if err := enforceActionHarness(action); err != nil {
+		return "", err
+	}
 	switch {
 	case isShellAction(action.Type):
 		return runShell(ctx, action)
 	case isKubernetesAction(action.Type):
-		return r.runKubernetes(ctx, action)
+		return "", enforceActionHarness(action)
 	default:
 		return "", fmt.Errorf("unsupported action type: %s", action.Type)
 	}
@@ -371,30 +395,64 @@ func runShell(ctx context.Context, action ActionSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, cmdName, args...)
-	raw, err := cmd.CombinedOutput()
-	out := truncateOutput(string(raw))
-	if err != nil {
-		return out, fmt.Errorf("shell command failed: %w", err)
+	if err := enforceActionHarness(action); err != nil {
+		return "", err
 	}
-	return out, nil
+	// These local fixtures do not need a subprocess, PATH, or shell expansion.
+	if cmdName == "echo" {
+		return truncateOutput(strings.Join(args, " ") + "\n"), nil
+	}
+	if cmdName == "sleep" {
+		seconds, _ := strconv.ParseFloat(args[0], 64)
+		timer := time.NewTimer(time.Duration(seconds * float64(time.Second)))
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timer.C:
+			return "", nil
+		}
+	}
+	return "", fmt.Errorf("%w: command %q is proposal-only", errHumanOperatorRequired, cmdName)
 }
 
-func (r *PlaybookRunner) runKubernetes(ctx context.Context, action ActionSpec) (string, error) {
-	args, err := kubectlArgs(action, r.cfg.DefaultNamespace)
+// enforceActionHarness is a non-overridable boundary for model-originated
+// actions. Playbook safe flags, AllowUnsafe, approval tokens, and dry-run must
+// never turn a production mutation into an executable action.
+func enforceActionHarness(action ActionSpec) error {
+	if isKubernetesAction(action.Type) {
+		return fmt.Errorf("%w: Kubernetes commands and mutations are proposal-only", errHumanOperatorRequired)
+	}
+	if !isShellAction(action.Type) {
+		return fmt.Errorf("unsupported action type %q", action.Type)
+	}
+	command, args, err := shellInvocation(action)
 	if err != nil {
-		return "", err
+		return err
 	}
-	if err := validateKubectlArgs(args); err != nil {
-		return "", err
+	if command != filepath.Base(command) {
+		return fmt.Errorf("%w: executable paths are not allowed", errHumanOperatorRequired)
 	}
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	raw, err := cmd.CombinedOutput()
-	out := truncateOutput(string(raw))
-	if err != nil {
-		return out, fmt.Errorf("kubectl failed: %w", err)
+	switch command {
+	case "echo":
+		for _, arg := range args {
+			if strings.ContainsAny(arg, "\x00\n\r") {
+				return fmt.Errorf("invalid echo argument")
+			}
+		}
+		return nil
+	case "sleep":
+		if len(args) != 1 {
+			return fmt.Errorf("sleep requires one numeric duration")
+		}
+		seconds, err := strconv.ParseFloat(args[0], 64)
+		if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 || seconds > 60 {
+			return fmt.Errorf("sleep duration must be between 0 and 60 seconds")
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: command %q is proposal-only", errHumanOperatorRequired, command)
 	}
-	return out, nil
 }
 
 func shellInvocation(action ActionSpec) (string, []string, error) {
@@ -409,94 +467,6 @@ func shellInvocation(action ActionSpec) (string, []string, error) {
 	args := append([]string{}, parts[1:]...)
 	args = append(args, action.Args...)
 	return parts[0], args, nil
-}
-
-func kubectlArgs(action ActionSpec, defaultNamespace string) ([]string, error) {
-	namespace := strings.TrimSpace(action.Namespace)
-	if namespace == "" {
-		namespace = defaultNamespace
-	}
-
-	if strings.TrimSpace(action.Command) != "" {
-		parts := strings.Fields(action.Command)
-		if len(parts) == 0 || parts[0] != "kubectl" {
-			return nil, fmt.Errorf("kubernetes command must start with kubectl")
-		}
-		return append(parts[1:], action.Args...), nil
-	}
-
-	switch strings.ToLower(strings.TrimSpace(action.Type)) {
-	case "restart_pod":
-		if action.Name == "" {
-			return nil, fmt.Errorf("restart_pod requires name")
-		}
-		return []string{"-n", namespace, "delete", "pod", action.Name}, nil
-	case "restart_deployment":
-		if action.Name == "" {
-			return nil, fmt.Errorf("restart_deployment requires name")
-		}
-		return []string{"-n", namespace, "rollout", "restart", "deployment/" + action.Name}, nil
-	case "scale_deployment":
-		if action.Name == "" {
-			return nil, fmt.Errorf("scale_deployment requires name")
-		}
-		replicas := strings.TrimSpace(action.Metadata["replicas"])
-		if replicas == "" {
-			replicas = "1"
-		}
-		return []string{"-n", namespace, "scale", "deployment/" + action.Name, "--replicas", replicas}, nil
-	case "kubernetes", "k8s":
-		return nil, fmt.Errorf("generic kubernetes action requires command")
-	default:
-		return nil, fmt.Errorf("unsupported kubernetes action type %q", action.Type)
-	}
-}
-
-func validateKubectlArgs(args []string) error {
-	positional := kubectlPositionalArgs(args)
-	if len(positional) == 0 {
-		return fmt.Errorf("empty kubectl arguments")
-	}
-	switch positional[0] {
-	case "drain", "cordon", "uncordon", "exec":
-		return fmt.Errorf("kubectl subcommand %q is blocked by policy", positional[0])
-	case "delete":
-		if len(positional) >= 2 && (positional[1] == "namespace" || positional[1] == "ns") {
-			return fmt.Errorf("kubectl namespace deletion is blocked by policy")
-		}
-	}
-	return nil
-}
-
-func kubectlPositionalArgs(args []string) []string {
-	out := make([]string, 0, len(args))
-	consumeValue := map[string]struct{}{
-		"-n":           {},
-		"--namespace":  {},
-		"-f":           {},
-		"--filename":   {},
-		"--context":    {},
-		"--cluster":    {},
-		"--user":       {},
-		"--kubeconfig": {},
-		"--as":         {},
-		"--as-group":   {},
-	}
-
-	for i := 0; i < len(args); i++ {
-		token := strings.TrimSpace(args[i])
-		if token == "" {
-			continue
-		}
-		if strings.HasPrefix(token, "-") {
-			if _, ok := consumeValue[token]; ok && i+1 < len(args) {
-				i++
-			}
-			continue
-		}
-		out = append(out, token)
-	}
-	return out
 }
 
 func (r *PlaybookRunner) namespaceAllowed(namespace string) bool {
@@ -612,8 +582,29 @@ func buildActionResult(action ActionSpec, key string, started time.Time, status,
 	}
 	if err != nil {
 		result.Error = err.Error()
+		if errors.Is(err, errHumanOperatorRequired) {
+			result.OperatorHandoff = operatorHandoffForAction(action)
+		}
 	}
 	return result
+}
+
+func operatorHandoffForAction(action ActionSpec) *OperatorActionHandoff {
+	proposal := firstNonEmpty(action.Description, action.Command, action.Type)
+	scope := strings.Join(compactStrings(action.Namespace, action.Resource, action.Name, action.Target, action.NodeName), "/")
+	return &OperatorActionHandoff{
+		Proposal:     proposal,
+		Scope:        scope,
+		RollbackPlan: strings.TrimSpace(action.RollbackCommand),
+		Preflight: []string{
+			"Confirm the affected target, current telemetry, service health, and recent changes using read-only tools.",
+			"Check replicas, disruption budget, dependencies, blast radius, rollback readiness, and operator authority where applicable.",
+		},
+		Verification: []string{
+			"After human execution, compare service health and relevant metrics with the pre-action baseline.",
+			"Record the actual command, operator, outcome, observation window, and any rollback as external evidence.",
+		},
+	}
 }
 
 func idempotencyKey(action ActionSpec) string {
@@ -655,6 +646,14 @@ func (r *PlaybookRunner) ExecuteRollback(ctx context.Context, action ActionSpec,
 	if action.RollbackCommand == "" {
 		return buildActionResult(action, key, started, ActionResultSkipped, "No rollback command defined", nil, dryRun)
 	}
+	rollbackAction := action
+	rollbackAction.Command = action.RollbackCommand
+	rollbackAction.Description = "Rollback proposal: " + action.RollbackCommand
+	if err := r.authorize(rollbackAction); err != nil {
+		res := buildActionResult(rollbackAction, key, started, ActionResultBlocked, "", err, true)
+		res.IsRollback = true
+		return res
+	}
 
 	if dryRun || r.cfg.DryRun {
 		return buildActionResult(action, key, started, ActionResultDryRun, "Dry run: would execute rollback: "+action.RollbackCommand, nil, true)
@@ -666,9 +665,6 @@ func (r *PlaybookRunner) ExecuteRollback(ctx context.Context, action ActionSpec,
 		execCtx, cancel = context.WithTimeout(ctx, r.cfg.ActionTimeout)
 	}
 	defer cancel()
-
-	rollbackAction := action
-	rollbackAction.Command = action.RollbackCommand
 
 	output, err := r.dispatch(execCtx, rollbackAction)
 	res := buildActionResult(action, key, started, "", output, err, false)

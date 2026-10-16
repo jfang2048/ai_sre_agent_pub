@@ -175,7 +175,7 @@ func DefaultConfig() Config {
 		DryRun:                    true,
 		AllowUnsafe:               false,
 		Namespaces:                []string{"default"},
-		ShellAllowed:              []string{"echo", "kubectl", "systemctl"},
+		ShellAllowed:              []string{"echo"},
 		MaxActionsPerQuery:        8,
 		PendingActionTTL:          30 * time.Minute,
 		MaxPendingActions:         2048,

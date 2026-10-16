@@ -14,8 +14,9 @@ playbooks:
         namespace: ml-platform
         name: trainer-hot-0
         priority: P1
-        safe: true
-        description: Restart the hottest GPU training pod to clear runaway kernels.
+        safe: false
+        requires_approval: true
+        description: Human operator proposal: inspect GPU evidence and workload impact before deciding whether to restart the pod.
       - id: scale-down-trainer
         type: scale_deployment
         namespace: ml-platform
@@ -40,8 +41,9 @@ playbooks:
         namespace: ml-platform
         name: infer-worker-0
         priority: P1
-        safe: true
-        description: Evict suspected leaking GPU inference pod and let scheduler replace it.
+        safe: false
+        requires_approval: true
+        description: Human operator proposal: verify memory pressure, replicas, and disruption budget before deciding whether to evict the pod.
 
   - id: high-cpu
     summary: Node CPU saturation
@@ -55,8 +57,9 @@ playbooks:
         type: shell
         command: "kubectl -n default rollout restart deployment/api-gateway"
         priority: P2
-        safe: true
-        description: Restart API deployment to clear transient CPU hot loops.
+        safe: false
+        requires_approval: true
+        description: Human operator proposal: verify CPU history, rollout health, and blast radius before deciding whether to restart the deployment.
 
   - id: swap-activity
     summary: Swap activity detected
