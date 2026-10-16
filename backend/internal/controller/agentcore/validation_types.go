@@ -253,6 +253,10 @@ type ValidationTargetResult struct {
 type PostActionValidationSummary struct {
 	Verdict                  ValidationVerdict           `json:"verdict"`
 	Summary                  string                      `json:"summary"`
+	ObservationCount         int                         `json:"observation_count,omitempty"`
+	StableHealthySamples     int                         `json:"stable_healthy_samples,omitempty"`
+	HealthySampleTimes       []time.Time                 `json:"healthy_sample_times,omitempty"`
+	ObservationEvidenceIDs   []string                    `json:"observation_evidence_ids,omitempty"`
 	ActionID                 string                      `json:"action_id,omitempty"`
 	ActionCompletedAt        time.Time                   `json:"action_completed_at,omitempty"`
 	ExecutionCategory        string                      `json:"execution_category,omitempty"`

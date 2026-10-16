@@ -1602,15 +1602,16 @@ func (p deterministicPipeline) run(ctx context.Context, state *workflowState) er
 }
 
 type workflowState struct {
-	engine       *WorkflowEngine
-	workflowType string
-	workflowID   string
-	collectorID  string
-	window       time.Duration
-	limit        int
-	trigger      string
-	dryRun       bool
-	now          time.Time
+	engine        *WorkflowEngine
+	workflowType  string
+	workflowID    string
+	collectorID   string
+	window        time.Duration
+	limit         int
+	trigger       string
+	dryRun        bool
+	freshReadOnly bool
+	now           time.Time
 
 	stages      []PipelineStageResult
 	toolCalls   []WorkflowToolCall
@@ -2015,6 +2016,14 @@ func (s *workflowState) callToolAs(ctx context.Context, stage, actor string, too
 		Limit:       s.limit,
 		Query:       query,
 		DryRun:      s.dryRun,
+	}
+	if s.freshReadOnly {
+		registered, ok := s.engine.tools.tools[tool]
+		if !ok || !describeWorkflowTool(registered).ReadOnly {
+			return workflowToolResult{}, fmt.Errorf("fresh post-action sampling permits read-only tools only: %s", tool)
+		}
+		request.Stage = "post_action_validation"
+		request.Actor = "validation_action_agent"
 	}
 	call, result, err := s.engine.tools.call(ctx, request, tool)
 	s.toolCalls = append(s.toolCalls, call)
@@ -3259,15 +3268,9 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 		if len(state.toolCalls) > 0 {
 			lastCall = state.toolCalls[len(state.toolCalls)-1]
 		}
+		remediationMode := remediationModeFromResult(result)
 		if step.Tool == ToolRemediation {
-			toolStatus := "unknown"
-			if res, ok := result.Data.(ActionResult); ok {
-				toolStatus = res.Status
-			} else if data, ok := result.Data.(remediationToolData); ok {
-				toolStatus = data.Mode
-			}
-
-			if toolStatus == ActionResultExecuted {
+			if requiresPostActionVerification(remediationMode, state.dryRun, lastCall.InvocationStatus) {
 				state.stepsExecuted++
 				step.Status = "executed"
 				step.ResultSummary = result.Summary
@@ -3340,17 +3343,12 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 		updateHypothesesFromToolResult(state, *step, result)
 
 		// Verification Phase
-		if step.Tool == ToolRemediation && !state.dryRun {
-			e.logger.Info("waiting for verification window", zap.String("run_id", state.workflowID), zap.Duration("window", e.cfg.VerificationWindow))
+		if step.Tool == ToolRemediation && requiresPostActionVerification(remediationMode, state.dryRun, lastCall.InvocationStatus) {
+			e.logger.Info("observing post-action verification window", zap.String("run_id", state.workflowID), zap.Duration("window", e.cfg.VerificationWindow))
 			verifyStarted := time.Now().UTC()
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(e.cfg.VerificationWindow):
-			}
-
-			// Re-evaluate risk to verify remediation
-			verification := e.verifyRemediationEffect(ctx, state, step.CompletedAt)
+			verification := observePostActionUntil(ctx, e.cfg.VerificationWindow, 5*time.Second, func(observeCtx context.Context) PostActionValidationSummary {
+				return e.verifyRemediationEffect(observeCtx, state, step.CompletedAt)
+			})
 			state.postActionEffect = &verification
 			if verification.Verdict == ValidationVerdictConfirmed {
 				step.Verified = true
@@ -3412,9 +3410,19 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 			step.Verified = verified
 			step.VerificationNote = note
 			step.EvidenceIDs = append(step.EvidenceIDs, evidenceIDs...)
+			outcome := map[bool]string{true: "verified", false: "inconclusive"}[verified]
+			if step.Tool == ToolRemediation {
+				outcome = "not_executed"
+				switch remediationMode {
+				case "planned_only", "proposal_only", "human_operator_required", "dry_run", "approval_required", "blocked_by_policy", "failed":
+					step.Status = remediationMode
+				default:
+					step.Status = "not_executed"
+				}
+			}
 			if state.durableRun != nil {
 				_ = e.orchestrator.RecordVerification(ctx, state.workflowID, step.ID, DurableVerificationRecord{
-					Outcome:     map[bool]string{true: "verified", false: "inconclusive"}[verified],
+					Outcome:     outcome,
 					Success:     verified,
 					Objective:   fmt.Sprintf("verify %s result", step.Tool),
 					Note:        note,
@@ -3428,7 +3436,7 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 			}
 			if verified {
 				step.Status = "verified"
-			} else {
+			} else if step.Tool != ToolRemediation {
 				step.Status = "completed" // for non-remediation steps, failure to verify might not mean step failed
 			}
 		}
@@ -3437,7 +3445,7 @@ func (e *WorkflowEngine) stepPlanActVerifyLoop(ctx context.Context, state *workf
 
 		if step.Verified {
 			state.stepsVerified++
-		} else if step.Required {
+		} else if step.Required && (step.Tool != ToolRemediation || requiresPostActionVerification(remediationMode, state.dryRun, lastCall.InvocationStatus)) {
 			e.tryPlanRevision(state, step, step.VerificationNote)
 		}
 		if state.durableRun != nil {
@@ -3708,8 +3716,29 @@ func derivePlanPriority(state *workflowState) string {
 	}
 }
 
+func remediationModeFromResult(result workflowToolResult) string {
+	switch data := result.Data.(type) {
+	case ActionResult:
+		return strings.TrimSpace(data.Status)
+	case remediationToolData:
+		return strings.TrimSpace(data.Mode)
+	default:
+		return ""
+	}
+}
+
+func requiresPostActionVerification(mode string, dryRun bool, invocationStatus string) bool {
+	return !dryRun && mode == ActionResultExecuted && (invocationStatus == "executed" || invocationStatus == "success")
+}
+
 func verifyPlanStep(step AgentPlanStep, result workflowToolResult, state *workflowState) (bool, string, []string) {
-	evidenceIDs := []string{fmt.Sprintf("ev-%s", sanitizeID(step.ID))}
+	var evidenceIDs []string
+	if state != nil && len(state.toolCalls) > 0 {
+		lastCall := state.toolCalls[len(state.toolCalls)-1]
+		if lastCall.Tool == step.Tool && lastCall.ID != "" {
+			evidenceIDs = []string{lastCall.ID}
+		}
+	}
 	switch step.Tool {
 	case ToolMetrics:
 		data, ok := result.Data.(metricsToolData)
@@ -3817,37 +3846,89 @@ func verifyPlanStep(step AgentPlanStep, result workflowToolResult, state *workfl
 		}
 		return true, data.Message, evidenceIDs
 	case ToolRemediation:
-		data, ok := result.Data.(remediationToolData)
-		if !ok {
-			return false, "invalid remediation payload", evidenceIDs
-		}
-		return true, data.Summary, evidenceIDs
+		return false, fmt.Sprintf("remediation mode %q does not establish post-action recovery", remediationModeFromResult(result)), evidenceIDs
 	default:
 		return true, "step completed", evidenceIDs
 	}
 }
 
+func postActionRiskSampleFresh(observedAt, actionCompletedAt, now time.Time, maxAge time.Duration) bool {
+	return !observedAt.IsZero() && !actionCompletedAt.IsZero() && maxAge > 0 &&
+		observedAt.After(actionCompletedAt) && !observedAt.After(now) && now.Sub(observedAt) <= maxAge
+}
+
+func postActionRiskSeriesFresh(series []RiskSeries, actionCompletedAt, now time.Time, maxAge time.Duration) bool {
+	if len(series) == 0 {
+		return false
+	}
+	for _, item := range series {
+		if len(item.Points) == 0 || !postActionRiskSampleFresh(item.Points[len(item.Points)-1].Timestamp, actionCompletedAt, now, maxAge) {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *WorkflowEngine) freshPostActionRisk(ctx context.Context, parent *workflowState, actionCompletedAt time.Time) (float64, []string, error) {
+	if parent == nil {
+		return 0, nil, fmt.Errorf("post-action parent workflow is missing")
+	}
+	riskState := e.newWorkflowState("joint_risk", WorkflowRequest{CollectorID: parent.collectorID, Window: 10 * time.Minute, Trigger: "post_action_validation", DryRun: &parent.dryRun})
+	riskState.workflowID = firstNonEmpty(parent.workflowID, riskState.workflowID)
+	riskState.durableRun = parent.durableRun
+	riskState.freshReadOnly = true
+	defer func() { parent.toolCalls = append(parent.toolCalls, riskState.toolCalls...) }()
+	if err := e.stepCollectSignals(ctx, riskState); err != nil {
+		return 0, nil, err
+	}
+	if err := e.stepScoreSignals(ctx, riskState); err != nil {
+		return 0, nil, err
+	}
+	ids := make([]string, 0, len(riskState.toolCalls))
+	for _, call := range riskState.toolCalls {
+		if call.InvocationStatus == "success" && call.ID != "" {
+			ids = append(ids, call.ID)
+		}
+	}
+	if riskState.metricsData.Node == nil || len(riskState.riskSignals) == 0 {
+		return 0, dedupeStrings(ids), fmt.Errorf("fresh post-action risk metrics are insufficient")
+	}
+	now := time.Now().UTC()
+	if !postActionRiskSampleFresh(riskState.metricsData.Node.LastMetricAt, actionCompletedAt, now, e.cfg.MaxTelemetryAge) {
+		return 0, dedupeStrings(ids), fmt.Errorf("post-action risk metrics predate the action or exceed maximum age")
+	}
+	if !postActionRiskSeriesFresh(riskState.riskSeries, actionCompletedAt, now, e.cfg.MaxTelemetryAge) {
+		return 0, dedupeStrings(ids), fmt.Errorf("post-action risk series predate the action or exceed maximum age")
+	}
+	return riskState.risk.RiskScore, dedupeStrings(ids), nil
+}
+
 func (e *WorkflowEngine) verifyRemediationEffect(ctx context.Context, state *workflowState, actionCompletedAt time.Time) PostActionValidationSummary {
 	before := state.beforeActionState
+	if before == nil {
+		return PostActionValidationSummary{
+			Verdict:           ValidationVerdictInsufficientEvidence,
+			ActionCompletedAt: actionCompletedAt,
+			FallbackMode:      "missing_pre_action_baseline",
+			Summary:           "pre-action evidence snapshot is unavailable; recovery cannot be verified",
+		}
+	}
 	beforeRisk := maxFloat(state.incident.Confidence, topHypothesisConfidence(state.hypotheses))
 	if before != nil {
 		beforeRisk = before.RiskScore
 	}
 
-	req := WorkflowRequest{
-		CollectorID: state.collectorID,
-		Window:      10 * time.Minute,
-	}
-	report, err := e.EvaluateJointRisk(ctx, req)
+	freshRisk, riskEvidenceIDs, err := e.freshPostActionRisk(ctx, state, actionCompletedAt)
 	after, snapErr := captureValidationEvidenceSnapshot(ctx, state, "after_action")
 	resolved := false
 	afterRisk := beforeRisk
 	if err == nil {
-		afterRisk = report.RiskScore
-		resolved = report.RiskScore < e.cfg.MediumRiskThreshold
+		afterRisk = freshRisk
+		resolved = freshRisk < e.cfg.MediumRiskThreshold
 	}
 	if after != nil {
 		after.RiskScore = afterRisk
+		after.EvidenceIDs = dedupeStrings(append(after.EvidenceIDs, riskEvidenceIDs...))
 	}
 	if before != nil && before.RiskScore == 0 {
 		before.RiskScore = beforeRisk
@@ -5043,7 +5124,9 @@ func (e *WorkflowEngine) stepPostActionValidation(ctx context.Context, state *wo
 
 	summary := state.postActionEffect
 	if summary == nil {
-		effect := e.verifyRemediationEffect(ctx, state, step.CompletedAt)
+		effect := observePostActionUntil(ctx, e.cfg.PostActionValidationWindow, 5*time.Second, func(observeCtx context.Context) PostActionValidationSummary {
+			return e.verifyRemediationEffect(observeCtx, state, step.CompletedAt)
+		})
 		summary = &effect
 	}
 	state.postActionEffect = summary

@@ -187,7 +187,10 @@ func updateValidationGovernanceRollback(report *ValidationActionReport, status s
 func remediationStepStatus(data remediationToolData, call WorkflowToolCall) string {
 	switch strings.TrimSpace(data.Mode) {
 	case "executed":
-		return "executed"
+		if requiresPostActionVerification(data.Mode, data.DryRun || call.DryRun, call.InvocationStatus) {
+			return "executed"
+		}
+		return "not_executed"
 	case "dry_run":
 		return "dry_run"
 	case "planned_only":

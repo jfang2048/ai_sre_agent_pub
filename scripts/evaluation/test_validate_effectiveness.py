@@ -37,8 +37,11 @@ def valid_report():
     provenance.update(schema_version="evaluation-inputs/v1", evaluator_source="repository-source")
     return {"schema_version": "system-performance/v2", "verdict": "PASS", "gates": {"passed": True, "checks": [{"name": "case_pass", "passed": True}]},
             "scorecard": {"overall_score": 0.75},
+            "aggregate": {"cases_run": 1, "cases_executed": 1, "cases_passed": 1,
+                          "cases_failed": 0, "cases_skipped": 0, "case_pass_rate": 1.0},
             "environment": {"scope": "benchmark", "trials_per_case": 1, "seed": 42, "runtime_mode": "legacy_deterministic", "provenance": provenance},
-            "cases": [{"id": "case-a", "passed": True, "trials": 1, "task_success_trials": 1, "task_success_rate": 1, "trials_detail": [{"task_success": True}]}]}
+            "cases": [{"id": "case-a", "passed": True, "trials": 1, "fatal_failure_trial_count": 0,
+                       "task_success_trials": 1, "task_success_rate": 1, "trials_detail": [{"task_success": True}]}]}
 
 
 class MonitoringValidationTests(unittest.TestCase):
@@ -156,6 +159,7 @@ class WorkflowValidationTests(unittest.TestCase):
                 report["gates"]["checks"][0]["passed"] = False
             else:
                 report["cases"][0]["passed"] = False
+                report["aggregate"].update(cases_passed=0, cases_failed=1, case_pass_rate=0.0)
             self.write(report)
             with self.subTest(field=field), self.assertRaisesRegex(validation.EvidenceError, "gate failed"):
                 validation.validate_workflow_report(self.path, 1)
@@ -179,11 +183,15 @@ class WorkflowValidationTests(unittest.TestCase):
         report = valid_report()
         report["verdict"] = "FAIL"
         report["cases"][0].update(passed=False, failures=["root cause incorrect"])
+        report["aggregate"].update(cases_passed=0, cases_failed=1, case_pass_rate=0.0)
         self.write(report)
         with self.assertRaises(validation.WorkflowGateError) as caught:
             validation.validate_workflow_report(self.path, 1)
         summary = validation.workflow_summary(caught.exception.report)
         self.assertEqual(summary["cases_passed"], 0)
+        self.assertEqual(summary["cases_failed"], 1)
+        self.assertEqual(summary["cases_skipped"], 0)
+        self.assertEqual(summary["case_pass_rate"], 0)
         self.assertEqual(summary["overall_score"], 0.75)
         self.assertEqual(summary["failed_cases"][0]["failures"], ["root cause incorrect"])
 
@@ -194,6 +202,19 @@ class WorkflowValidationTests(unittest.TestCase):
             self.write(report)
             with self.subTest(detail=detail), self.assertRaises(validation.EvidenceError):
                 validation.validate_workflow_report(self.path, 1)
+
+    def test_fatal_failure_count_cannot_be_missing_or_hidden_by_pass(self):
+        for fatal in (None, True, -1, 2, 1):
+            report = valid_report()
+            report["cases"][0]["fatal_failure_trial_count"] = fatal
+            self.write(report)
+            with self.subTest(fatal=fatal), self.assertRaisesRegex(validation.EvidenceError, "fatal"):
+                validation.validate_workflow_report(self.path, 1)
+        report = valid_report()
+        del report["cases"][0]["fatal_failure_trial_count"]
+        self.write(report)
+        with self.assertRaisesRegex(validation.EvidenceError, "fatal"):
+            validation.validate_workflow_report(self.path, 1)
 
     def test_provenance_and_gate_evidence_are_required(self):
         for field in ("provenance", "hash", "gate_checks", "gate_mismatch"):
@@ -217,6 +238,23 @@ class WorkflowValidationTests(unittest.TestCase):
             self.write(report)
             with self.subTest(score=score), self.assertRaisesRegex(validation.EvidenceError, "valid overall score"):
                 validation.validate_workflow_report(self.path, 1)
+
+    def test_case_pass_rate_must_match_executed_case_evidence(self):
+        for key, value in (("cases_run", 2), ("cases_skipped", 1), ("case_pass_rate", 0.5)):
+            report = valid_report()
+            report["aggregate"] = {"cases_run": 1, "cases_executed": 1,
+                                   "cases_passed": 1, "cases_failed": 0,
+                                   "cases_skipped": 0, "case_pass_rate": 1.0}
+            report["aggregate"][key] = value
+            self.write(report)
+            with self.subTest(key=key), self.assertRaisesRegex(validation.EvidenceError, "case counts|case pass rate"):
+                validation.validate_workflow_report(self.path, 1)
+
+        report = valid_report()
+        del report["aggregate"]
+        self.write(report)
+        with self.assertRaisesRegex(validation.EvidenceError, "aggregate case counts"):
+            validation.validate_workflow_report(self.path, 1)
 
 
 class OrchestratorTests(unittest.TestCase):
@@ -271,6 +309,9 @@ class OrchestratorTests(unittest.TestCase):
                 report["cases"] = [dict(copy.deepcopy(template), id=c["id"]) for c in fixture["cases"] if "benchmark" in c["suites"]]
                 report["cases"][0].update(passed=False, task_success_trials=0, task_success_rate=0,
                                           trials_detail=[{"task_success": False}], failures=["wrong root cause"])
+                report["aggregate"] = {"cases_run": len(report["cases"]), "cases_executed": len(report["cases"]),
+                                       "cases_passed": len(report["cases"]) - 1, "cases_failed": 1,
+                                       "cases_skipped": 0, "case_pass_rate": (len(report["cases"]) - 1) / len(report["cases"])}
                 report["verdict"] = "FAIL"
                 report["gates"]["passed"] = report["gates"]["checks"][0]["passed"] = False
                 (output / "workflow").mkdir()
@@ -284,6 +325,11 @@ class OrchestratorTests(unittest.TestCase):
             manifest = json.loads((output / "manifest.json").read_text())
             self.assertEqual(manifest["verdict"], "FAIL")
             self.assertEqual(manifest["workflow"]["cases_passed"], manifest["workflow"]["cases_run"] - 1)
+            self.assertEqual(manifest["workflow"]["cases_failed"], 1)
+            self.assertEqual(manifest["workflow"]["cases_skipped"], 0)
+            self.assertAlmostEqual(manifest["workflow"]["case_pass_rate"],
+                                   manifest["workflow"]["cases_passed"] / manifest["workflow"]["cases_executed"])
+            self.assertIn("用例通过率", (output / "summary.md").read_text())
             self.assertIn("wrong root cause", (output / "summary.md").read_text())
             self.assertIn("workflow/report.json", manifest["artifacts"])
 

@@ -187,6 +187,11 @@ def validate_workflow_report(path, trials, expected_case_ids=None):
         if any(not isinstance(t, dict) or not isinstance(t.get("task_success"), bool) for t in details):
             raise EvidenceError("workflow report lacks per-trial task verdicts: " + case["id"])
         successes = sum(t["task_success"] for t in details)
+        fatal_trials = case.get("fatal_failure_trial_count")
+        if type(fatal_trials) is not int or not 0 <= fatal_trials <= trials:
+            raise EvidenceError("workflow report lacks valid fatal-failure trial count: " + case["id"])
+        if case.get("passed") is True and fatal_trials > 0:
+            raise EvidenceError("workflow case passed despite fatal failure: " + case["id"])
         if (type(case.get("task_success_trials")) is not int or case["task_success_trials"] != successes
                 or not finite_number(case.get("task_success_rate")) or not math.isclose(case["task_success_rate"], successes / trials)
                 or (case.get("passed") is True and successes != trials)):
@@ -197,6 +202,16 @@ def validate_workflow_report(path, trials, expected_case_ids=None):
     if any(not isinstance(c.get("passed"), bool) for c in cases):
         raise EvidenceError("workflow report lacks per-case verdicts")
     failed = [c["id"] for c in cases if c.get("passed") is not True]
+    aggregate = report.get("aggregate")
+    if not isinstance(aggregate, dict):
+        raise EvidenceError("workflow report lacks aggregate case counts")
+    passed = len(cases) - len(failed)
+    expected = {"cases_run": len(cases), "cases_executed": len(cases),
+                "cases_passed": passed, "cases_failed": len(failed), "cases_skipped": 0}
+    if any(type(aggregate.get(key)) is not int or aggregate[key] != value for key, value in expected.items()):
+        raise EvidenceError("workflow aggregate case counts disagree with per-case verdicts")
+    if not finite_number(aggregate.get("case_pass_rate")) or not math.isclose(aggregate["case_pass_rate"], passed / len(cases)):
+        raise EvidenceError("workflow aggregate case pass rate disagrees with per-case verdicts")
     gates = report.get("gates", {})
     if report.get("verdict") not in {"PASS", "FAIL"} or not isinstance(gates, dict) or not isinstance(gates.get("passed"), bool):
         raise EvidenceError("workflow report lacks a valid gate verdict")
@@ -211,8 +226,12 @@ def validate_workflow_report(path, trials, expected_case_ids=None):
 
 
 def workflow_summary(report):
-    return {"verdict": report["verdict"], "cases_run": len(report["cases"]),
-            "cases_passed": sum(c["passed"] for c in report["cases"]),
+    cases_run = len(report["cases"])
+    cases_passed = sum(c["passed"] for c in report["cases"])
+    return {"verdict": report["verdict"], "cases_run": cases_run,
+            "cases_executed": cases_run, "cases_passed": cases_passed,
+            "cases_failed": cases_run - cases_passed, "cases_skipped": 0,
+            "case_pass_rate": cases_passed / cases_run if cases_run else None,
             "overall_score": report["scorecard"]["overall_score"],
             "failed_cases": [{"id": c["id"], "failures": c.get("failures", [])} for c in report["cases"] if not c["passed"]],
             "gates": report["gates"], "report": "workflow/report.json"}
@@ -311,7 +330,7 @@ def write_summary(output, manifest):
     workflow = manifest.get("workflow")
     lines += ["", "## 工作流结果", ""]
     if workflow:
-        lines += [f"共 {workflow['cases_run']} 个合成用例，每例 {manifest['trials']} 次；通过 {workflow['cases_passed']}/{workflow['cases_run']}，判定 {workflow['verdict']}。",
+        lines += [f"共 {workflow['cases_run']} 个合成用例，每例 {manifest['trials']} 次；执行 {workflow['cases_executed']} 个，通过 {workflow['cases_passed']} 个，失败 {workflow['cases_failed']} 个，跳过 {workflow['cases_skipped']} 个；用例通过率 {format_rate(workflow['case_pass_rate'])}（通过/执行），判定 {workflow['verdict']}。",
                   f"综合评分：{workflow['overall_score']:.4f}（0–1）；总分不能代替逐例通过和安全门禁。", "",
                   "[完整评分及门禁](workflow/report.json) · [工作流摘要](workflow/summary.md)"]
         if workflow["failed_cases"]:

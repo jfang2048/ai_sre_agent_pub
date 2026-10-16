@@ -367,12 +367,15 @@ func evaluateV2Gates(agg V2Aggregate, cases []V2CaseResult, cfg V2ScoringConfig)
 	}
 	if len(cases) > 0 {
 		failed := 0
+		skipped := 0
 		for _, item := range cases {
-			if !item.Passed {
+			if item.Trials <= 0 {
+				skipped++
+			} else if !item.Passed {
 				failed++
 			}
 		}
-		add("case_pass_rate_threshold", fmt.Sprintf("failed=%d total=%d required_per_case=%.3f", failed, len(cases), cfg.CasePassRateThreshold), failed == 0)
+		add("case_pass_rate_threshold", fmt.Sprintf("failed=%d skipped=%d executed=%d selected=%d required_per_case=%.3f", failed, skipped, len(cases)-skipped, len(cases), cfg.CasePassRateThreshold), failed == 0 && skipped == 0)
 	}
 	// Fatal taxonomy modes are invariant failures, not configurable weighted
 	// metrics. Averages must never dilute them into a passing verdict.

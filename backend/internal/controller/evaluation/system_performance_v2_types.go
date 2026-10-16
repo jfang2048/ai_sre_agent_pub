@@ -311,9 +311,16 @@ type V2CaseAggregate struct {
 
 // V2Aggregate is the benchmark-wide aggregate of all case aggregates.
 type V2Aggregate struct {
-	CasesRun      int `json:"cases_run"`
-	TrialsPerCase int `json:"trials_per_case"`
-	TotalTrials   int `json:"total_trials"`
+	CasesRun      int `json:"cases_run"` // selected case results; retained for schema compatibility
+	CasesExecuted int `json:"cases_executed"`
+	CasesPassed   int `json:"cases_passed"`
+	CasesFailed   int `json:"cases_failed"`
+	CasesSkipped  int `json:"cases_skipped"` // selected results with no trials
+	// CasePassRate is passed cases / executed cases. A nil rate means no case executed;
+	// it is distinct from task_success_rate, which counts individual trials.
+	CasePassRate  *float64 `json:"case_pass_rate"`
+	TrialsPerCase int      `json:"trials_per_case"`
+	TotalTrials   int      `json:"total_trials"`
 	// MetricSupport counts contributing cases. Aggregate values with zero
 	// support are unmeasured and excluded from the scorecard.
 	MetricSupport map[string]int `json:"metric_support,omitempty"`

@@ -82,6 +82,89 @@ func TestWorkflowToolManager_Idempotency(t *testing.T) {
 	assert.Equal(t, 2, mock.runCount)
 }
 
+func TestPostActionReadOnlyToolsAreSampledAfresh(t *testing.T) {
+	mock := &mockTool{name: "sampled_read_only_tool", deterministic: true}
+	mgr := newWorkflowToolManager(zap.NewNop(), mock)
+	req := workflowToolRequest{WorkflowID: "wf-fresh", Workflow: "rca", Stage: "post_action_validation"}
+
+	first, _, err := mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	second, _, err := mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	require.Equal(t, 2, mock.runCount)
+	require.Equal(t, "success", first.InvocationStatus)
+	require.Equal(t, "success", second.InvocationStatus)
+	require.Empty(t, first.IdempotencyKey)
+	require.Empty(t, second.IdempotencyKey)
+	req.IdempotencyKey = "caller-supplied-key-must-not-cache-observations"
+	_, _, err = mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	_, _, err = mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	require.Equal(t, 4, mock.runCount)
+
+	req.IdempotencyKey = ""
+	req.Stage = "plan_act_verify_loop"
+	_, _, err = mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	cached, _, err := mgr.call(context.Background(), req, mock.Name())
+	require.NoError(t, err)
+	require.Equal(t, 5, mock.runCount)
+	require.Equal(t, "skipped", cached.InvocationStatus)
+}
+
+func TestFreshPostActionRiskPathBypassesCollectSignalCache(t *testing.T) {
+	readOnly := &mockTool{name: ToolMetrics, deterministic: true}
+	unsafe := &mockTool{name: ToolRemediation, unsafe: true}
+	mgr := newWorkflowToolManager(zap.NewNop(), readOnly, unsafe)
+	state := &workflowState{
+		engine:        &WorkflowEngine{tools: mgr},
+		workflowID:    "wf-risk-sample",
+		workflowType:  "joint_risk",
+		freshReadOnly: true,
+	}
+
+	for range 2 {
+		_, err := state.callToolAs(context.Background(), "collect_signals", "analysis_agent", ToolMetrics, nil)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 2, readOnly.runCount)
+	for _, call := range state.toolCalls {
+		require.Equal(t, "post_action_validation", call.Stage)
+		require.Equal(t, "success", call.InvocationStatus)
+		require.Empty(t, call.IdempotencyKey)
+	}
+	_, err := state.callToolAs(context.Background(), "collect_signals", "analysis_agent", ToolRemediation, map[string]string{"action": "restart"})
+	require.ErrorContains(t, err, "read-only tools only")
+	require.Zero(t, unsafe.runCount)
+}
+
+func TestFreshPostActionRiskDoesNotReuseJointRiskOrMetricResult(t *testing.T) {
+	engine := NewWorkflowEngine(DefaultWorkflowConfig(), ingest.NewMemoryStore(), nil, nil, zap.NewNop())
+	metrics := &mockTool{
+		name:          ToolMetrics,
+		deterministic: true,
+		result:        workflowToolResult{Data: metricsToolData{CollectorID: "collector-a"}},
+	}
+	engine.tools = newWorkflowToolManager(zap.NewNop(), metrics)
+	parent := &workflowState{workflowID: "wf-risk-sample", workflowType: "rca", collectorID: "collector-a"}
+	_, firstIDs, err := engine.freshPostActionRisk(context.Background(), parent, time.Now().UTC())
+	require.ErrorContains(t, err, "metrics are insufficient")
+	_, secondIDs, err := engine.freshPostActionRisk(context.Background(), parent, time.Now().UTC())
+	require.ErrorContains(t, err, "metrics are insufficient")
+	require.Equal(t, 2, metrics.runCount)
+	require.Len(t, firstIDs, 1)
+	require.Len(t, secondIDs, 1)
+	require.NotEqual(t, firstIDs[0], secondIDs[0])
+	metricCalls := 0
+	for _, call := range parent.toolCalls {
+		if call.Tool == ToolMetrics && call.InvocationStatus == "success" {
+			metricCalls++
+		}
+	}
+	require.Equal(t, 2, metricCalls)
+}
+
 func TestPolicyEngine_Evaluate(t *testing.T) {
 	engine := NewPolicyEngine(nil)
 	engine.cfg = DefaultWorkflowConfig()

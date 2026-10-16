@@ -3,6 +3,7 @@ package evaluation
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -817,6 +818,32 @@ func TestV2CaseFileLoadsAndFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, cases, 1)
 	require.Equal(t, TaskTypeNoop, cases[0].TaskType)
+
+	cases, err = loadV2Cases(repoRoot, eval.ScopeFast, []string{"test-noop"})
+	require.NoError(t, err)
+	require.Len(t, cases, 1)
+	_, err = loadV2Cases(repoRoot, eval.ScopeFast, []string{"test-noop", "misspelled-id"})
+	require.ErrorContains(t, err, "misspelled-id", "an explicit case filter must not silently shrink the success-rate denominator")
+	_, err = loadV2Cases(repoRoot, eval.ScopeFast, []string{"test-noop", " "})
+	require.ErrorContains(t, err, "selected case id is blank", "a blank requested ID must not silently shrink the denominator")
+	_, err = loadV2Cases(repoRoot, eval.ScopeFast, []string{""})
+	require.ErrorContains(t, err, "selected case id is blank")
+}
+
+func TestV2CaseFileRejectsDuplicateIDs(t *testing.T) {
+	repoRoot := t.TempDir()
+	require.NoError(t, writeTestV2CaseFile(repoRoot))
+	path := filepath.Join(repoRoot, "eval_data", "system_perf_cases_v2.json")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var file V2CaseFile
+	require.NoError(t, json.Unmarshal(raw, &file))
+	file.Cases = append(file.Cases, file.Cases[0])
+	raw, err = json.Marshal(file)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o644))
+	_, err = loadV2Cases(repoRoot, eval.ScopeFast, nil)
+	require.ErrorContains(t, err, "duplicate")
 }
 
 func writeTestV2CaseFile(repoRoot string) error {
@@ -918,6 +945,49 @@ func TestSuccessMetricsAndReplayStability(t *testing.T) {
 	require.Equal(t, 1.0, replayStabilityScore([]bool{true, true}))
 	require.Equal(t, 0.0, replayStabilityScore([]bool{true, false}))
 	require.Equal(t, 1.0, replayStabilityScore([]bool{true}))
+}
+
+func TestV2CasePassRateUsesCompletedCaseVerdicts(t *testing.T) {
+	cases := []V2CaseResult{
+		{ID: "passing", Trials: 3, TaskSuccessTrials: 3, TaskSuccessRate: 1, Passed: true},
+		{ID: "below-threshold", Trials: 3, TaskSuccessTrials: 2, TaskSuccessRate: 2.0 / 3.0, Passed: false},
+	}
+	agg := aggregateV2Benchmark(cases)
+	require.Equal(t, 2, agg.CasesRun)
+	require.Equal(t, 2, agg.CasesExecuted)
+	require.Equal(t, 1, agg.CasesPassed)
+	require.Equal(t, 1, agg.CasesFailed)
+	require.Zero(t, agg.CasesSkipped)
+	require.NotNil(t, agg.CasePassRate)
+	require.InDelta(t, 0.5, *agg.CasePassRate, 1e-9)
+	require.InDelta(t, 5.0/6.0, agg.TaskSuccessRate, 1e-9, "trial task success and case gate pass rate are different denominators")
+
+	report := SystemPerformanceReportV2{SchemaVersion: v2SchemaVersion, Cases: cases, Aggregate: agg}
+	require.Contains(t, RenderV2Text(report), "selected=2 executed=2 passed=1 failed=1 skipped=0 case_pass_rate=50.0%")
+	require.Contains(t, RenderV2Table(report), "50.0%")
+	require.Contains(t, renderV2Summary(report), "Case pass rate: 50.0% (1 passed / 2 executed")
+	raw, err := json.Marshal(report)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"case_pass_rate":0.5`)
+	metricsPath := filepath.Join(t.TempDir(), "metrics.csv")
+	require.NoError(t, writeV2MetricsCSV(metricsPath, report))
+	metrics, err := os.ReadFile(metricsPath)
+	require.NoError(t, err)
+	require.Contains(t, string(metrics), "cases_passed,1,")
+	require.Contains(t, string(metrics), "cases_failed,1,")
+	require.Contains(t, string(metrics), "cases_skipped,0,")
+	require.Contains(t, string(metrics), "case_pass_rate,0.500000,,,,2")
+
+	empty := aggregateV2Benchmark(nil)
+	require.Nil(t, empty.CasePassRate, "no executed cases have no success-rate denominator")
+	require.Contains(t, RenderV2Text(SystemPerformanceReportV2{Aggregate: empty}), "case_pass_rate=N/A")
+	skipped := aggregateV2Benchmark([]V2CaseResult{{ID: "did-not-run", Passed: true}})
+	require.Equal(t, 1, skipped.CasesSkipped)
+	require.Zero(t, skipped.CasesExecuted)
+	require.Zero(t, skipped.CasesPassed)
+	require.Nil(t, skipped.CasePassRate, "an unexecuted result must not report 100% success")
+	skippedGates := evaluateV2Gates(skipped, []V2CaseResult{{ID: "did-not-run", Passed: true}}, defaultV2ScoringConfig())
+	require.Contains(t, skippedGates.Fired, "case_pass_rate_threshold", "a claimed pass without a trial must fail the case gate")
 }
 
 func TestPassAtKAvailabilityAndDescriptiveReplaySupport(t *testing.T) {

@@ -466,7 +466,12 @@ func (m *workflowToolManager) call(ctx context.Context, req workflowToolRequest,
 		return call, workflowToolResult{}, err
 	}
 	autoKeyGenerated := false
-	if req.IdempotencyKey == "" {
+	// Post-action evidence must be sampled anew. Reusing an earlier read-only
+	// result would turn the observation loop into repeated reads of one sample.
+	// Mutating tools retain their normal idempotency protection.
+	if req.Stage == "post_action_validation" && desc.ReadOnly {
+		req.IdempotencyKey = ""
+	} else if req.IdempotencyKey == "" {
 		req.IdempotencyKey = stableWorkflowToolKey(name, req)
 		autoKeyGenerated = true
 	}

@@ -660,6 +660,22 @@ func aggregateV2Benchmark(cases []V2CaseResult) V2Aggregate {
 	if len(cases) == 0 {
 		return agg
 	}
+	for _, item := range cases {
+		if item.Trials <= 0 {
+			agg.CasesSkipped++
+			continue
+		}
+		agg.CasesExecuted++
+		if item.Passed {
+			agg.CasesPassed++
+		} else {
+			agg.CasesFailed++
+		}
+	}
+	if agg.CasesExecuted > 0 {
+		casePassRate := float64(agg.CasesPassed) / float64(agg.CasesExecuted)
+		agg.CasePassRate = &casePassRate
+	}
 	agg.TrialsPerCase = cases[0].Trials
 	for _, item := range cases {
 		agg.TotalTrials += item.Trials
@@ -1074,12 +1090,23 @@ func loadV2Cases(repoRoot string, scope eval.Scope, selectedIDs []string) ([]V2C
 	}
 	selected := make(map[string]struct{}, len(selectedIDs))
 	for _, item := range selectedIDs {
-		if trimmed := strings.TrimSpace(item); trimmed != "" {
-			selected[trimmed] = struct{}{}
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			return nil, fmt.Errorf("system performance v2 selected case id is blank")
 		}
+		selected[trimmed] = struct{}{}
 	}
 	out := make([]V2Case, 0, len(file.Cases))
+	matched := make(map[string]struct{}, len(selected))
+	seen := make(map[string]struct{}, len(file.Cases))
 	for _, item := range file.Cases {
+		if item.ID == "" || item.ID != strings.TrimSpace(item.ID) {
+			return nil, fmt.Errorf("system performance v2 case has an empty or padded id")
+		}
+		if _, duplicate := seen[item.ID]; duplicate {
+			return nil, fmt.Errorf("duplicate system performance v2 case id %q", item.ID)
+		}
+		seen[item.ID] = struct{}{}
 		if len(selected) > 0 {
 			if _, ok := selected[item.ID]; !ok {
 				continue
@@ -1087,7 +1114,18 @@ func loadV2Cases(repoRoot string, scope eval.Scope, selectedIDs []string) ([]V2C
 		}
 		if systemPerformanceSuiteAllowed(item.Suites, scope) {
 			out = append(out, item)
+			matched[item.ID] = struct{}{}
 		}
+	}
+	if len(selected) > 0 && len(matched) != len(selected) {
+		missing := make([]string, 0, len(selected)-len(matched))
+		for id := range selected {
+			if _, ok := matched[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+		sort.Strings(missing)
+		return nil, fmt.Errorf("system performance v2 cases not found in scope %s: %s", scope, strings.Join(missing, ", "))
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no system performance v2 cases matched scope %s", scope)

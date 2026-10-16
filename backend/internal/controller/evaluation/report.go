@@ -128,6 +128,7 @@ func RenderV2Text(report SystemPerformanceReportV2) string {
 			report.Scorecard.OverallScore,
 			report.GeneratedAt.Format("2006-01-02T15:04:05Z"),
 		),
+		fmt.Sprintf("cases: selected=%d executed=%d passed=%d failed=%d skipped=%d case_pass_rate=%s (passed/executed)", agg.CasesRun, agg.CasesExecuted, agg.CasesPassed, agg.CasesFailed, agg.CasesSkipped, optRate(agg.CasePassRate)),
 		fmt.Sprintf("task_success=%s (macro) pass@1=%s pass@k=%s", rate(agg.TaskSuccessRateMacro), rate(agg.PassAt1), passAtK),
 		fmt.Sprintf("rca_entity: precision=%s recall=%s f1=%s recall@1=%s reasoning=%s",
 			supportedRate(v2MetricDiagnosisQuality, agg.RootCauseEntityPrecision), supportedRate(v2MetricDiagnosisQuality, agg.RootCauseEntityRecall), supportedRate(v2MetricDiagnosisQuality, agg.RootCauseEntityF1),
@@ -199,6 +200,12 @@ func RenderV2Table(report SystemPerformanceReportV2) string {
 	rows := [][2]string{
 		{"Verdict", report.Verdict},
 		{"Overall Score", fmt.Sprintf("%.1f / 100", report.Scorecard.OverallScore*100)},
+		{"", ""},
+		{"Cases Selected / Executed", fmt.Sprintf("%d / %d", agg.CasesRun, agg.CasesExecuted)},
+		{"Cases Passed", fmt.Sprintf("%d", agg.CasesPassed)},
+		{"Cases Failed", fmt.Sprintf("%d", agg.CasesFailed)},
+		{"Cases Skipped", fmt.Sprintf("%d", agg.CasesSkipped)},
+		{"Case Pass Rate (passed/executed)", optRate(agg.CasePassRate)},
 		{"", ""},
 		{"Task Success (macro)", rate(agg.TaskSuccessRateMacro)},
 		{"Task Success 95% CI", fmt.Sprintf("%s .. %s", rate(report.ConfidenceIntervals.TaskSuccessRate.Low), rate(report.ConfidenceIntervals.TaskSuccessRate.High))},
@@ -330,7 +337,8 @@ func renderV2Summary(report SystemPerformanceReportV2) string {
 		}
 		lines = append(lines, "", fmt.Sprintf("File manifests: report.json environment.provenance (%d knowledge files; %d evaluator files). Changed inputs/rules or missing fingerprints require a new baseline.", len(p.KnowledgeFiles), len(p.EvaluatorFiles)))
 	}
-	lines = append(lines, "", "## Results", "", fmt.Sprintf("Cases: %d", agg.CasesRun))
+	lines = append(lines, "", "## Results", "", fmt.Sprintf("Cases: %d selected; %d executed; %d passed; %d failed; %d skipped", agg.CasesRun, agg.CasesExecuted, agg.CasesPassed, agg.CasesFailed, agg.CasesSkipped))
+	lines = append(lines, fmt.Sprintf("Case pass rate: %s (%d passed / %d executed). Selected cases with zero trials are skipped, excluded from the denominator, and cannot yield a passing safety gate. This differs from trial-level task success.", optRate(agg.CasePassRate), agg.CasesPassed, agg.CasesExecuted))
 	lines = append(lines, fmt.Sprintf("Trials per case: %d", agg.TrialsPerCase))
 	lines = append(lines, "", "| Metric | Value |")
 	lines = append(lines, "|---|---|")
@@ -585,6 +593,25 @@ func writeV2MetricsCSV(path string, report SystemPerformanceReportV2) error {
 			row.ci.Method,
 			fmt.Sprintf("%d", row.ci.Support),
 		}); err != nil {
+			return err
+		}
+	}
+	for _, row := range []struct {
+		name  string
+		value int
+	}{
+		{"cases_run", agg.CasesRun},
+		{"cases_executed", agg.CasesExecuted},
+		{"cases_passed", agg.CasesPassed},
+		{"cases_failed", agg.CasesFailed},
+		{"cases_skipped", agg.CasesSkipped},
+	} {
+		if err := writer.Write([]string{row.name, fmt.Sprintf("%d", row.value), "", "", "", ""}); err != nil {
+			return err
+		}
+	}
+	if agg.CasePassRate != nil {
+		if err := writer.Write([]string{"case_pass_rate", fmt.Sprintf("%.6f", *agg.CasePassRate), "", "", "", fmt.Sprintf("%d", agg.CasesExecuted)}); err != nil {
 			return err
 		}
 	}
