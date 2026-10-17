@@ -96,6 +96,7 @@ type DurableStepRecord struct {
 	ExecutionCategory string                     `json:"execution_category,omitempty"`
 	OriginalAction    *ActionSpec                `json:"original_action,omitempty"`
 	ActionContract    *ValidationActionContract  `json:"action_contract,omitempty"`
+	OperatorHandoff   *OperatorActionHandoff     `json:"operator_handoff,omitempty"`
 	Policy            *DurablePolicyRecord       `json:"policy,omitempty"`
 	Approval          *DurableApprovalRecord     `json:"approval,omitempty"`
 	Verification      *DurableVerificationRecord `json:"verification,omitempty"`
@@ -1272,6 +1273,7 @@ func durableStepFromPlanStep(stage string, step AgentPlanStep) DurableStepRecord
 		ExecutionCategory: executionCategoryFromToolQuery(step.Query),
 		OriginalAction:    cloneActionSpec(step.OriginalAction),
 		ActionContract:    cloneValidationActionContract(contract),
+		OperatorHandoff:   cloneOperatorActionHandoff(step.OperatorHandoff),
 		StartedAt:         step.StartedAt,
 		CompletedAt:       step.CompletedAt,
 	}
@@ -1351,6 +1353,9 @@ func mergeDurableStep(dst *DurableStepRecord, src DurableStepRecord) {
 	}
 	if src.ActionContract != nil {
 		dst.ActionContract = cloneValidationActionContract(src.ActionContract)
+	}
+	if src.OperatorHandoff != nil {
+		dst.OperatorHandoff = cloneOperatorActionHandoff(src.OperatorHandoff)
 	}
 	if src.Policy != nil {
 		dst.Policy = src.Policy

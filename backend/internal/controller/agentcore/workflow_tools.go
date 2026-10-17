@@ -1796,7 +1796,10 @@ func (t *serviceHealthTool) Run(_ context.Context, req workflowToolRequest) (wor
 }
 
 type securityToolData struct {
-	Score                    float64
+	Score float64
+	// SourceTimes contains one source timestamp for every scored finding.
+	// A zero value means the source only supplied an ingest/derived timestamp.
+	SourceTimes              []time.Time
 	Findings                 []string
 	SuspiciousPortCandidates []string
 	WeakPermissionHints      []string
@@ -1879,6 +1882,7 @@ func (t *securityCheckTool) Run(_ context.Context, req workflowToolRequest) (wor
 	collectorID := strings.TrimSpace(req.CollectorID)
 	data := securityToolData{
 		Findings:                 []string{},
+		SourceTimes:              []time.Time{},
 		SuspiciousPortCandidates: []string{},
 		WeakPermissionHints:      []string{},
 		Categories:               []string{},
@@ -1897,6 +1901,7 @@ func (t *securityCheckTool) Run(_ context.Context, req workflowToolRequest) (wor
 
 		score := 0.0
 		for _, finding := range findings {
+			data.SourceTimes = append(data.SourceTimes, securityFindingSourceTimestamp(t.store, finding))
 			findingID := normalizeWorkflowSecurityEvidenceID(firstNonEmpty(strings.TrimSpace(finding.FindingID), strings.TrimSpace(finding.ID)))
 			evidenceID := normalizeWorkflowSecurityEvidenceID(firstNonEmpty(strings.TrimSpace(finding.EvidenceID), findingID))
 			data.FindingIDs = append(data.FindingIDs, findingID)
@@ -1957,6 +1962,53 @@ func (t *securityCheckTool) Run(_ context.Context, req workflowToolRequest) (wor
 		Summary: fmt.Sprintf("security score=%.2f findings=%d", data.Score, len(data.Findings)),
 		Data:    data,
 	}, nil
+}
+
+// securityFindingSourceTimestamp accepts only event time explicitly supplied
+// by the collector. Derived findings based on flat metrics or logs do not
+// retain per-signal source time, so they cannot prove post-action freshness.
+func securityFindingSourceTimestamp(store *ingest.MemoryStore, finding securityaudit.Finding) time.Time {
+	if store == nil {
+		return time.Time{}
+	}
+	node := store.Node(finding.CollectorID)
+	if node == nil {
+		return time.Time{}
+	}
+	switch finding.Source {
+	case "ebpf_runtime":
+		if len(finding.Evidence) == 0 {
+			return time.Time{}
+		}
+		events := make(map[string]ingest.RuntimeSecurityEvent, len(node.RuntimeSecurityEvents))
+		for _, event := range node.RuntimeSecurityEvents {
+			if event.EvidenceID != "" {
+				events[event.EvidenceID] = event
+			}
+		}
+		var earliest time.Time
+		for _, evidence := range finding.Evidence {
+			parts := strings.Fields(evidence)
+			if len(parts) == 0 {
+				return time.Time{}
+			}
+			event, ok := events[parts[0]]
+			if !ok || !event.SourceTimestampKnown || event.Timestamp.IsZero() {
+				return time.Time{}
+			}
+			if earliest.IsZero() || event.Timestamp.Before(earliest) {
+				earliest = event.Timestamp
+			}
+		}
+		return earliest
+	default:
+		for _, item := range node.SecurityFindings {
+			if item.FindingID == finding.FindingID && item.SourceTimestampKnown && !item.Timestamp.IsZero() {
+				return item.Timestamp
+			}
+		}
+		return time.Time{}
+	}
 }
 
 func appendSecurityCategoryHints(data *securityToolData, finding securityaudit.Finding) {
@@ -2702,8 +2754,7 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 	}
 	if safetyDecision.ProposalOnly {
 		data.Mode = "proposal_only"
-		data.OperatorHandoff = operatorHandoffForAction(ActionSpec{Description: data.Action, Target: contract.Target.Scope})
-		enrichOperatorHandoff(data.OperatorHandoff, contract)
+		data.OperatorHandoff = operatorHandoffForContract(contract)
 		data.Summary = fmt.Sprintf("proposal-only remediation for %s on %s (%s)", firstNonEmpty(contract.Summary, contract.Intent), firstNonEmpty(contract.Target.Scope, req.CollectorID, "fleet"), safetyDecision.Reason)
 		return workflowToolResult{Summary: data.Summary, Data: data}, nil
 	}
@@ -2756,6 +2807,22 @@ func (t *remediationActionTool) Run(ctx context.Context, req workflowToolRequest
 	return workflowToolResult{Summary: data.Summary, Data: data}, nil
 }
 
+func operatorHandoffForContract(contract *ValidationActionContract) *OperatorActionHandoff {
+	if contract == nil {
+		return nil
+	}
+	action := ActionSpec{
+		Description: firstNonEmpty(contract.Summary, contract.Intent),
+		Target:      firstNonEmpty(contract.Target.Scope, contract.TargetScope, contract.Target.CollectorID),
+		Namespace:   contract.Target.Namespace,
+		Resource:    contract.Target.Resource,
+		Name:        contract.Target.Name,
+	}
+	handoff := operatorHandoffForAction(action)
+	enrichOperatorHandoff(handoff, contract)
+	return handoff
+}
+
 func enrichOperatorHandoff(handoff *OperatorActionHandoff, contract *ValidationActionContract) {
 	if handoff == nil || contract == nil {
 		return
@@ -2764,6 +2831,24 @@ func enrichOperatorHandoff(handoff *OperatorActionHandoff, contract *ValidationA
 	handoff.ExpectedImpact = contract.ExpectedImpact
 	handoff.BlastRadius = append([]string(nil), contract.BlastRadiusScope...)
 	handoff.RollbackPlan = firstNonEmpty(contract.Rollback.Summary, handoff.RollbackPlan)
+	if firstNonEmpty(contract.Target.Scope, contract.TargetScope) == "" {
+		handoff.MissingInformation = append(handoff.MissingInformation, "exact target scope")
+	}
+	// The contract has no object-version or observed service threshold field.
+	// A generic scope or prose verification instruction cannot fill either gap.
+	handoff.MissingInformation = append(handoff.MissingInformation, "exact production object and version", "observation window and service success thresholds")
+	if len(contract.Preconditions) == 0 {
+		handoff.MissingInformation = append(handoff.MissingInformation, "action-specific preconditions")
+	}
+	if strings.TrimSpace(contract.ExpectedImpact) == "" {
+		handoff.MissingInformation = append(handoff.MissingInformation, "expected service impact")
+	}
+	if len(contract.BlastRadiusScope) == 0 {
+		handoff.MissingInformation = append(handoff.MissingInformation, "blast radius")
+	}
+	if strings.TrimSpace(contract.Rollback.Summary) == "" {
+		handoff.MissingInformation = append(handoff.MissingInformation, "concrete backup or rollback steps")
+	}
 }
 
 func pickCollectorFromSnapshot(nodes []*ingest.NodeSnapshot) string {

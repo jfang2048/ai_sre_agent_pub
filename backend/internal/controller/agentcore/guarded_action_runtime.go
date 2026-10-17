@@ -214,6 +214,15 @@ func remediationStepStatus(data remediationToolData, call WorkflowToolCall) stri
 	}
 }
 
+func usableGuardedPreActionBaseline(snapshot *ValidationEvidenceSnapshot, collectorID string) bool {
+	if snapshot == nil || strings.TrimSpace(collectorID) == "" {
+		return false
+	}
+	health := snapshot.ServiceHealth
+	return health.Available && health.Fresh && !health.ScopeAmbiguous && !health.NameRepeated &&
+		health.CollectorID == collectorID && strings.TrimSpace(health.ScopeKey) != "" && !health.ObservedAt.IsZero()
+}
+
 func guardedActionExecuted(step *AgentPlanStep) bool {
 	if step == nil {
 		return false

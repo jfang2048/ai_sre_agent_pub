@@ -85,14 +85,17 @@ type ActionResult struct {
 // OperatorActionHandoff records what a human must decide and verify. It is a
 // proposal, never an approval or evidence that a change took place.
 type OperatorActionHandoff struct {
-	Proposal       string   `json:"proposal"`
-	Scope          string   `json:"scope,omitempty"`
-	Preconditions  []string `json:"preconditions,omitempty"`
-	ExpectedImpact string   `json:"expected_impact,omitempty"`
-	BlastRadius    []string `json:"blast_radius,omitempty"`
-	RollbackPlan   string   `json:"rollback_plan,omitempty"`
-	Preflight      []string `json:"preflight"`
-	Verification   []string `json:"verification"`
+	Status             string   `json:"status,omitempty"`
+	Proposal           string   `json:"proposal"`
+	Scope              string   `json:"scope,omitempty"`
+	Preconditions      []string `json:"preconditions,omitempty"`
+	ExpectedImpact     string   `json:"expected_impact,omitempty"`
+	BlastRadius        []string `json:"blast_radius,omitempty"`
+	RollbackPlan       string   `json:"rollback_plan,omitempty"`
+	Preflight          []string `json:"preflight"`
+	StopConditions     []string `json:"stop_conditions,omitempty"`
+	Verification       []string `json:"verification"`
+	MissingInformation []string `json:"missing_information,omitempty"`
 }
 
 var errHumanOperatorRequired = errors.New("human operator required")
@@ -593,12 +596,18 @@ func operatorHandoffForAction(action ActionSpec) *OperatorActionHandoff {
 	proposal := firstNonEmpty(action.Description, action.Command, action.Type)
 	scope := strings.Join(compactStrings(action.Namespace, action.Resource, action.Name, action.Target, action.NodeName), "/")
 	return &OperatorActionHandoff{
+		Status:       "awaiting_human_execution",
 		Proposal:     proposal,
 		Scope:        scope,
 		RollbackPlan: strings.TrimSpace(action.RollbackCommand),
 		Preflight: []string{
 			"Confirm the affected target, current telemetry, service health, and recent changes using read-only tools.",
-			"Check replicas, disruption budget, dependencies, blast radius, rollback readiness, and operator authority where applicable.",
+			"Check replicas, disruption budget, dependencies, blast radius, backup or recovery point, rollback readiness, and operator authority where applicable.",
+			"Define the observation window and service-level success and failure thresholds before any change.",
+		},
+		StopConditions: []string{
+			"Do not proceed if the target, pre-action baseline, operator authority, or recovery path cannot be confirmed.",
+			"Stop and assess rollback if service health worsens or the change exceeds the approved scope.",
 		},
 		Verification: []string{
 			"After human execution, compare service health and relevant metrics with the pre-action baseline.",

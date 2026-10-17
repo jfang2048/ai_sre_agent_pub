@@ -77,6 +77,23 @@ func TestBoltDurableStore(t *testing.T) {
 	assert.Equal(t, runID, runs[0].RunID)
 }
 
+func TestDurableStepPreservesOperatorHandoff(t *testing.T) {
+	step := AgentPlanStep{ID: "step-1", Status: "proposal_only", OperatorHandoff: &OperatorActionHandoff{
+		Status: "awaiting_human_execution", Proposal: "restart checkout", Scope: "service:checkout",
+		StopConditions: []string{"stop if scope changes"}, MissingInformation: []string{"fresh pre-action service baseline"},
+	}}
+	record := durableStepFromPlanStep("guarded_execution_plan", step)
+	require.NotNil(t, record.OperatorHandoff)
+	step.OperatorHandoff.StopConditions[0] = "mutated"
+	require.Equal(t, "stop if scope changes", record.OperatorHandoff.StopConditions[0])
+	var merged DurableStepRecord
+	mergeDurableStep(&merged, record)
+	require.Equal(t, "awaiting_human_execution", merged.OperatorHandoff.Status)
+	raw, err := json.Marshal(merged)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"operator_handoff"`)
+}
+
 func TestReplayRunIsAtomicAcrossBuiltInLocalStores(t *testing.T) {
 	tests := []struct {
 		name  string

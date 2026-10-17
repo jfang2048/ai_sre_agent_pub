@@ -1165,6 +1165,7 @@ type AgentPlanStep struct {
 	SupersededBy     string                    `json:"superseded_by,omitempty"`
 	OriginalAction   *ActionSpec               `json:"original_action,omitempty"`
 	ActionContract   *ValidationActionContract `json:"action_contract,omitempty"`
+	OperatorHandoff  *OperatorActionHandoff    `json:"operator_handoff,omitempty"`
 	StartedAt        time.Time                 `json:"started_at,omitempty"`
 	CompletedAt      time.Time                 `json:"completed_at,omitempty"`
 }

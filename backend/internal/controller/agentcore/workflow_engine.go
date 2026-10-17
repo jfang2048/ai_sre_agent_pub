@@ -3869,6 +3869,36 @@ func postActionRiskSeriesFresh(series []RiskSeries, actionCompletedAt, now time.
 	return true
 }
 
+func postActionRiskSourcesFresh(security securityToolData, ebpf ebpfToolData, actionCompletedAt, now time.Time, maxAge time.Duration) error {
+	if security.Score > 0 {
+		if len(security.SourceTimes) == 0 {
+			return fmt.Errorf("post-action security finding source time is unknown")
+		}
+		for _, observedAt := range security.SourceTimes {
+			if observedAt.IsZero() {
+				return fmt.Errorf("post-action security finding source time is unknown")
+			}
+			if !postActionRiskSampleFresh(observedAt, actionCompletedAt, now, maxAge) {
+				return fmt.Errorf("post-action security finding predates the action or exceeds maximum age")
+			}
+		}
+	}
+	if ebpf.BehaviorScore > 0 {
+		if len(ebpf.RuntimeEvents) == 0 {
+			return fmt.Errorf("post-action eBPF event source time is unknown")
+		}
+		for _, event := range ebpf.RuntimeEvents {
+			if !event.SourceTimestampKnown || event.Timestamp.IsZero() {
+				return fmt.Errorf("post-action eBPF event source time is unknown")
+			}
+			if !postActionRiskSampleFresh(event.Timestamp, actionCompletedAt, now, maxAge) {
+				return fmt.Errorf("post-action eBPF event predates the action or exceeds maximum age")
+			}
+		}
+	}
+	return nil
+}
+
 func (e *WorkflowEngine) freshPostActionRisk(ctx context.Context, parent *workflowState, actionCompletedAt time.Time) (float64, []string, error) {
 	if parent == nil {
 		return 0, nil, fmt.Errorf("post-action parent workflow is missing")
@@ -3881,6 +3911,12 @@ func (e *WorkflowEngine) freshPostActionRisk(ctx context.Context, parent *workfl
 	if err := e.stepCollectSignals(ctx, riskState); err != nil {
 		return 0, nil, err
 	}
+	// A pre-action deployment can remain a valid cause, but its historical
+	// timestamp is not a new health observation. Exclude change context from
+	// the recovery score and behavioral classification.
+	riskState.changeLinks = nil
+	riskState.logsData.RecentDeploys = nil
+	riskState.refreshDerivedEvidence()
 	if err := e.stepScoreSignals(ctx, riskState); err != nil {
 		return 0, nil, err
 	}
@@ -3899,6 +3935,9 @@ func (e *WorkflowEngine) freshPostActionRisk(ctx context.Context, parent *workfl
 	}
 	if !postActionRiskSeriesFresh(riskState.riskSeries, actionCompletedAt, now, e.cfg.MaxTelemetryAge) {
 		return 0, dedupeStrings(ids), fmt.Errorf("post-action risk series predate the action or exceed maximum age")
+	}
+	if err := postActionRiskSourcesFresh(riskState.security, riskState.ebpf, actionCompletedAt, now, e.cfg.MaxTelemetryAge); err != nil {
+		return 0, dedupeStrings(ids), err
 	}
 	return riskState.risk.RiskScore, dedupeStrings(ids), nil
 }
@@ -5104,10 +5143,14 @@ func (e *WorkflowEngine) stepPostActionValidation(ctx context.Context, state *wo
 	}
 	updateValidationGovernanceFromStep(&state.validationReport, step)
 	if !guardedActionExecuted(step) {
+		fallbackMode := "not_executed"
+		if step.OperatorHandoff != nil && step.OperatorHandoff.Status == "awaiting_human_execution" {
+			fallbackMode = "awaiting_human_execution"
+		}
 		state.validationReport.PostActionValidation = &PostActionValidationSummary{
 			ActionID:          firstNonEmpty(contractIDFromStep(step), step.ID),
 			ExecutionCategory: normalizeValidationCategory(firstNonEmpty(step.Query["validation_category"], "read_only_validation")),
-			FallbackMode:      "not_executed",
+			FallbackMode:      fallbackMode,
 			Verdict:           ValidationVerdictInsufficientEvidence,
 			Summary:           guardedActionSkippedSummary(step),
 			BeforeRisk:        snapshotRisk(state.beforeActionState),
@@ -5298,6 +5341,21 @@ func (e *WorkflowEngine) stepGuardedExecutionPlan(ctx context.Context, state *wo
 	}
 
 	if safetyDecision.ProposalOnly {
+		handoff := operatorHandoffForContract(&contract)
+		beforeSnapshot, snapshotErr := captureValidationEvidenceSnapshot(ctx, state, "before_action")
+		switch {
+		case snapshotErr != nil:
+			state.limitations = append(state.limitations, "pre-action snapshot unavailable")
+			handoff.MissingInformation = append(handoff.MissingInformation, "fresh pre-action service baseline")
+		case !usableGuardedPreActionBaseline(beforeSnapshot, state.collectorID):
+			state.limitations = append(state.limitations, "fresh pre-action service baseline unavailable")
+			handoff.MissingInformation = append(handoff.MissingInformation, "fresh pre-action service baseline")
+		default:
+			state.beforeActionState = beforeSnapshot
+			state.validationReport.BeforeActionSnapshot = beforeSnapshot
+		}
+		step.OperatorHandoff = cloneOperatorActionHandoff(handoff)
+		state.validationReport.OperatorHandoff = cloneOperatorActionHandoff(handoff)
 		msg := firstNonEmpty(safetyDecision.Reason, fmt.Sprintf("%s action stayed proposal-only", safetyDecision.SafetyTier))
 		state.limitations = append(state.limitations, msg)
 		step.Status = "proposal_only"
@@ -5335,6 +5393,7 @@ func (e *WorkflowEngine) stepGuardedExecutionPlan(ctx context.Context, state *wo
 		state.limitations = append(state.limitations, "pre-action snapshot unavailable")
 	} else {
 		state.beforeActionState = beforeSnapshot
+		state.validationReport.BeforeActionSnapshot = beforeSnapshot
 	}
 	downstreamStr := strings.Join(contract.BlastRadiusScope, ",")
 	step.StartedAt = time.Now().UTC()
@@ -5383,6 +5442,8 @@ func (e *WorkflowEngine) stepGuardedExecutionPlan(ctx context.Context, state *wo
 	step.ResultSummary = remediationData.Summary
 	step.ToolVersion = lastCall.ToolVersion
 	step.ActionContract = cloneValidationActionContract(&remediationData.Contract)
+	step.OperatorHandoff = cloneOperatorActionHandoff(remediationData.OperatorHandoff)
+	state.validationReport.OperatorHandoff = cloneOperatorActionHandoff(remediationData.OperatorHandoff)
 	step.Query["action"] = remediationData.Action
 	step.Query["action_intent"] = remediationData.ActionIntent
 	step.Query["action_category"] = remediationData.Contract.ActionCategory
@@ -6438,6 +6499,22 @@ func buildRiskSeries(history []ingest.MetricHistorySample, logs logsToolData) []
 	return out
 }
 
+func latestCompleteSourceTime(times []time.Time) time.Time {
+	if len(times) == 0 {
+		return time.Time{}
+	}
+	var latest time.Time
+	for _, observedAt := range times {
+		if observedAt.IsZero() {
+			return time.Time{}
+		}
+		if observedAt.After(latest) {
+			latest = observedAt
+		}
+	}
+	return latest
+}
+
 func buildRiskSignals(collectorID string, series []RiskSeries, security securityToolData, ebpf ebpfToolData, behavioral map[string]BehavioralSignalAssessment) []JointRiskSignal {
 	thresholds := riskSignalProfiles()
 	out := make([]JointRiskSignal, 0, len(series)+1)
@@ -6528,11 +6605,19 @@ func buildRiskSignals(collectorID string, series []RiskSeries, security security
 			Score:          clamp01(security.Score * 0.08),
 			Triggered:      triggered,
 			Evidence:       evidence,
-			LastObservedAt: time.Now().UTC(),
+			LastObservedAt: latestCompleteSourceTime(security.SourceTimes),
 		})
 	}
 
 	if ebpf.BehaviorScore > 0 {
+		eventTimes := make([]time.Time, 0, len(ebpf.RuntimeEvents))
+		for _, event := range ebpf.RuntimeEvents {
+			if !event.SourceTimestampKnown {
+				eventTimes = append(eventTimes, time.Time{})
+			} else {
+				eventTimes = append(eventTimes, event.Timestamp)
+			}
+		}
 		evidence := append([]string{}, ebpf.RuntimeEventSummaries...)
 		evidence = append(evidence, ebpf.EvidenceIDs...)
 		if len(evidence) > 8 {
@@ -6582,7 +6667,7 @@ func buildRiskSignals(collectorID string, series []RiskSeries, security security
 			SuppressionFactor:        suppressionFactor,
 			SuppressionReason:        suppressionReason,
 			Evidence:                 evidence,
-			LastObservedAt:           time.Now().UTC(),
+			LastObservedAt:           latestCompleteSourceTime(eventTimes),
 		})
 	}
 

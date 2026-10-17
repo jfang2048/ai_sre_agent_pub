@@ -56,6 +56,8 @@ func (e *WorkflowEngine) emitActionDecisionMessage(ctx context.Context, state *w
 	ref := e.emitAgentMessage(ctx, state, "validation_action_agent", "workflow_runtime", AgentMessageTypeActionDecision, preferredMessageParent(state, AgentMessageTypeActionDecision), ActionDecisionMessage{
 		SelectedAction:         cloneValidationActionCandidate(state.validationReport.SelectedAction),
 		SelectedActionContract: cloneValidationActionContract(state.validationReport.SelectedActionContract),
+		OperatorHandoff:        cloneOperatorActionHandoff(state.validationReport.OperatorHandoff),
+		BeforeActionSnapshot:   state.validationReport.BeforeActionSnapshot,
 		Governance:             cloneValidationGovernanceTrace(state.validationReport.Governance),
 		StepID:                 firstNonEmpty(state.validationReport.Governance.StepID, stepID(step)),
 		StepStatus:             firstNonEmpty(state.validationReport.Governance.StepStatus, stepStatus(step)),
@@ -282,6 +284,20 @@ func cloneValidationGovernanceTrace(trace *ValidationGovernanceTrace) *Validatio
 	}
 	copy := *trace
 	copy.BlastRadiusNotes = append([]string(nil), trace.BlastRadiusNotes...)
+	return &copy
+}
+
+func cloneOperatorActionHandoff(handoff *OperatorActionHandoff) *OperatorActionHandoff {
+	if handoff == nil {
+		return nil
+	}
+	copy := *handoff
+	copy.Preconditions = append([]string(nil), handoff.Preconditions...)
+	copy.BlastRadius = append([]string(nil), handoff.BlastRadius...)
+	copy.Preflight = append([]string(nil), handoff.Preflight...)
+	copy.StopConditions = append([]string(nil), handoff.StopConditions...)
+	copy.Verification = append([]string(nil), handoff.Verification...)
+	copy.MissingInformation = append([]string(nil), handoff.MissingInformation...)
 	return &copy
 }
 

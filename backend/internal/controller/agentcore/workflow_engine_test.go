@@ -472,7 +472,53 @@ func TestStepGuardedExecutionPlanKeepsImpactingActionsProposalOnlyByDefault(t *t
 	require.False(t, state.validationReport.Governance.ExecutionEligible)
 	require.Len(t, state.planSteps, 1)
 	require.Equal(t, "proposal_only", state.planSteps[0].Status)
+	require.NotNil(t, state.planSteps[0].OperatorHandoff)
+	require.Equal(t, "awaiting_human_execution", state.planSteps[0].OperatorHandoff.Status)
+	require.Contains(t, state.planSteps[0].OperatorHandoff.MissingInformation, "fresh pre-action service baseline")
+	require.Nil(t, state.validationReport.BeforeActionSnapshot)
+	require.NoError(t, engine.stepPostActionValidation(context.Background(), state))
+	require.Equal(t, ValidationVerdictInsufficientEvidence, state.validationReport.PostActionValidation.Verdict)
+	require.Equal(t, "awaiting_human_execution", state.validationReport.PostActionValidation.FallbackMode)
 
+	for _, call := range state.toolCalls {
+		require.NotEqual(t, ToolRemediation, call.Tool)
+	}
+}
+
+func TestGuardedProposalCarriesFreshPreActionBaseline(t *testing.T) {
+	now := time.Now().UTC()
+	store := ingest.NewMemoryStore()
+	store.StoreMetrics("collector-a", []*telemetryv1.Metric{
+		{Name: "service_latency_p95_ms", Value: 1200, TimestampUnixNano: now.UnixNano()},
+		{Name: "service_error_rate", Value: 0.08, TimestampUnixNano: now.UnixNano()},
+	}, now)
+	store.UpsertCollector(&telemetryv1.CollectorInfo{CollectorId: "collector-a"}, now)
+	cfg := DefaultWorkflowConfig()
+	cfg.WorkflowDataPath = t.TempDir()
+	cfg.WorkflowStorePath = filepath.Join(cfg.WorkflowDataPath, "workflow_runs.db")
+	engine := NewWorkflowEngine(cfg, store, logindex.NewIndex(logindex.DefaultConfig()), nil, zap.NewNop())
+	state := &workflowState{
+		engine: engine, workflowID: "wf-proposal-baseline", workflowType: "rca", collectorID: "collector-a", now: now,
+		analysisHandoff: AnalysisHandoff{BoundedActionCandidates: []ValidationActionCandidate{{
+			ID: "action-1", RecommendationID: "rec-1", Category: "probable_containment",
+			ActionIntent: "restart_workload", Summary: "restart checkout pods", Scope: "service:checkout",
+			RequiresApproval: true, DryRunDefault: true, Reversible: true,
+			RollbackContract: RollbackContract{Summary: "restore previous replica set", Required: true, Reversible: true},
+		}}},
+		validationReport: ValidationActionReport{Agent: "validation_action_agent", ValidatedRecommendationIDs: []string{"rec-1"}},
+	}
+
+	require.NoError(t, engine.stepGuardedExecutionPlan(context.Background(), state))
+	require.NotNil(t, state.validationReport.OperatorHandoff)
+	require.Equal(t, "awaiting_human_execution", state.validationReport.OperatorHandoff.Status)
+	require.Contains(t, state.validationReport.OperatorHandoff.MissingInformation, "exact production object and version")
+	require.Contains(t, state.validationReport.OperatorHandoff.MissingInformation, "observation window and service success thresholds")
+	require.NotNil(t, state.validationReport.BeforeActionSnapshot)
+	require.True(t, state.validationReport.BeforeActionSnapshot.ServiceHealth.Available)
+	require.Equal(t, "collector-a", state.validationReport.BeforeActionSnapshot.ServiceHealth.CollectorID)
+	require.WithinDuration(t, now, state.validationReport.BeforeActionSnapshot.ServiceHealth.ObservedAt, time.Second)
+	require.NotContains(t, state.validationReport.OperatorHandoff.MissingInformation, "fresh pre-action service baseline")
+	require.NotNil(t, state.planSteps[0].OperatorHandoff)
 	for _, call := range state.toolCalls {
 		require.NotEqual(t, ToolRemediation, call.Tool)
 	}

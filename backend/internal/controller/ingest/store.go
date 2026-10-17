@@ -130,39 +130,43 @@ type ProcessResourceSample struct {
 
 // RuntimeSecurityEvent is a normalized eBPF behavior/security event.
 type RuntimeSecurityEvent struct {
-	EvidenceID  string            `json:"evidence_id"`
-	Timestamp   time.Time         `json:"timestamp"`
-	Type        string            `json:"type"`
-	Category    string            `json:"category"`
-	PID         string            `json:"pid,omitempty"`
-	Container   string            `json:"container,omitempty"`
-	NodeScope   string            `json:"node_scope,omitempty"`
-	Severity    string            `json:"severity"`
-	Confidence  float64           `json:"confidence"`
-	Description string            `json:"description"`
-	Port        int               `json:"port,omitempty"`
-	RemoteIP    string            `json:"remote_ip,omitempty"`
-	Path        string            `json:"path,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	EvidenceID string    `json:"evidence_id"`
+	Timestamp  time.Time `json:"timestamp"`
+	// SourceTimestampKnown distinguishes an event timestamp supplied by the
+	// collector from the receive-time fallback used for older payloads.
+	SourceTimestampKnown bool              `json:"source_timestamp_known,omitempty"`
+	Type                 string            `json:"type"`
+	Category             string            `json:"category"`
+	PID                  string            `json:"pid,omitempty"`
+	Container            string            `json:"container,omitempty"`
+	NodeScope            string            `json:"node_scope,omitempty"`
+	Severity             string            `json:"severity"`
+	Confidence           float64           `json:"confidence"`
+	Description          string            `json:"description"`
+	Port                 int               `json:"port,omitempty"`
+	RemoteIP             string            `json:"remote_ip,omitempty"`
+	Path                 string            `json:"path,omitempty"`
+	Metadata             map[string]string `json:"metadata,omitempty"`
 }
 
 // SecurityFinding is the normalized collector-side security finding envelope.
 type SecurityFinding struct {
-	FindingID           string    `json:"finding_id"`
-	Timestamp           time.Time `json:"timestamp"`
-	Category            string    `json:"category"`
-	Severity            string    `json:"severity"`
-	Scope               string    `json:"scope"`
-	Summary             string    `json:"summary"`
-	Evidence            []string  `json:"evidence,omitempty"`
-	Confidence          float64   `json:"confidence"`
-	RecommendedNextStep string    `json:"recommended_next_step,omitempty"`
-	Source              string    `json:"source,omitempty"`
-	PID                 string    `json:"pid,omitempty"`
-	Process             string    `json:"process,omitempty"`
-	Path                string    `json:"path,omitempty"`
-	RemoteIP            string    `json:"remote_ip,omitempty"`
-	Port                int       `json:"port,omitempty"`
+	FindingID            string    `json:"finding_id"`
+	Timestamp            time.Time `json:"timestamp"`
+	SourceTimestampKnown bool      `json:"source_timestamp_known,omitempty"`
+	Category             string    `json:"category"`
+	Severity             string    `json:"severity"`
+	Scope                string    `json:"scope"`
+	Summary              string    `json:"summary"`
+	Evidence             []string  `json:"evidence,omitempty"`
+	Confidence           float64   `json:"confidence"`
+	RecommendedNextStep  string    `json:"recommended_next_step,omitempty"`
+	Source               string    `json:"source,omitempty"`
+	PID                  string    `json:"pid,omitempty"`
+	Process              string    `json:"process,omitempty"`
+	Path                 string    `json:"path,omitempty"`
+	RemoteIP             string    `json:"remote_ip,omitempty"`
+	Port                 int       `json:"port,omitempty"`
 }
 
 // ProcessGraphSnapshot is a compact process lineage graph projection.
@@ -1109,8 +1113,9 @@ func captureRuntimeEBPFMetric(node *NodeSnapshot, metric *telemetryv1.Metric, re
 			finding.Confidence = 0.5
 		}
 		if ts := strings.TrimSpace(labelValue(metric, "ts_unix_nano")); ts != "" {
-			if ns, err := strconv.ParseInt(ts, 10, 64); err == nil {
+			if ns, err := strconv.ParseInt(ts, 10, 64); err == nil && ns > 0 {
 				finding.Timestamp = time.Unix(0, ns).UTC()
+				finding.SourceTimestampKnown = true
 			}
 		}
 		if finding.Timestamp.IsZero() {
@@ -1164,8 +1169,9 @@ func captureRuntimeEBPFMetric(node *NodeSnapshot, metric *telemetryv1.Metric, re
 			event.EvidenceID = "ev-ebpf-unknown"
 		}
 		if ts := strings.TrimSpace(labelValue(metric, "ts_unix_nano")); ts != "" {
-			if ns, err := strconv.ParseInt(ts, 10, 64); err == nil {
+			if ns, err := strconv.ParseInt(ts, 10, 64); err == nil && ns > 0 {
 				event.Timestamp = time.Unix(0, ns).UTC()
+				event.SourceTimestampKnown = true
 			}
 		}
 		if event.Timestamp.IsZero() {

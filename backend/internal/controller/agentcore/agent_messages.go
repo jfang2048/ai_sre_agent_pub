@@ -97,12 +97,14 @@ type ValidationResultMessage struct {
 }
 
 type ActionDecisionMessage struct {
-	SelectedAction         *ValidationActionCandidate `json:"selected_action,omitempty"`
-	SelectedActionContract *ValidationActionContract  `json:"selected_action_contract,omitempty"`
-	Governance             *ValidationGovernanceTrace `json:"governance,omitempty"`
-	StepID                 string                     `json:"step_id,omitempty"`
-	StepStatus             string                     `json:"step_status,omitempty"`
-	Summary                string                     `json:"summary,omitempty"`
+	SelectedAction         *ValidationActionCandidate  `json:"selected_action,omitempty"`
+	SelectedActionContract *ValidationActionContract   `json:"selected_action_contract,omitempty"`
+	OperatorHandoff        *OperatorActionHandoff      `json:"operator_handoff,omitempty"`
+	BeforeActionSnapshot   *ValidationEvidenceSnapshot `json:"before_action_snapshot,omitempty"`
+	Governance             *ValidationGovernanceTrace  `json:"governance,omitempty"`
+	StepID                 string                      `json:"step_id,omitempty"`
+	StepStatus             string                      `json:"step_status,omitempty"`
+	Summary                string                      `json:"summary,omitempty"`
 }
 
 type PostActionValidationMessage struct {

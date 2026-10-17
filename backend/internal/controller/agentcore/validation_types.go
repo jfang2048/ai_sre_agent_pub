@@ -319,6 +319,8 @@ type ValidationActionReport struct {
 	SelectedAction              *ValidationActionCandidate   `json:"selected_action,omitempty"`
 	SelectedDiagnosticContract  *DiagnosticActionContract    `json:"selected_diagnostic_contract,omitempty"`
 	SelectedActionContract      *ValidationActionContract    `json:"selected_action_contract,omitempty"`
+	OperatorHandoff             *OperatorActionHandoff       `json:"operator_handoff,omitempty"`
+	BeforeActionSnapshot        *ValidationEvidenceSnapshot  `json:"before_action_snapshot,omitempty"`
 	Governance                  *ValidationGovernanceTrace   `json:"governance,omitempty"`
 	SourceAnalysisMessage       *AgentMessageRef             `json:"source_analysis_message,omitempty"`
 	SourceValidationRequest     *AgentMessageRef             `json:"source_validation_request_message,omitempty"`

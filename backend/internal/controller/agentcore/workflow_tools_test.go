@@ -546,6 +546,8 @@ func TestRemediationToolReturnsHumanHandoffForUnsafeExecutionSpec(t *testing.T) 
 	require.True(t, data.ProposalOnly)
 	require.False(t, data.ExecutionEligible)
 	require.NotNil(t, data.OperatorHandoff)
+	require.Equal(t, "awaiting_human_execution", data.OperatorHandoff.Status)
+	require.Contains(t, data.OperatorHandoff.MissingInformation, "exact production object and version")
 	require.Equal(t, "proposal_only", workflowToolCallStatus(ToolRemediation, result, ActionPolicyDecision{}))
 }
 
