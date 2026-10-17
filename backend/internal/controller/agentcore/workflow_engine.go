@@ -7081,15 +7081,16 @@ func hypothesisTitleFromSignal(signal string) string {
 
 func checksForHypothesis(title string) []string {
 	low := strings.ToLower(title)
+	words := " " + strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(low) + " "
 	switch {
 	case strings.Contains(low, "cpu"):
 		return []string{"inspect run queue and blocked tasks", "verify hottest processes and throttling", "compare recent deployment CPU requests"}
 	case strings.Contains(low, "memory"):
 		return []string{"inspect top RSS processes", "cat /proc/pressure/memory", "capture heap profile for the leading process", "check swap/oom counters", "verify memory limits and working set"}
-	case strings.Contains(low, "storage") || strings.Contains(low, "io"):
-		return []string{"inspect disk queue depth and latency", "identify io-heavy processes", "check writeback/page-cache pressure"}
 	case strings.Contains(low, "network"):
 		return []string{"inspect retransmit/drop counters", "validate pod/service topology hops", "check recent connection churn"}
+	case strings.Contains(low, "storage") || strings.Contains(low, "disk") || strings.Contains(words, " io ") || strings.Contains(low, "i/o"):
+		return []string{"inspect disk queue depth and latency", "identify io-heavy processes", "check writeback/page-cache pressure"}
 	case strings.Contains(low, "deploy"):
 		return []string{"verify rollout status", "compare version-specific errors", "consider canary rollback in dry-run"}
 	case strings.Contains(low, "security"):

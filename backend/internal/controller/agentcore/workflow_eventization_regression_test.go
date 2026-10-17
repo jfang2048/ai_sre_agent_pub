@@ -166,6 +166,16 @@ func TestMemoryHypothesisIncludesSpecificReadOnlyValidationSteps(t *testing.T) {
 	require.Contains(t, checks, "capture heap profile for the leading process")
 }
 
+func TestHypothesisChecksDoNotMistakeCongestionOrContentionForIO(t *testing.T) {
+	networkChecks := checksForHypothesis("network congestion or packet loss")
+	require.Contains(t, networkChecks, "inspect retransmit/drop counters")
+	require.NotContains(t, networkChecks, "inspect disk queue depth and latency")
+
+	distributedChecks := checksForHypothesis("distributed resource contention")
+	require.NotContains(t, distributedChecks, "inspect disk queue depth and latency")
+	require.Contains(t, checksForHypothesis("storage io bottleneck"), "inspect disk queue depth and latency")
+}
+
 func TestBuildRiskSignalsDoesNotTriggerLargeRelativeRiseBelowMedium(t *testing.T) {
 	series := []RiskSeries{{
 		Key:          "cpu_pressure",
