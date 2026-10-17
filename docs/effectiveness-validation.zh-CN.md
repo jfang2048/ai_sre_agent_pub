@@ -14,6 +14,15 @@
 | 调查工作流 | 16 / 16 | 100% | 固定合成场景，各运行一次，使用 stub/mock 模型 | 未见事故的泛化率、真实大模型成功率或实际修复率 |
 | 生产恢复 | 未测量，样本数 0 | — | 尚无带人工执行记录与操作后业务证据的生产样本 | **不是** 0% 或 100% |
 
+2026-10-17 对代码提交 `1303e87` 又跑了更严格的系统性能验收，结果要单独展示：
+
+| 扩展验收 | 通过 / 执行 | 整套判定 | 具体边界 |
+| --- | ---: | --- | --- |
+| v1 fast | 2 / 3 | **失败** | 内存、磁盘通过；弱信号未通过 |
+| v1 network regression 单例 | 1 / 1 | 通过 | 网络拥塞按网络检查处理；不属于 fast 的三个分母 |
+
+弱信号用例的预期只读建议在最终 RCA 建议中覆盖率为 0，且动作类别实际为 `medium_term_remediation`，不符合预期的 `read_only_validation`；两项在先前提交 `bd7ba0e` 也复现。需要把同对象、同时间窗的只读核查带入 RCA，并用直接测得的严重指标突破限制受控运行手册候选。复现时在 `backend` 目录分别执行 `go run ./cmd/evalctl -system-perf -scope fast -format table` 与 `go run ./cmd/evalctl -system-perf -scope regression -system-perf-cases network_degradation_full_runtime -format table`。在修好弱信号用例前，16/16 合成工作流通过不能解释为扩展系统性能验收通过。
+
 只有实际执行数大于零时，才计算 `通过率 = 通过的实际执行用例数 / 实际执行用例数`。发现但跳过、未运行、证据缺失与运行中断要单列；预期用例未运行时整套验收不能判为通过。重复同一场景五次可以报告“该场景 5/5 重放”，但不能当成五个独立事故。监测阶段与工作流用例的单位不同，也不能相加成“24/24 生产成功”。代码单测、策略拒绝反例与操作后效果测试同样应分层统计，不能让一个层次的通过率掩盖另一个层次的失败。
 
 新运行的 `make validate-effectiveness` 在 `manifest.json` 的 `workflow` 中记录 `cases_executed`、`cases_passed`、`cases_failed`、`cases_skipped` 和 `case_pass_rate`，并在本次 `summary.md` 中显示“通过/执行”。`make eval-system-fast` 等 v2 评测也在 `aggregate`、文本／表格、摘要和指标 CSV 中给出同口径数量；`cases_run` 只是选中的结果行数，不能拿它暗中代替实际执行数。零执行分母显示 `N/A`，不能显示 100%；这些输出仍是对应合成评测的结果，不是生产恢复率。
