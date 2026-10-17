@@ -874,7 +874,12 @@ func durableGovernanceCoverage(run *agentcore.DurableRun) float64 {
 		if strings.TrimSpace(call.Actor) == "" {
 			continue
 		}
-		if strings.TrimSpace(call.IdempotencyKey) == "" {
+		// Fresh post-action read-only samples intentionally bypass the tool
+		// cache. They have a unique call ID and a policy decision, but no
+		// idempotency key because replaying an old sample would be unsafe.
+		freshReadOnlySample := call.Stage == "post_action_validation" &&
+			(call.Outcome == agentcore.WorkflowToolOutcomeReadOnlySuccess || call.Outcome == agentcore.WorkflowToolOutcomeReadOnlyFailure)
+		if strings.TrimSpace(call.IdempotencyKey) == "" && !freshReadOnlySample {
 			continue
 		}
 		if strings.TrimSpace(call.PolicyVersion) == "" {

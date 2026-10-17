@@ -32,6 +32,32 @@ func TestGoldenEvaluationFast(t *testing.T) {
 	require.GreaterOrEqual(t, report.Workflow.MemoryWritebackCoverage, 0.99, report.Text())
 }
 
+func TestDurableGovernanceCoverageAcceptsFreshReadOnlySamplesWithoutIdempotencyKey(t *testing.T) {
+	base := agentcore.WorkflowToolCall{
+		Actor:         "validation_action_agent",
+		PolicyVersion: "workflow-policy/v1",
+		RiskTag:       "observation",
+		Policy:        agentcore.ActionPolicyDecision{Status: "allowed"},
+		Stage:         "post_action_validation",
+		Outcome:       agentcore.WorkflowToolOutcomeReadOnlySuccess,
+	}
+	require.Equal(t, 1.0, durableGovernanceCoverage(&agentcore.DurableRun{
+		ToolCalls: []agentcore.WorkflowToolCall{base},
+	}))
+
+	unsafeWithoutKey := base
+	unsafeWithoutKey.Outcome = agentcore.WorkflowToolOutcomeExecutedSuccess
+	require.Equal(t, 0.5, durableGovernanceCoverage(&agentcore.DurableRun{
+		ToolCalls: []agentcore.WorkflowToolCall{base, unsafeWithoutKey},
+	}))
+
+	wrongStage := base
+	wrongStage.Stage = "guarded_execution_plan"
+	require.Equal(t, 0.5, durableGovernanceCoverage(&agentcore.DurableRun{
+		ToolCalls: []agentcore.WorkflowToolCall{base, wrongStage},
+	}))
+}
+
 func TestGoldenEvaluationFastAnomalyConfusionMatrix(t *testing.T) {
 	report, err := Run(context.Background(), RunOptions{Scope: ScopeFast})
 	require.NoError(t, err)
