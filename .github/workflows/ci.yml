@@ -1,3 +1,4 @@
+---
 name: ci
 
 permissions:
@@ -21,7 +22,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.26.8'
+          go-version-file: backend/go.mod
           cache-dependency-path: |
             backend/go.sum
             tests/integration/go.sum
@@ -66,7 +67,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.26.8'
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Setup Python
@@ -78,8 +79,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cppcheck
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
           python -m pip install --upgrade pip
           python -m pip install bandit pip-audit yamllint
           gitleaks_version=8.30.1

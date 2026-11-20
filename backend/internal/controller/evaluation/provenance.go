@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -94,64 +95,76 @@ func v2JSONFingerprint(value any) (string, error) {
 func v2FingerprintFiles(repoRoot string, roots []string, sourceOnly bool) ([]V2FileFingerprint, error) {
 	files := make([]V2FileFingerprint, 0)
 	var total int64
+	repo, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open provenance repository: %w", err)
+	}
+	defer repo.Close()
+
+	visit := func(dir *os.Root, relative, name string) error {
+		info, err := dir.Lstat(name)
+		if err != nil {
+			return fmt.Errorf("stat provenance input %s: %w", relative, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("provenance input %s must be a regular file (symlinks are not supported)", relative)
+		}
+		if len(files) >= v2FingerprintMaxFiles || info.Size() > v2FingerprintMaxFileBytes {
+			return fmt.Errorf("provenance input limit exceeded at %s", relative)
+		}
+		f, err := dir.Open(name)
+		if err != nil {
+			return fmt.Errorf("read provenance input %s: %w", relative, err)
+		}
+		opened, err := f.Stat()
+		if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+			_ = f.Close()
+			return fmt.Errorf("provenance input %s changed before opening", relative)
+		}
+		h := sha256.New()
+		n, readErr := io.Copy(h, io.LimitReader(f, v2FingerprintMaxFileBytes+1))
+		closeErr := f.Close()
+		if readErr != nil {
+			return fmt.Errorf("hash provenance input %s: %w", relative, readErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		total += n
+		if n > v2FingerprintMaxFileBytes || total > v2FingerprintMaxTotalBytes {
+			return fmt.Errorf("provenance input limit exceeded at %s", relative)
+		}
+		files = append(files, V2FileFingerprint{Path: relative, SHA256: hex.EncodeToString(h.Sum(nil))})
+		return nil
+	}
+
 	for _, root := range roots {
 		filesBefore := len(files)
-		rootInfo, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(root)))
-		if err != nil || !rootInfo.IsDir() {
-			return nil, fmt.Errorf("provenance root %s must be an accessible directory, not a symlink", root)
+		if !fs.ValidPath(root) || root == "." {
+			return nil, fmt.Errorf("invalid provenance root %s", root)
 		}
-		err = filepath.WalkDir(filepath.Join(repoRoot, filepath.FromSlash(root)), func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return fmt.Errorf("read provenance root %s: %w", root, walkErr)
+		// Anchor each component before inspecting the next. This confines
+		// traversal to the intended subtree and rejects directory symlinks.
+		dir := repo
+		relative := ""
+		for component := range strings.SplitSeq(root, "/") {
+			relative = path.Join(relative, component)
+			child, err := openV2FingerprintDirectory(dir, relative, component)
+			if dir != repo {
+				_ = dir.Close()
 			}
-			if entry.IsDir() {
-				// Harness packages are flat. Do not collect nested runtime or
-				// generated directories that happen to sit under the package.
-				if sourceOnly && path != filepath.Join(repoRoot, filepath.FromSlash(root)) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if sourceOnly && (!strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") || entry.Name() == "report.go" || entry.Name() == "system_performance.go") {
-				return nil
-			}
-			relative, err := filepath.Rel(repoRoot, path)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			relative = filepath.ToSlash(relative)
-			info, err := entry.Info()
-			if err != nil {
-				return fmt.Errorf("stat provenance input %s: %w", relative, err)
-			}
-			if !info.Mode().IsRegular() {
-				return fmt.Errorf("provenance input %s must be a regular file (symlinks are not supported)", relative)
-			}
-			if len(files) >= v2FingerprintMaxFiles || info.Size() > v2FingerprintMaxFileBytes {
-				return fmt.Errorf("provenance input limit exceeded at %s", relative)
-			}
-			f, err := os.Open(path)
-			if err != nil {
-				return fmt.Errorf("read provenance input %s: %w", relative, err)
-			}
-			h := sha256.New()
-			n, readErr := io.Copy(h, io.LimitReader(f, v2FingerprintMaxFileBytes+1))
-			closeErr := f.Close()
-			if readErr != nil {
-				return fmt.Errorf("hash provenance input %s: %w", relative, readErr)
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			total += n
-			if n > v2FingerprintMaxFileBytes || total > v2FingerprintMaxTotalBytes {
-				return fmt.Errorf("provenance input limit exceeded at %s", relative)
-			}
-			files = append(files, V2FileFingerprint{Path: relative, SHA256: hex.EncodeToString(h.Sum(nil))})
-			return nil
-		})
+			dir = child
+		}
+		err := walkV2FingerprintDirectory(dir, root, sourceOnly, visit)
+		closeErr := dir.Close()
 		if err != nil {
 			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
 		}
 		if len(files) == filesBefore {
 			return nil, fmt.Errorf("provenance has no input files in %s", root)
@@ -159,6 +172,61 @@ func v2FingerprintFiles(repoRoot string, roots []string, sourceOnly bool) ([]V2F
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+func openV2FingerprintDirectory(parent *os.Root, relative, name string) (*os.Root, error) {
+	info, err := parent.Lstat(name)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("provenance root %s must be an accessible directory, not a symlink", relative)
+	}
+	dir, err := parent.OpenRoot(name)
+	if err != nil {
+		return nil, fmt.Errorf("open provenance root %s: %w", relative, err)
+	}
+	opened, err := dir.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		_ = dir.Close()
+		return nil, fmt.Errorf("provenance root %s changed before opening", relative)
+	}
+	return dir, nil
+}
+
+func walkV2FingerprintDirectory(dir *os.Root, relative string, sourceOnly bool, visit func(*os.Root, string, string) error) error {
+	entries, err := fs.ReadDir(dir.FS(), ".")
+	if err != nil {
+		return fmt.Errorf("read provenance root %s: %w", relative, err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		childPath := path.Join(relative, name)
+		if entry.IsDir() {
+			// Harness packages are flat. Do not collect nested runtime or
+			// generated directories that happen to sit under the package.
+			if sourceOnly {
+				continue
+			}
+			child, err := openV2FingerprintDirectory(dir, childPath, name)
+			if err != nil {
+				return err
+			}
+			err = walkV2FingerprintDirectory(child, childPath, sourceOnly, visit)
+			closeErr := child.Close()
+			if err != nil {
+				return err
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			continue
+		}
+		if sourceOnly && (!strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == "report.go" || name == "system_performance.go") {
+			continue
+		}
+		if err := visit(dir, childPath, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateV2Provenance(p V2Provenance) error {

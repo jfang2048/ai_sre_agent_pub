@@ -20,7 +20,7 @@ AI SRE Agent 采集 Linux、Kubernetes 和 GPU 基础设施上的现场证据。
 
 ## 快速开始
 
-在 Linux 上安装 Git、GNU Make、Bash、curl、Go 1.26.8，以及带 npm 的 Node.js 22.12 或更高的 22.x 版本。[原生探针依赖](docs/operator-guide.zh-CN.md#1-准备构建环境)
+在 Linux 上安装 Git、GNU Make、Bash、curl、Go 1.26.11，以及带 npm 的 Node.js 22.12 或更高的 22.x 版本。[原生探针依赖](docs/operator-guide.zh-CN.md#1-准备构建环境)
 
 ```bash
 git clone --branch v0.95 https://github.com/jfang2048/ai_sre_agent_pub.git

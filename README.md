@@ -20,7 +20,7 @@ Probes sample the host. Collectors buffer and push batches. The controller appli
 
 ## Quick start
 
-On Linux, install Git, GNU Make, Bash, curl, Go 1.26.8, and Node.js 22.12 or later in the 22.x series with npm. [Native probe requirements](docs/operator-guide.md#install-the-build-prerequisites)
+On Linux, install Git, GNU Make, Bash, curl, Go 1.26.11, and Node.js 22.12 or later in the 22.x series with npm. [Native probe requirements](docs/operator-guide.md#install-the-build-prerequisites)
 
 ```bash
 git clone --branch v0.95 https://github.com/jfang2048/ai_sre_agent_pub.git

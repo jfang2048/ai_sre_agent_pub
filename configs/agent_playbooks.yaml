@@ -16,7 +16,7 @@ playbooks:
         priority: P1
         safe: false
         requires_approval: true
-        description: Human operator proposal: inspect GPU evidence and workload impact before deciding whether to restart the pod.
+        description: "Human operator proposal: inspect GPU evidence and workload impact before deciding whether to restart the pod."
       - id: scale-down-trainer
         type: scale_deployment
         namespace: ml-platform
@@ -43,7 +43,7 @@ playbooks:
         priority: P1
         safe: false
         requires_approval: true
-        description: Human operator proposal: verify memory pressure, replicas, and disruption budget before deciding whether to evict the pod.
+        description: "Human operator proposal: verify memory pressure, replicas, and disruption budget before deciding whether to evict the pod."
 
   - id: high-cpu
     summary: Node CPU saturation
@@ -59,7 +59,7 @@ playbooks:
         priority: P2
         safe: false
         requires_approval: true
-        description: Human operator proposal: verify CPU history, rollout health, and blast radius before deciding whether to restart the deployment.
+        description: "Human operator proposal: verify CPU history, rollout health, and blast radius before deciding whether to restart the deployment."
 
   - id: swap-activity
     summary: Swap activity detected

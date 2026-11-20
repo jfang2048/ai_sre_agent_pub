@@ -1,3 +1,4 @@
+---
 name: evaluation
 
 # Layered evaluation CI: PRs run evaluator unit tests plus a small fast
@@ -16,7 +17,7 @@ on:
       - 'v*'
   workflow_dispatch:
   schedule:
-    - cron: '23 3 * * 6' # weekly
+    - cron: '23 3 * * 6'  # weekly
 
 jobs:
   monitoring-effectiveness:

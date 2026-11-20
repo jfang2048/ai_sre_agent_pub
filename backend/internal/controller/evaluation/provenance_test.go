@@ -189,6 +189,13 @@ func TestV2ProvenanceRejectsSymlinksAndOversizedInputs(t *testing.T) {
 		_, err := captureV2Provenance(root, cases, incidents, defaultV2ScoringConfig())
 		require.ErrorContains(t, err, "symlinks")
 	})
+	t.Run("symlinked source directory", func(t *testing.T) {
+		root := t.TempDir()
+		writeProvenanceFixture(t, root, "real/controller/eval/source.go", "package eval")
+		require.NoError(t, os.Symlink("real", filepath.Join(root, "linked")))
+		_, err := v2FingerprintFiles(root, []string{"linked/controller/eval"}, true)
+		require.ErrorContains(t, err, "not a symlink")
+	})
 	t.Run("oversized", func(t *testing.T) {
 		root, cases, incidents := provenanceFixture(t)
 		file, err := os.Create(filepath.Join(root, "eval_data/knowledge/oversized.md"))
