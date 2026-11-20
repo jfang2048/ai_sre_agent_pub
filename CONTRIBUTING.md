@@ -8,14 +8,28 @@
 - Do not add dependencies unless there is no cheaper fix.
 - Keep the collector/controller split explicit.
 
-The main code entrypoints reviewers usually need are:
+## Repository layout
 
-- `backend/cmd/collector/main.go`
-- `backend/cmd/controller/main.go`
-- `backend/internal/collector/collector.go`
-- `backend/internal/controller/controller.go`
-- `backend/internal/controller/agentcore/`
-- `cpp/probe_core/`
+| Path | Responsibility |
+| --- | --- |
+| [backend/cmd/](backend/cmd/) | Collector and controller process entry points |
+| [backend/internal/collector/](backend/internal/collector/) and [cpp/probe_core/](cpp/probe_core/) | Host sampling, buffering, and telemetry delivery |
+| [backend/internal/controller/](backend/internal/controller/) | Ingest, HTTP APIs, policy, and investigation workflows |
+| [frontend/](frontend/) | Operator console and frontend tests |
+| [configs/](configs/) and [deploy/](deploy/) | Runtime configuration and deployments |
+| [tests/](tests/README.md) and [eval_data/](eval_data/README.md) | Integration checks, evaluation cases, and fixtures |
+
+## Build locally
+
+Use the [README prerequisites](README.md#quick-start), then run the build from the repository root.
+
+```bash
+npm -C frontend ci
+make build
+npm -C frontend run build
+```
+
+The backend binaries go to `build/` and the web build goes to `web/`. Use `make run-both` to launch the local stack.
 
 ## Branches and review
 
@@ -27,14 +41,14 @@ A good PR explains three things:
 2. the smallest code path that changed
 3. the checks that prove the change
 
-## Required checks
+## Checks for code changes
 
 Run the narrowest useful checks first, then the broader ones that match the change.
 
 ```bash
 make fmt-check
 make vet
-make test
+make test-all
 make verify-version
 ```
 
@@ -51,7 +65,7 @@ make build-probe-core
 npm --prefix frontend run build
 ```
 
-Package-level changes should be checked directly before the full suite. UI work should include the targeted Playwright or Vitest coverage that actually touches the route or component.
+Use `go -C backend test <package>` for a focused Go check and `npm -C frontend test` for frontend unit tests. The [test guide](tests/README.md) describes integration, browser, and stability checks. [CI workflow](.github/workflows/ci.yml)
 
 ## What to call out in review
 
@@ -61,14 +75,26 @@ Package-level changes should be checked directly before the full suite. UI work 
 - **Deployment changes**: restart behavior, shared storage, TLS, failover, upgrade path.
 - **Performance changes**: CPU, memory, queue pressure, payload size, and hot-path cost.
 
+## Repository and release checks
+
+Run each check independently on a workstation or in CI.
+
+| Command | Checks |
+| --- | --- |
+| `make public-repo-audit` | Public content, commit identities and historical paths |
+| `make test-publish-privacy` | Tracked-file selection and rejection of credential-shaped input |
+| `make test-dataset-fetch` | Line-oriented HTTPS dataset acquisition using local test fixtures |
+
+The publisher's default input is reviewed, tracked source. Generated runtime state and optional corpora live outside Git. Machine-readable results go to stdout and diagnostics go to stderr.
+
 ## Documentation sync
 
-Keep docs simple. Update `README.md` and, when the user-facing text changes, `README.zh-CN.md`. Keep detailed API, workflow, and security truth in code, config, and tests instead of adding new Markdown pages.
+Keep the English and Chinese homepages aligned on product capabilities and navigation. Update the guide that owns the changed workflow or interface. Link to that guide from the homepage when readers need a new entry point. Use code, config and tests to verify behavior and examples.
 
-For documentation-only changes, run:
+For documentation changes, check the published entry points and handbook. Add other edited Markdown paths to the command as needed.
 
 ```bash
-npx --yes markdownlint-cli2@0.20.0 "**/*.md"
+npx --yes markdownlint-cli2@0.20.0 --no-globs 'README*.md' CONTRIBUTING.md CHANGELOG.md 'docs/*.md'
 make verify-readme-screenshots
 ```
 

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### DevSecOps audit
+
+- Added SARIF 2.1.0 and Kubernetes Audit v1 imports, persisted evidence, event correlation, and denial-rate anomaly detection in the Security Dashboard.
+- Added optional model ranking of investigation candidates with a rules-based summary as the default. [Project handbook](docs/operator-guide.md#devsecops-audit-workspace)
+
 ### Visualization
 
 - Added elapsed-time metric charts, readable theme-aware colors, observation ranges, and explicit non-finite/missing-data states.
@@ -25,8 +30,8 @@
 
 ### Documentation
 
-- Reworked the English and Chinese project overviews around the current v0.95 skills-first runtime, with a runnable quick start and linked implementation map.
-- Aligned the Chinese architecture, runtime modes, role ownership, artifact chain, operator endpoints, and inspection order with the maintained controller code.
+- Aligned the English and Chinese homepages around a shared quick start, readiness check, and entry points for operations, development, and releases.
+- Consolidated operations, inference monitoring, security audit, and runtime architecture into two language editions of the project handbook.
 - Added a repository Markdown lint baseline, corrected structural formatting, and documented why retrieval fixtures are excluded from automatic reformatting.
 
 ## v0.95 - 2026-09-02
