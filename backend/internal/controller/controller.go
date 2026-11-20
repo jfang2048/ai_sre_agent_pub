@@ -34,6 +34,7 @@ import (
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/logindex"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/orchestration"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/rag"
+	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/securityaudit"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/controller/timeseries"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/collections/ring"
 	"github.com/jfang2048/ai_sre_agent_pub/internal/pkg/metrics/prom"
@@ -177,6 +178,10 @@ type Controller struct {
 	httpListener         net.Listener
 	haCoordinator        haCoordinator
 
+	securityAudit          *securityaudit.AuditWorkspace
+	securityAuditModel     securityaudit.AuditCompleter
+	securityAuditModelSlot chan struct{}
+
 	actualHTTPAddr string
 	actualGRPCAddr string
 
@@ -251,6 +256,9 @@ func New(cfg Config, logger *zap.Logger) (*Controller, error) {
 		return nil, err
 	}
 	c.auth = resolvedAuth
+	if err := c.initSecurityAudit(); err != nil {
+		return nil, err
+	}
 	if err := c.initIngest(); err != nil {
 		return nil, err
 	}

@@ -15,6 +15,9 @@ func (c *Controller) registerSecurityHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/security/findings", c.withCORS(c.handleSecurityFindings))
 	mux.HandleFunc("/api/v1/security/dashboard", c.withCORS(c.handleSecurityDashboard))
 	mux.HandleFunc("/api/v1/security/trends", c.withCORS(c.handleSecurityTrends))
+	mux.HandleFunc("/api/v1/security/audit", c.withCORS(c.handleSecurityAudit))
+	mux.HandleFunc("/api/v1/security/audit/import", c.withCORS(c.handleSecurityAuditImport))
+	mux.HandleFunc("/api/v1/security/audit/explain", c.withCORS(c.handleSecurityAuditExplain))
 }
 
 func (c *Controller) handleSecurityFindings(w http.ResponseWriter, r *http.Request) {

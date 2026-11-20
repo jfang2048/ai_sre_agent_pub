@@ -14,6 +14,7 @@ import {
 import { fetchFleetNodes } from '@/api/trends';
 import { fetchSecurityDashboard, type SecurityFinding } from '@/api/security';
 import { formatCount, formatPercent } from '@/components/Visualizations/metricFormat';
+import SecurityAuditWorkspace from './SecurityAuditWorkspace';
 
 function severityBadge(severity: string): string {
     switch (severity.toLowerCase()) {
@@ -269,6 +270,8 @@ export default function SecurityDashboardPage() {
                     </div>
                 )}
             </section>
+
+            <SecurityAuditWorkspace />
         </div>
     );
 }

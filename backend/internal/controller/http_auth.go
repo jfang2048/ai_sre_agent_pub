@@ -71,7 +71,9 @@ func controllerRoutePolicyForRequest(r *http.Request) controllerRoutePolicy {
 		strings.HasPrefix(path, "/api/v1/agent/actions/"),
 		isIncidentActionPath(path, "execute"),
 		isIncidentActionPath(path, "rollback"),
-		path == "/api/v1/logs/ingest":
+		path == "/api/v1/logs/ingest",
+		path == "/api/v1/security/audit/import",
+		path == "/api/v1/security/audit/explain":
 		return controllerRoutePolicy{RequiredRole: identity.RoleOperator}
 	default:
 		return controllerRoutePolicy{RequiredRole: identity.RoleAdmin}
